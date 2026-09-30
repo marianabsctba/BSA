@@ -23,7 +23,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, enabled as local_ai_enabled, OLLAMA_MODEL
-from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, upsert_event, list_events, create_takedown, list_takedowns
+from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
 bootstrap_scope()
@@ -831,6 +831,21 @@ def dashboard(request: Request):
         changes_24h=len(changes),
         attack_paths=len(RELATIONSHIPS),
     )
+
+@app.get("/api/v1/discovery/{target}/infrastructure/graph")
+def discovery_infrastructure_graph(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct"])
+    item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
+    for e in data["evidence"]:
+        kind=e.get("kind",""); value=e.get("value")
+        if kind=="a_record" and not item.ip: item.ip=value
+        elif kind=="certificate_name" and value and value!=data["target"]: item.related_domains.append(value)
+    graph=build_infrastructure_graph(item)
+    graph["discovery"]={"target":data["target"],"evidence_count":data["evidence_count"],"confidence":data["confidence"]}
+    return graph
 
 @app.get("/api/v1/discovery/{target}/infrastructure")
 def discovery_infrastructure(target: str, request: Request):
