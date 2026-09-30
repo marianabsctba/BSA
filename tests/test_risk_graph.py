@@ -12,3 +12,10 @@ def test_risk_graph_scores_contextual_asset():
     assert node['risk_score'] >= 85
     assert node['risk_band'] == 'critical'
     assert graph['risk_summary']['critical'] == 1
+
+def test_risk_path_includes_business_impact():
+    asset = Asset(id='a2', value='impact.example.org', type=AssetType.APPLICATION, confidence=95, criticality=5, tags=['internet-facing'], first_seen='2026-01-01T00:00:00Z', last_seen='2026-01-01T00:00:00Z')
+    finding = Finding(id='f2', asset_id='a2', title='critical exposure', severity=Severity.CRITICAL, confidence=95, evidence='test')
+    graph = build_risk_graph('example.org', [asset], [], [asset], [finding])
+    assert graph['risk_summary']['business_impact'] >= 100
+    assert any(x['explanation']['evidence'] for x in graph['top_risk_paths'])
