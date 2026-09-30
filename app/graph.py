@@ -158,7 +158,7 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         asset_kind = getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset"))
         if asset_kind in {"subdomain", "application"}:
             edges.append(Relationship(domain_id, aid, "namespace_member", asset.confidence, "correlated discovery"))
-        elif asset.type.value == "service":
+        elif asset_kind == "service":
             edges.append(Relationship(domain_id, aid, "dns_related_service", asset.confidence, "DNS evidence"))
 
     for item in evidence:
