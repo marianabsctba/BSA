@@ -43,9 +43,14 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
 
         if kind == "certificate_name":
             add(AssetType.SUBDOMAIN.value, value, source, confidence, ("certificate-derived",))
-        elif kind == "http_status" or kind.startswith("http_header:") or kind.startswith("security_header:"):
+        elif kind == "http_status" or kind.startswith("http_header:") or kind.startswith("security_header:") or kind in {"page_title","body_sha256","redirect_chain"} or kind.startswith("technology:"):
             host = urlparse(str(item.get("subject", ""))).hostname or value
             add(AssetType.APPLICATION.value, host, source, confidence, ("web-exposed",))
+            if kind == "redirect_chain":
+                for hop in str(value).split(" -> "):
+                    host2=urlparse(hop).hostname
+                    if host2:
+                        add(AssetType.DOMAIN.value, host2, source, confidence, ("redirect-derived",))
         elif kind in {"a", "aaaa"}:
             add(AssetType.IP.value, value, source, confidence, ("dns-resolved",))
         elif kind in {"cname", "mx", "ns"}:
