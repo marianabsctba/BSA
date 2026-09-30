@@ -26,3 +26,19 @@ def analyze_exposure(question, evidence):
             "If evidence is insufficient, say so. Be concise and operational. Cite asset IDs inline.")
     compact=json.dumps(evidence,ensure_ascii=False,separators=(",",":"))
     return ask(system, f"Question: {question}\nEvidence JSON: {compact}")
+
+
+def explain_attack_path(path, evidence):
+    system=("You are Be Safe ASM Local Attack Path Analyst. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence. Never invent a relationship or security control. "
+            "Separate FACTS, INFERENCE, UNKNOWN and RECOMMENDED VALIDATION. "
+            "Return concise JSON with keys summary, facts, inference, unknowns, validation, confidence.")
+    compact=json.dumps({"path":path,"evidence":evidence},ensure_ascii=False,separators=(",",":"))
+    raw=ask(system, "Analyze this attack path and return JSON only.\n"+compact)
+    if not raw:
+        return None
+    try:
+        data=json.loads(raw)
+        return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"summary":raw,"facts":[],"inference":[],"unknowns":["Structured local AI response was not valid JSON."],"validation":[],"confidence":0}
