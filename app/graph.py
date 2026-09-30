@@ -201,7 +201,7 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
 
     unique = {(e.source_id, e.target_id, e.kind): e for e in edges}
     edge_list = list(unique.values())
-    risk_nodes = [n for n in nodes.values() if n.risk_score > 0]
+    risk_nodes = [n for n in nodes.values() if n.risk_score > 0 and n.kind not in {"finding", "internet", "threat", "certificate", "ip"}]
     paths = _top_risk_paths(nodes, edge_list)
 
     return {
