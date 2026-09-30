@@ -42,7 +42,8 @@ def health():
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    result = []
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    result = []
     for asset in ASSETS:
         item = asset.model_dump()
         ownership = ownership_confidence(asset)
@@ -59,7 +60,8 @@ def list_assets(request: Request):
 @app.get("/api/v1/findings")
 def list_findings(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    asset_map = {a.id: a for a in ASSETS}
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
         item = finding.model_dump()
@@ -72,11 +74,13 @@ def list_findings(request: Request):
 @app.get("/api/v1/changes")
 def list_changes(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    return seed_changes(ASSETS)
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    return seed_changes(ASSETS)
 
 
 @app.get("/api/v1/graph")
-def graph():
+def graph(request: Request):
+    require(request, "assets:read")
     return RELATIONSHIPS
 
 
@@ -162,7 +166,8 @@ class DiscoveryRequest(BaseModel):
 @app.get("/api/v1/score")
 def score(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    result = exposure_score(FINDINGS, ASSETS)
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    result = exposure_score(FINDINGS, ASSETS)
     breakdowns = []
     for asset in ASSETS:
         item = exposure_breakdown(asset, FINDINGS)
@@ -205,7 +210,8 @@ def discovery(request: DiscoveryRequest, http_request: Request):
 @app.get("/api/v1/discovery/{target}/changes")
 def discovery_changes(target: str, request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     record_observations(assets)
     return {
@@ -225,14 +231,16 @@ def discovery_changes(target: str, request: Request):
 @app.get("/api/v1/discovery/{target}/graph")
 def discovery_graph(target: str, request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     return build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
 
 @app.get("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str, request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    """Return normalized asset identities for an explicit discovery target."""
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    """Return normalized asset identities for an explicit discovery target."""
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     observations = record_observations(assets)
@@ -260,7 +268,8 @@ def discovery_correlation(target: str, request: Request):
 @app.get("/api/v1/exposure")
 def exposure(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    items = []
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    items = []
     for asset in ASSETS:
         item = exposure_breakdown(asset, FINDINGS)
         items.append({
@@ -284,7 +293,8 @@ def exposure(request: Request):
 @app.get("/api/v1/dashboard", response_model=Dashboard)
 def dashboard(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    changes = seed_changes(ASSETS)
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    changes = seed_changes(ASSETS)
     ownership = [ownership_confidence(a) for a in ASSETS]
     score = exposure_score(FINDINGS, ASSETS)
 
@@ -303,7 +313,8 @@ def dashboard(request: Request):
 @app.get("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     graph = build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
     return {
@@ -315,8 +326,9 @@ def discovery_risk_paths(target: str, request: Request):
 
 @app.get("/api/v1/prioritization")
 def prioritization(request: Request):
-    principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    asset_map = {a.id: a for a in ASSETS}
+    principal = require(request, "findings:read")
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
         asset = asset_map.get(finding.asset_id)
@@ -338,8 +350,9 @@ def prioritization(request: Request):
 
 @app.get("/api/v1/remediation")
 def remediation(request: Request):
-    principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)    asset_map = {a.id: a for a in ASSETS}
+    principal = require(request, "remediation:write")
+    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
         asset = asset_map.get(finding.asset_id)
