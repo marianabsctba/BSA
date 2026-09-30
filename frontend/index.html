@@ -5,32 +5,36 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BSA • Be Safe ASM</title>
 <style>
-:root{--bg:#080a0f;--panel:#121620;--panel2:#181d28;--pink:#ff2d84;--text:#f7f8fb;--muted:#949baa;--line:#292f3b}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}
-header{display:flex;align-items:center;justify-content:space-between;padding:20px 30px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#080a0fee;backdrop-filter:blur(12px)}
-.brand{display:flex;align-items:center;gap:16px}.brand img{width:170px}.brand small{color:var(--muted)}
+:root{--bg:#080a0f;--panel:#121620;--panel2:#181d28;--pink:#ff2d84;--text:#f7f8fb;--muted:#949baa;--line:#292f3b;--ok:#76e0a6;--warn:#f6c86b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#080a0fee;backdrop-filter:blur(12px);z-index:5}
+.brand{display:flex;align-items:center;gap:16px}.brand img{width:154px}.brand small{color:var(--muted)}
 .badge{padding:8px 12px;border:1px solid #ff2d8455;background:#ff2d8414;color:var(--pink);border-radius:999px;font-size:12px;font-weight:800}
-main{max-width:1400px;margin:auto;padding:28px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:24px}
+main{max-width:1480px;margin:auto;padding:28px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:22px}
 h1{font-size:34px;margin:0 0 7px}.muted{color:var(--muted)}.pink{color:var(--pink)}
-.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px}
-.metric{font-size:34px;font-weight:900;margin-top:9px}.metric-label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
-.two{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:16px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--muted);font-size:11px;text-transform:uppercase}
-.pill{display:inline-block;padding:5px 8px;border-radius:999px;background:#ffffff0d;border:1px solid var(--line);font-size:11px}.sev-high{color:#ff7a9f}.sev-medium{color:#f6c86b}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.grid.secondary{margin-top:14px;grid-template-columns:repeat(4,1fr)}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px}
+.metric{font-size:34px;font-weight:900;margin-top:9px}.metric-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em}
+.two{display:grid;grid-template-columns:1.25fr .75fr;gap:16px;margin-top:16px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);font-size:10px;text-transform:uppercase}
+.pill{display:inline-block;padding:5px 8px;border-radius:999px;background:#ffffff0d;border:1px solid var(--line);font-size:10px}
+.state-confirmed{color:var(--ok)}.state-probable{color:var(--warn)}.state-candidate{color:#ff8ba7}
+.sev-high,.sev-critical{color:#ff7a9f}.sev-medium{color:#f6c86b}.sev-low{color:#9fc5ff}
 .score-wrap{display:flex;align-items:center;gap:25px;padding:12px 0}.score{width:128px;height:128px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--pink) calc(var(--s)*1%),#242a35 0);position:relative}
 .score:before{content:"";position:absolute;width:96px;height:96px;background:var(--panel);border-radius:50%}.score b{z-index:1;font-size:34px}
+.timeline{display:grid;gap:10px}.change{padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.delta{float:right;color:var(--pink);font-weight:800}
 .footer{color:#697181;font-size:12px;text-align:center;padding:36px}
-@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.hero{display:block}.brand small{display:none}}
+@media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.grid.secondary{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.hero{display:block}.brand small{display:none}}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><img src="/assets/bsa-panther.svg" alt="BSA"><small>External Attack Surface Management</small></div>
-  <span class="badge">BSA • ALPHA</span>
+  <div class="brand"><img src="/assets/bsa-readme-logo.jpg" alt="BSA"><small>External Attack Surface Management</small></div>
+  <span class="badge">BSA • v0.2 INTELLIGENCE</span>
 </header>
 <main>
   <div class="hero">
-    <div><h1>Attack Surface <span class="pink">Overview</span></h1><div class="muted">Inventário vivo, evidências e mudanças da superfície externa.</div></div>
+    <div><h1>Attack Surface <span class="pink">Intelligence</span></h1><div class="muted">Descoberta, ownership, contexto, mudanças e exposição em uma visão única.</div></div>
     <div class="muted" id="stamp">Sincronizando…</div>
   </div>
 
@@ -38,20 +42,43 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
     <div class="card"><div class="metric-label">Ativos</div><div class="metric" id="assets">—</div></div>
     <div class="card"><div class="metric-label">Serviços expostos</div><div class="metric" id="services">—</div></div>
     <div class="card"><div class="metric-label">Findings abertos</div><div class="metric" id="findings">—</div></div>
-    <div class="card"><div class="metric-label">Críticos</div><div class="metric" id="critical">—</div></div>
+    <div class="card"><div class="metric-label">Mudanças recentes</div><div class="metric" id="changes">—</div></div>
     <div class="card"><div class="metric-label">Exposure Score</div><div class="metric pink" id="scoreTop">—</div></div>
+  </section>
+
+  <section class="grid secondary">
+    <div class="card"><div class="metric-label">Ownership confirmado</div><div class="metric" id="confirmed">—</div></div>
+    <div class="card"><div class="metric-label">Ativos candidatos</div><div class="metric" id="candidate">—</div></div>
+    <div class="card"><div class="metric-label">Relações no grafo</div><div class="metric" id="paths">—</div></div>
+    <div class="card"><div class="metric-label">Críticos</div><div class="metric" id="critical">—</div></div>
   </section>
 
   <section class="two">
     <div class="card">
-      <div class="section-title"><h3>Superfície observada</h3><span class="pill">Evidence-based</span></div>
-      <table><thead><tr><th>Ativo</th><th>Tipo</th><th>Confiança</th><th>Origem</th></tr></thead><tbody id="assetRows"></tbody></table>
+      <div class="section-title"><h3>Superfície observada</h3><span class="pill">Ownership-aware</span></div>
+      <table>
+        <thead><tr><th>Ativo</th><th>Tipo</th><th>Ownership</th><th>Blast Radius</th><th>Origem</th></tr></thead>
+        <tbody id="assetRows"></tbody>
+      </table>
     </div>
     <div class="card">
       <div class="section-title"><h3>Postura de exposição</h3><span class="pill">Explainable score</span></div>
-      <div class="score-wrap"><div class="score" id="scoreRing" style="--s:0"><b id="scoreRingText">—</b></div>
-      <div><strong>Score inicial do MVP</strong><p class="muted">A pontuação é derivada de findings e será enriquecida com criticidade, exploitabilidade, contexto e recência.</p></div></div>
+      <div class="score-wrap">
+        <div class="score" id="scoreRing" style="--s:0"><b id="scoreRingText">—</b></div>
+        <div><strong>Score contextual</strong><p class="muted">Combina severidade, confiança, criticidade do ativo e blast radius. Cada penalidade é rastreável.</p></div>
+      </div>
       <div id="findingList"></div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="card">
+      <div class="section-title"><h3>Change Intelligence</h3><span class="pill">Continuous change</span></div>
+      <div class="timeline" id="changeList"></div>
+    </div>
+    <div class="card">
+      <div class="section-title"><h3>Asset Graph</h3><span class="pill">Evidence graph</span></div>
+      <div id="graphList"></div>
     </div>
   </section>
 </main>
@@ -60,15 +87,35 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
 const api = location.hostname==="localhost" ? "http://localhost:8000" : "";
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 async function boot(){
-  const [d,a,f]=await Promise.all([
+  const [d,a,f,c,g]=await Promise.all([
     fetch(api+"/api/v1/dashboard").then(r=>r.json()),
     fetch(api+"/api/v1/assets").then(r=>r.json()),
-    fetch(api+"/api/v1/findings").then(r=>r.json())
+    fetch(api+"/api/v1/findings").then(r=>r.json()),
+    fetch(api+"/api/v1/changes").then(r=>r.json()),
+    fetch(api+"/api/v1/graph").then(r=>r.json())
   ]);
-  assets.textContent=d.total_assets; services.textContent=d.exposed_services; findings.textContent=d.open_findings; critical.textContent=d.critical_findings; scoreTop.textContent=d.exposure_score;
-  scoreRing.style.setProperty("--s",d.exposure_score); scoreRingText.textContent=d.exposure_score;
-  assetRows.innerHTML=a.map(x=>`<tr><td><strong>${esc(x.value)}</strong></td><td><span class="pill">${esc(x.type)}</span></td><td>${x.confidence}%</td><td>${esc(x.source)}</td></tr>`).join("");
-  findingList.innerHTML=f.map(x=>`<div style="padding:13px 0;border-top:1px solid var(--line)"><span class="pill sev-${esc(x.severity)}">${esc(x.severity)}</span> <strong>${esc(x.title)}</strong><div class="muted" style="font-size:12px;margin-top:6px">${esc(x.evidence)}</div></div>`).join("");
+  assets.textContent=d.total_assets;services.textContent=d.exposed_services;findings.textContent=d.open_findings;
+  critical.textContent=d.critical_findings;changes.textContent=d.changes_24h;scoreTop.textContent=d.exposure_score;
+  confirmed.textContent=d.confirmed_assets;candidate.textContent=d.candidate_assets;paths.textContent=d.attack_paths;
+  scoreRing.style.setProperty("--s",d.exposure_score);scoreRingText.textContent=d.exposure_score;
+
+  assetRows.innerHTML=a.map(x=>`<tr>
+    <td><strong>${esc(x.value)}</strong><div class="muted">${esc((x.tags||[]).join(" • "))}</div></td>
+    <td><span class="pill">${esc(x.type)}</span></td>
+    <td><span class="state-${esc(x.ownership.state)}">${esc(x.ownership.state)}</span> ${x.ownership.score}%</td>
+    <td>${x.blast_radius}/100</td>
+    <td>${esc(x.source)}</td>
+  </tr>`).join("");
+
+  findingList.innerHTML=f.map(x=>`<div style="padding:13px 0;border-top:1px solid var(--line)">
+    <span class="pill sev-${esc(x.severity)}">${esc(x.severity)}</span>
+    <strong>${esc(x.title)}</strong>
+    <span class="delta">${x.context_score ?? "—"}/100</span>
+    <div class="muted" style="font-size:12px;margin-top:6px">${esc(x.evidence)}</div>
+  </div>`).join("");
+
+  changeList.innerHTML=c.length?c.map(x=>`<div class="change"><span class="delta">+${x.risk_delta}</span><strong>${esc(x.kind)}</strong><div class="muted" style="margin-top:5px">${esc(x.summary)}</div></div>`).join(""):'<div class="muted">Nenhuma mudança relevante.</div>';
+  graphList.innerHTML=g.map(x=>`<div class="change"><strong>${esc(x.source_id)} → ${esc(x.target_id)}</strong><div class="muted">${esc(x.kind)} • confiança ${x.confidence}%</div><div class="muted" style="margin-top:4px">${esc(x.evidence)}</div></div>`).join("");
   stamp.textContent="Atualizado agora";
 }
 boot().catch(()=>stamp.textContent="API indisponível");
