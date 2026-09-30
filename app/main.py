@@ -23,6 +23,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, enabled as local_ai_enabled, OLLAMA_MODEL
+from .digital_risk import DigitalRiskEvent, TakedownRequest, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
 bootstrap_scope()
@@ -456,6 +457,37 @@ def asset_timeline(asset_id: str, request: Request):
     }
 
 
+
+@app.get("/api/v1/digital-risk")
+def digital_risk(request: Request, category: str|None=None):
+    principal=require(request,"assets:read")
+    events=list_events(principal.tenant_id,category)
+    by={}
+    for e in events: by[e["category"]]=by.get(e["category"],0)+1
+    return {"events":events,"summary":{"total":len(events),"by_category":by,"critical":sum(1 for e in events if e.get("severity")=="critical"),
+        "open":sum(1 for e in events if e.get("status")=="open"),"takedown_candidates":sum(1 for e in events if e.get("category") in {"phishing","brand_abuse","fake_profile","fake_app","malware"} and e.get("status")=="open")}}
+
+@app.post("/api/v1/digital-risk/events")
+def digital_risk_ingest(payload: DigitalRiskEvent, request: Request):
+    principal=require(request,"assets:write")
+    item=upsert_event(principal.tenant_id,payload.model_dump())
+    audit(principal,"create","digital_risk",item["event_id"],{"category":item["category"],"source":item["source"]})
+    return item
+
+@app.get("/api/v1/digital-risk/takedowns")
+def digital_risk_takedowns(request: Request):
+    principal=require(request,"assets:read")
+    return {"items":list_takedowns(principal.tenant_id)}
+
+@app.post("/api/v1/digital-risk/takedowns")
+def digital_risk_takedown(payload: TakedownRequest, request: Request):
+    principal=require(request,"assets:write")
+    events=list_events(principal.tenant_id)
+    if not any(e["event_id"]==payload.event_id for e in events):
+        raise HTTPException(status_code=404,detail="digital risk event not found")
+    item=create_takedown(principal.tenant_id,payload.event_id,payload.provider,payload.reason,payload.priority)
+    audit(principal,"create","takedown",item["takedown_id"],{"event_id":payload.event_id,"provider":item["provider"]})
+    return item
 
 @app.get("/api/v1/exposure/storyline")
 def exposure_storyline(request: Request, limit: int = 50):
