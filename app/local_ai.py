@@ -56,3 +56,15 @@ def analyze_brand_context(brand, indicator, evidence):
         data=json.loads(raw); return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"verdict":"needs_review","summary":raw,"facts":[],"indicators":[],"unknowns":["Unstructured AI response"],"confidence":0,"recommended_action":"human_review"}
+
+
+def analyze_infrastructure_cluster(indicator, links):
+    system=("You are Be Safe ASM Local Infrastructure Intelligence analyst. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence. Do not infer ownership or maliciousness solely from shared infrastructure. "
+            "Separate observed links, hypotheses and unknowns. Return JSON keys: summary, observed_links, hypotheses, unknowns, confidence, validation.")
+    raw=ask(system,"Analyze infrastructure correlation. JSON only.\n"+json.dumps({"indicator":indicator,"links":links},ensure_ascii=False,separators=(",",":")))
+    if not raw: return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"summary":raw,"observed_links":[],"hypotheses":[],"unknowns":["Unstructured response"],"confidence":0,"validation":[]}
