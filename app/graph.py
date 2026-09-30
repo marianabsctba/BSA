@@ -154,7 +154,7 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
     for asset in assets:
         source = by_value.get(asset.value.lower())
         score = _risk_for(source, findings)
-        aid = add_node(asset.type.value, asset.value, asset.confidence, score)
+        aid = add_node(getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset")), asset.value, asset.confidence, score)
         if asset.type.value in {"subdomain", "application"}:
             edges.append(Relationship(domain_id, aid, "namespace_member", asset.confidence, "correlated discovery"))
         elif asset.type.value == "service":
