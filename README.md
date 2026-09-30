@@ -19,20 +19,30 @@ A proposta é ir além de uma lista de IPs e domínios: o BSA mantém um **inven
 
 > O princípio é simples: **descobrir como um atacante enxerga a organização, mas entregar o resultado com governança, rastreabilidade e validação humana.**
 
-## Primeira versão
+## Estado atual — v0.2 Intelligence
 
-Esta base inicial já nasce preparada para:
+O BSA já saiu do simples inventário e passou a trabalhar com contexto de superfície:
 
-- descoberta de domínios, subdomínios, IPs e serviços;
-- inventário externo com estado, criticidade e origem da evidência;
-- findings com severidade, confiança e ciclo de vida;
-- score de exposição explicável;
+- descoberta de domínios, subdomínios, IPs, serviços e certificados;
+- inventário externo com criticidade, origem e confiança da evidência;
+- **ownership confidence** para diferenciar ativo confirmado, provável e candidato;
+- **blast radius** por ativo;
+- findings com severidade, confiança e score contextual;
+- **Exposure Score explicável**, com penalidades rastreáveis;
+- **Change Intelligence** para ativos novos e mudanças relevantes;
+- **Asset Relationship Graph** para correlação entre domínio, host, IP e serviço;
+- collectors de DNS, HTTP e TLS orientados a baixo impacto;
 - dashboard preto + rosa da Be Safe;
-- histórico de mudanças da superfície;
-- arquitetura pronta para collectors assíncronos;
 - API REST;
+- testes automatizados e CI;
 - Docker;
-- trilha futura para CTEM, brand monitoring, cloud exposure e integrações SIEM/SOAR/ITSM.
+- base pronta para CTEM, cloud exposure, brand monitoring e integrações SIEM/SOAR/ITSM.
+
+### Diferencial de arquitetura
+
+O BSA não assume que tudo o que foi encontrado pertence ao cliente. A plataforma trata **ownership como hipótese baseada em evidências**, reduzindo falso positivo e evitando inflar artificialmente a superfície de ataque.
+
+Da mesma forma, risco não é calculado apenas por severidade: o contexto do ativo, criticidade, exposição e confiança entram na priorização.
 
 ## Arquitetura
 
