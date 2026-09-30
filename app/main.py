@@ -787,6 +787,34 @@ def discovery_correlation(target: str, request: Request):
     }
 
 
+@app.get("/api/v1/easm/overview")
+def easm_overview(request: Request):
+    principal=require(request,"assets:read")
+    ASSETS,FINDINGS=tenant_scope(principal,ASSETS,FINDINGS)
+    def state(a):
+        if a.status in {"approved","owned","managed"}: return "approved"
+        if a.status in {"dependency","third_party"}: return "dependency"
+        if a.status in {"monitor","monitor_only"}: return "monitor_only"
+        if a.status in {"requires_investigation","investigate"}: return "requires_investigation"
+        return "candidate"
+    inventory=[{"id":a.id,"value":a.value,"type":a.type.value,"state":state(a),"confidence":a.confidence,"criticality":a.criticality,
+               "first_seen":a.first_seen,"last_seen":a.last_seen,"sources":a.sources,"evidence_count":a.evidence_count,
+               "owner":a.owner,"environment":a.environment,"cloud_provider":a.cloud_provider} for a in ASSETS]
+    by_state={}
+    by_type={}
+    for x in inventory:
+        by_state[x["state"]]=by_state.get(x["state"],0)+1
+        by_type[x["type"]]=by_type.get(x["type"],0)+1
+    exposed=[x for x in inventory if x["type"] in {"service","application","ip","domain","subdomain"}]
+    return {"summary":{"total_assets":len(inventory),"exposed_assets":len(exposed),"approved":by_state.get("approved",0),
+        "candidates":by_state.get("candidate",0),"requires_investigation":by_state.get("requires_investigation",0),
+        "dependencies":by_state.get("dependency",0),"monitor_only":by_state.get("monitor_only",0),
+        "by_type":by_type,"by_state":by_state},
+        "inventory":inventory,"changes":{"recent":sum(1 for a in ASSETS if a.status=="observed"),
+        "unowned":sum(1 for a in ASSETS if not a.owner),"low_confidence":sum(1 for a in ASSETS if a.confidence<70)},
+        "risk":{"critical_findings":sum(1 for f in FINDINGS if f.status=="open" and f.severity.value=="critical"),
+        "high_findings":sum(1 for f in FINDINGS if f.status=="open" and f.severity.value=="high")}}
+
 @app.get("/api/v1/exposure")
 def exposure(request: Request):
     principal = require(request, "assets:read")
