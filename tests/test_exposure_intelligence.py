@@ -182,3 +182,14 @@ def test_digital_risk_ingest_and_takedown_lifecycle():
     r=client.post("/api/v1/digital-risk/takedowns",headers={**h,"Content-Type":"application/json"},json={"event_id":event["event_id"],"provider":"auto","reason":"phishing","priority":"high"})
     assert r.status_code==200
     assert r.json()["status"]=="queued"
+
+
+def test_brand_impersonation_evidence_endpoint():
+    h=auth()
+    payload={"indicator":"https://evil.example/be-safe-login","brand":"Be Safe","title":"Be Safe Login","html_excerpt":"Be Safe Secure Login","visual_similarity":88,"text_similarity":82}
+    r=client.post("/api/v1/digital-risk/brand/analyze",headers={**h,"Content-Type":"application/json"},json=payload)
+    assert r.status_code==200
+    out=r.json()
+    assert out["verdict"]=="likely_impersonation"
+    assert out["score"]>=70
+    assert "evidence" in out
