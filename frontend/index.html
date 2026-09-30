@@ -127,7 +127,7 @@ async function runDiscovery(){
     var res=await fetch(api+"/api/v1/discovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:target,checks:["dns","http","tls"]})});
     var data=await res.json(); if(!res.ok) throw new Error(data.detail||"falha na descoberta");
     discoveryResult.innerHTML="<strong>"+esc(data.target)+"</strong> • "+data.evidence_count+" evidências • confiança média "+data.confidence+"%";
-    discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";\n    fetch(api+"/api/v1/discovery/"+encodeURIComponent(data.target)+"/graph").then(function(r){return r.json();}).then(function(g){graphResult.innerHTML="<strong>Attack Surface Graph</strong> • "+g.nodes.length+" nodes • "+g.edges.length+" relationships";});
+    discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";\n    fetch(api+"/api/v1/discovery/"+encodeURIComponent(data.target)+"/graph").then(function(r){return r.json();}).then(function(g){graphResult.innerHTML="<strong>Risk Graph</strong> • "+g.nodes.length+" nodes • "+g.edges.length+" relationships • "+g.risk_summary.critical+" críticos • maior score "+g.risk_summary.highest_score;});
   }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
 }
 discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
