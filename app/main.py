@@ -6,11 +6,15 @@ from .graph import RELATIONSHIPS
 from .intelligence import ownership_confidence, blast_radius, finding_context_score
 from .models import Dashboard
 from .scoring import exposure_score
+from .exposure import exposure_breakdown, exposure_band
+from .discovery import collect_target
+from fastapi import HTTPException
+from pydantic import BaseModel, Field
 from .store import ASSETS, FINDINGS
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
-    version="0.2.0",
+    version="0.3.0",
     description="Attack Surface Management defensivo, rastreável e orientado a evidências.",
 )
 
@@ -25,7 +29,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": "BSA", "version": "0.2.0", "powered_by": "Mariana BS"}
+    return {"status": "ok", "product": "BSA", "version": "0.3.0", "powered_by": "Mariana BS"}
 
 
 @app.get("/api/v1/assets")
@@ -66,10 +70,73 @@ def graph():
     return RELATIONSHIPS
 
 
+class DiscoveryRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=253)
+    checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls"])
+
+
 @app.get("/api/v1/score")
 def score():
     result = exposure_score(FINDINGS, ASSETS)
-    return {"score": result.score, "penalty": result.penalty, "rationale": result.rationale}
+    breakdowns = []
+    for asset in ASSETS:
+        item = exposure_breakdown(asset, FINDINGS)
+        breakdowns.append({
+            "asset_id": asset.id,
+            "asset": asset.value,
+            "score": item.score,
+            "band": exposure_band(item.score),
+            "rationale": item.rationale,
+            "dimensions": {
+                "internet": item.internet,
+                "exploitability": item.exploitability,
+                "criticality": item.criticality,
+                "intelligence": item.intelligence,
+                "confidence": item.confidence,
+                "shadow": item.shadow,
+            },
+        })
+    return {
+        "score": result.score,
+        "penalty": result.penalty,
+        "rationale": result.rationale,
+        "assets": breakdowns,
+    }
+
+
+@app.post("/api/v1/discovery")
+def discovery(request: DiscoveryRequest):
+    allowed = {"dns", "http", "tls"}
+    checks = list(dict.fromkeys(request.checks))
+    if not checks or any(check not in allowed for check in checks):
+        raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http e tls")
+    try:
+        return collect_target(request.target, checks)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/exposure")
+def exposure():
+    items = []
+    for asset in ASSETS:
+        item = exposure_breakdown(asset, FINDINGS)
+        items.append({
+            "asset_id": asset.id,
+            "asset": asset.value,
+            "score": item.score,
+            "band": exposure_band(item.score),
+            "rationale": item.rationale,
+            "dimensions": {
+                "internet": item.internet,
+                "exploitability": item.exploitability,
+                "criticality": item.criticality,
+                "intelligence": item.intelligence,
+                "confidence": item.confidence,
+                "shadow": item.shadow,
+            },
+        })
+    return sorted(items, key=lambda x: x["score"], reverse=True)
 
 
 @app.get("/api/v1/dashboard", response_model=Dashboard)
