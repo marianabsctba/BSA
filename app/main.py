@@ -22,6 +22,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
+from .local_ai import analyze_exposure, enabled as local_ai_enabled, OLLAMA_MODEL
 
 bootstrap()
 bootstrap_scope()
@@ -458,17 +459,23 @@ def exposure_copilot(request: Request, question: str):
     q = question.lower()
     if "owner" in q or "respons" in q:
         rows = [a for a in assets if not a.owner]
-        answer = "Ativos sem owner informado."
+        fallback = "Ativos sem owner informado."
     elif "mudou" in q or "change" in q or "novo" in q:
         rows = [a for a in assets if build_exposure_dna(a, findings).change_type != "stable"]
-        answer = "Ativos com sinais materiais de mudança."
+        fallback = "Ativos com sinais materiais de mudança."
     else:
         rows = sorted(assets, key=lambda a: exposure_breakdown(a, findings).score, reverse=True)[:10]
-        answer = "Ativos ordenados por exposição contextual."
-    return {"answer": answer, "evidence": [
-        {"asset_id": a.id, "asset": a.value, "confidence": a.confidence,
-         "signals": build_exposure_dna(a, findings).signals} for a in rows
-    ]}
+        fallback = "Ativos ordenados por exposição contextual."
+    evidence=[{"asset_id":a.id,"asset":a.value,"type":getattr(a.type,"value",a.type),"confidence":a.confidence,
+               "owner":a.owner,"exposure_score":exposure_breakdown(a,findings).score,
+               "signals":build_exposure_dna(a,findings).signals} for a in rows]
+    ai=analyze_exposure(question,evidence)
+    return {"answer":ai or fallback,"ai":{"enabled":local_ai_enabled(),"provider":"ollama-local","model":OLLAMA_MODEL if local_ai_enabled() else None,"grounded":bool(ai),"fallback":not bool(ai)},"evidence":evidence}
+
+@app.get("/api/v1/exposure/ai/status")
+def exposure_ai_status(request: Request):
+    require(request, "assets:read")
+    return {"enabled":local_ai_enabled(),"provider":"ollama-local","model":OLLAMA_MODEL if local_ai_enabled() else None,"privacy":"local-server","internet_required":False}
 
 
 @app.get("/api/v1/exposure/ctem/plans")
