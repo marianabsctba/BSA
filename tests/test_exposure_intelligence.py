@@ -193,3 +193,13 @@ def test_brand_impersonation_evidence_endpoint():
     assert out["verdict"]=="likely_impersonation"
     assert out["score"]>=70
     assert "evidence" in out
+
+
+def test_infrastructure_correlation_endpoint():
+    h=auth()
+    payload={"indicator":"login.example.test","indicator_type":"domain","ip":"203.0.113.10","asn":"AS64500","certificate_sha256":"cert123","favicon_sha256":"fav123","related_domains":["secure.example.test"],"confidence":90}
+    r=client.post("/api/v1/digital-risk/infrastructure/analyze",headers={**h,"Content-Type":"application/json"},json=payload)
+    assert r.status_code==200
+    out=r.json()
+    assert out["link_count"]>=4
+    assert "cluster_strength" in out
