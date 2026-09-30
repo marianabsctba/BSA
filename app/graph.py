@@ -231,6 +231,30 @@ def simulate_remediation(nodes, edges, path, remove_finding_ids=None):
     reduction = max(0, before - after)
     return {"before": before, "after": after, "risk_reduction": reduction, "reduction_percent": round(reduction / before * 100) if before else 0}
 
+
+def remediation_options(nodes, edges, paths, limit=8):
+    options = []
+    seen = set()
+    for path_item in paths:
+        path = path_item.get("nodes", [])
+        finding_ids = [n for n in path if nodes.get(n) and nodes[n].kind == "finding"]
+        for finding_id in finding_ids:
+            if finding_id in seen:
+                continue
+            seen.add(finding_id)
+            sim = simulate_remediation(nodes, edges, path, [finding_id])
+            finding = nodes[finding_id]
+            options.append({
+                "finding_node_id": finding_id,
+                "finding": finding.label,
+                "severity": finding.risk_band,
+                "paths_affected": sum(1 for p in paths if finding_id in p.get("nodes", [])),
+                **sim,
+                "priority_score": min(100, round(sim["risk_reduction"] * 0.7 + finding.confidence * 0.3)),
+            })
+    options.sort(key=lambda x:(x["priority_score"],x["paths_affected"]), reverse=True)
+    return options[:limit]
+
 def build_attack_surface_graph(target: str, assets, evidence: list[dict]):
     return build_risk_graph(target, assets, evidence)
 
