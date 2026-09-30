@@ -81,7 +81,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
       <div id="graphList"></div>
     </div>
   </section>
-<section class="card" id="adminPanel" style="margin-top:16px;display:none"><div class="section-title"><h3>Administração</h3><span class="pill" id="identityPill">RBAC</span></div><div class="muted" id="identityText"></div><div class="toolbar"><input id="newUserEmail" placeholder="e-mail do usuário"><input id="newUserName" placeholder="nome"><input id="newUserPassword" type="password" placeholder="senha ≥ 12"><select id="newUserRole" style="background:#0d1118;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px"><option value="viewer">viewer</option><option value="analyst">analyst</option><option value="manager">manager</option><option value="admin">admin</option></select><button class="btn" id="createUserBtn" type="button">Criar usuário</button></div><div id="adminMessage" class="mini"></div><div id="userList" class="timeline" style="margin-top:12px"></div><div id="tenantList" class="timeline" style="margin-top:12px"></div></section></main>
+<section class="card" id="adminPanel" style="margin-top:16px;display:none"><div class="section-title"><h3>Administração</h3><span class="pill" id="identityPill">RBAC</span></div><div class="muted" id="identityText"></div><div class="toolbar"><input id="newUserEmail" placeholder="e-mail do usuário"><input id="newUserName" placeholder="nome"><input id="newUserPassword" type="password" placeholder="senha ≥ 12"><select id="newUserRole" style="background:#0d1118;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px"><option value="viewer">viewer</option><option value="analyst">analyst</option><option value="manager">manager</option><option value="admin">admin</option></select><button class="btn" id="createUserBtn" type="button">Criar usuário</button></div><div id="adminMessage" class="mini"></div><div id="userList" class="timeline" style="margin-top:12px"></div><div id="tenantList" class="timeline" style="margin-top:12px"></div><div id="scopeAdmin" style="margin-top:14px"><div class="section-title"><h4>Scopes & Asset Groups</h4><span class="pill">Least privilege</span></div><div class="toolbar"><input id="scopeName" placeholder="Nome do scope"><input id="scopePattern" placeholder="*.cliente.com.br"><button class="btn" id="createScopeBtn" type="button">Criar scope</button></div><div class="toolbar"><input id="groupName" placeholder="Nome do grupo"><input id="groupPattern" placeholder="vpn.*"><button class="btn" id="createGroupBtn" type="button">Criar grupo</button></div><div id="scopeList" class="timeline" style="margin-top:10px"></div><div id="groupList" class="timeline" style="margin-top:10px"></div></div></section></main>
 <div class="footer">BSA • Be Safe ASM • Powered by Mariana BS</div>
 <script>
 const nativeFetch=window.fetch.bind(window);
@@ -112,6 +112,9 @@ async function boot(){
   identityPill.textContent=meData.role+" • "+meData.tenant_id;
   identityText.textContent=meData.name+" • "+meData.email;
   if(["admin","superadmin"].includes(meData.role)){
+    scopeAdmin.style.display="block";
+    const sr=await fetch(api+"/api/v1/scopes"); if(sr.ok){const ss=await sr.json(); scopeList.innerHTML=ss.map(s=>"<div class=\"change\"><strong>"+esc(s.name)+"</strong><span class=\"delta\">"+esc(s.pattern)+"</span></div>").join("");}
+    const gr=await fetch(api+"/api/v1/groups"); if(gr.ok){const gs=await gr.json(); groupList.innerHTML=gs.map(g=>"<div class=\"change\"><strong>"+esc(g.name)+"</strong><span class=\"delta\">"+esc(g.pattern)+"</span></div>").join("");}
     const ur=await fetch(api+"/api/v1/users");
     if(ur.ok){const us=await ur.json(); userList.innerHTML=us.map(u=>"<div class=\"change\"><strong>"+esc(u.name)+"</strong><span class=\"delta\">"+esc(u.role)+"</span><div class=\"mini\">"+esc(u.email)+" • "+(u.active?"ativo":"inativo")+"</div></div>").join("");}
   }
@@ -175,6 +178,8 @@ async function runDiscovery(){
     });
   }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
 }
+createScopeBtn.addEventListener("click",async function(){const r=await fetch(api+"/api/v1/scopes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:scopeName.value,pattern:scopePattern.value})});adminMessage.textContent=r.ok?"Scope criado.":"Falha ao criar scope";if(r.ok) await boot();});
+createGroupBtn.addEventListener("click",async function(){const r=await fetch(api+"/api/v1/groups",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:groupName.value,pattern:groupPattern.value})});adminMessage.textContent=r.ok?"Grupo criado.":"Falha ao criar grupo";if(r.ok) await boot();});
 createUserBtn.addEventListener("click",async function(){adminMessage.textContent="Criando…";const r=await fetch(api+"/api/v1/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:newUserEmail.value,name:newUserName.value,password:newUserPassword.value,role:newUserRole.value})});adminMessage.textContent=r.ok?"Usuário criado.":((await r.json()).detail||"Falha ao criar usuário");});logoutBtn.addEventListener("click",function(){sessionStorage.removeItem("bsa_token");location.reload();});discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
 boot().catch(()=>stamp.textContent="API indisponível");
 </script>
