@@ -1,7 +1,7 @@
 # BSA — Be Safe ASM
 
 <p align="center">
-  <img src="assets/bsa-readme-logo.jpg" alt="BSA Panther" width="760">
+  <img src="https://raw.githubusercontent.com/marianabsctba/Be_Safe_ASM/main/assets/bsa-readme-logo.jpg" alt="BSA Panther" width="760">
 </p>
 
 <p align="center">
