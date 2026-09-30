@@ -10,12 +10,12 @@ from .exposure import exposure_breakdown, exposure_band
 from .discovery import collect_target
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from .store import ASSETS, FINDINGS
+from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
 
 bootstrap()
 
@@ -42,7 +42,7 @@ def health():
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     result = []
     for asset in ASSETS:
         item = asset.model_dump()
@@ -122,11 +122,12 @@ def require(request: Request, permission: str):
 
 
 @app.post("/api/v1/auth/login")
-def login(payload: LoginRequest):
+def login(payload: LoginRequest, request: Request):
     token = authenticate(payload.email, payload.password)
     if not token:
         raise HTTPException(status_code=401, detail="invalid credentials")
     principal = principal_from_token(token)
+    audit(principal, "login", "session")
     return {"access_token": token, "token_type": "bearer", "expires_in": 28800, "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}}
 
 
@@ -143,6 +144,17 @@ class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
+
+
+@app.get("/api/v1/audit")
+def audit_events(request: Request, limit: int = 100):
+    p = current_principal(request)
+    try:
+        return list_audit(p, limit)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/tenants")
 def tenants(request: Request):
     p = current_principal(request)
@@ -157,7 +169,9 @@ def tenants_create(request: Request, payload: TenantCreateRequest):
     if p.role != "superadmin":
         raise HTTPException(status_code=403, detail="superadmin required")
     try:
-        return create_tenant(p, payload.id, payload.name)
+        result = create_tenant(p, payload.id, payload.name)
+        audit(p, "create", "tenant", payload.id)
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
@@ -179,7 +193,9 @@ def users_create(request: Request, payload: UserCreateRequest):
     if p.role != "admin":
         raise HTTPException(status_code=403, detail="admin required")
     try:
-        return create_user(p, payload.email, payload.name, payload.password, payload.role)
+        result = create_user(p, payload.email, payload.name, payload.password, payload.role)
+        audit(p, "create", "user", result["id"], {"role": payload.role})
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
