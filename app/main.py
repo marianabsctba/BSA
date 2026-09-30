@@ -63,12 +63,19 @@ def mssp_command_center(request: Request):
         scores=[exposure_breakdown(a,findings).score for a in assets]
         plans=list_plans(t["id"])
         overdue=sum(1 for p in plans if p.get("status") in {"planned","approved","in_progress"} and p.get("effort")=="alto")
-        rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":round(sum(scores)/len(scores)) if scores else 0,
-                     "assets":len(assets),"open_findings":len(findings),"ctem":len(plans),"overdue":overdue})
+        risk=round(sum(scores)/len(scores)) if scores else 0
+        critical=sum(1 for f in findings if getattr(f,"severity",None) and str(f.severity).lower().endswith("critical"))
+        approved=sum(1 for p in plans if p.get("status")=="approved")
+        in_progress=sum(1 for p in plans if p.get("status")=="in_progress")
+        remediated=sum(1 for p in plans if p.get("status") in {"remediated","retest","closed"})
+        rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":risk,
+                     "assets":len(assets),"open_findings":len(findings),"critical_findings":critical,
+                     "ctem":len(plans),"approved":approved,"in_progress":in_progress,"remediated":remediated,
+                     "overdue":overdue,"ctem_aging":sum(1 for p in plans if p.get("status") in {"planned","approved"})})
     rows.sort(key=lambda x:x["risk"],reverse=True)
     return {"tenants":rows,"summary":{"tenants":len(rows),"critical_tenants":sum(x["risk"]>=80 for x in rows),
         "open_findings":sum(x["open_findings"] for x in rows),"ctem_plans":sum(x["ctem"] for x in rows),
-        "overdue":sum(x["overdue"] for x in rows)}}
+        "overdue":sum(x["overdue"] for x in rows),"remediated":sum(x["remediated"] for x in rows),"in_progress":sum(x["in_progress"] for x in rows)}}
 
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
