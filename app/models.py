@@ -36,6 +36,9 @@ class Asset(BaseModel):
     tags: list[str] = []
     first_seen: str
     last_seen: str
+    fingerprint: str | None = None
+    evidence_count: int = 0
+    sources: list[str] = []
 
 
 class Finding(BaseModel):
