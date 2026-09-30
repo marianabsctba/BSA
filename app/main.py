@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .changes import seed_changes
-from .graph import RELATIONSHIPS, build_attack_surface_graph, build_risk_graph
+from .graph import RELATIONSHIPS, build_attack_surface_graph, build_risk_graph, simulate_remediation
 from .intelligence import ownership_confidence, blast_radius, finding_context_score
 from .models import Dashboard
 from .scoring import exposure_score
@@ -95,6 +95,19 @@ def list_changes(request: Request):
     assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     return seed_changes(assets)
 
+
+class RemediationSimulationRequest(BaseModel):
+    path: list[str] = Field(default_factory=list)
+    finding_node_ids: list[str] = Field(default_factory=list)
+
+@app.post("/api/v1/graph/simulate")
+def graph_simulate(payload: RemediationSimulationRequest, request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    graph = build_risk_graph(f"tenant:{principal.tenant_id}", assets, [], source_assets=assets, findings=findings)
+    nodes = {n["id"]: type("Node", (), n)() for n in graph["nodes"]}
+    edges = [type("Edge", (), e)() for e in graph["edges"]]
+    return simulate_remediation(nodes, edges, payload.path, payload.finding_node_ids)
 
 @app.get("/api/v1/graph")
 def graph(request: Request):
