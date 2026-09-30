@@ -203,3 +203,12 @@ def test_infrastructure_correlation_endpoint():
     out=r.json()
     assert out["link_count"]>=4
     assert "cluster_strength" in out
+
+
+def test_discovery_infrastructure_contract():
+    h=auth()
+    r=client.get("/api/v1/discovery/example.com/infrastructure",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert "discovery" in data and "links" in data and "cluster_strength" in data
