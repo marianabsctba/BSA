@@ -90,3 +90,30 @@ def analyze_brand_impersonation(tenant_id, analysis: BrandAnalysis):
             "text_similarity":text,"verdict":verdict,"reasons":reasons,
             "evidence":{"html_excerpt":analysis.html_excerpt,"image_hash":analysis.image_hash},
             "human_review_required":verdict!="likely_impersonation"}
+
+
+class InfrastructureIndicator(BaseModel):
+    indicator: str
+    indicator_type: str="domain"
+    ip: str|None=None
+    asn: str|None=None
+    registrar: str|None=None
+    nameservers: list[str]=[]
+    certificate_sha256: str|None=None
+    favicon_sha256: str|None=None
+    redirect_chain: list[str]=[]
+    related_domains: list[str]=[]
+    screenshot_hash: str|None=None
+    source: str="manual"
+    confidence: int=70
+
+def build_infrastructure_links(item: InfrastructureIndicator):
+    links=[]
+    for value,kind in [(item.ip,"ip"),(item.asn,"asn"),(item.registrar,"registrar"),(item.certificate_sha256,"certificate"),(item.favicon_sha256,"favicon"),(item.screenshot_hash,"screenshot")]:
+        if value: links.append({"type":kind,"value":value,"confidence":item.confidence})
+    for ns in item.nameservers: links.append({"type":"nameserver","value":ns,"confidence":item.confidence})
+    for domain in item.related_domains: links.append({"type":"related_domain","value":domain,"confidence":item.confidence})
+    for target in item.redirect_chain: links.append({"type":"redirect","value":target,"confidence":item.confidence})
+    return {"indicator":item.indicator,"indicator_type":item.indicator_type,"links":links,"link_count":len(links),
+            "cluster_strength":min(100, round(sum(x["confidence"] for x in links)/max(1,len(links)))),
+            "evidence_required":not bool(links)}
