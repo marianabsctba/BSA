@@ -1,4 +1,5 @@
 from .exposure import exposure_breakdown, exposure_band
+from .exposure_dna import build_exposure_dna
 from .graph import build_risk_graph
 from .history import change_summary, history_for
 from .intelligence import ownership_confidence, blast_radius, finding_context_score
@@ -10,6 +11,8 @@ def asset_detail(asset, findings, all_assets):
     asset_findings = [f for f in findings if f.asset_id == asset.id]
     exposure = exposure_breakdown(asset, findings)
     ownership = ownership_confidence(asset)
+    dna = build_exposure_dna(asset, findings)
+    fingerprint = asset.fingerprint or dna.fingerprint
     plans = [build_remediation_plan(f, asset).__dict__ for f in asset_findings if f.status == "open"]
     graph = build_risk_graph(asset.value, [asset], [], source_assets=all_assets, findings=findings)
     return {
@@ -42,9 +45,10 @@ def asset_detail(asset, findings, all_assets):
             for f in asset_findings
         ],
         "remediation": plans,
-        "history": [h.__dict__ for h in history_for(asset.fingerprint)],
-        "change_summary": change_summary(asset.fingerprint),
+        "history": [h.__dict__ for h in history_for(fingerprint)],
+        "change_summary": change_summary(fingerprint),
         "graph": graph,
+        "exposure_dna": asdict(dna),
         "evidence": {
             "sources": list(getattr(asset, "sources", ()) or ()),
             "evidence_count": getattr(asset, "evidence_count", 0),
