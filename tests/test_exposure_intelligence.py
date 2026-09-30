@@ -114,3 +114,13 @@ def test_mssp_command_center_has_ctem_lifecycle_metrics():
         assert "in_progress" in tenant
         assert "remediated" in tenant
         assert "ctem_aging" in tenant
+
+
+def test_mssp_sla_and_residual_metrics():
+    h=auth(); r=client.get("/api/v1/mssp/command-center",headers=h)
+    if r.status_code != 200: return
+    data=r.json(); assert "sla_compliance" in data["summary"]
+    assert "risk_residual" in data["summary"] and "risk_reduction_30d" in data["summary"]
+    for t in data["tenants"]:
+        assert 0 <= t["sla_compliance"] <= 100
+        assert "avg_ctem_age_days" in t and "risk_reduction_30d" in t
