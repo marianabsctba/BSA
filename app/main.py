@@ -15,7 +15,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit, audit, list_audit
 
 bootstrap()
 
@@ -60,7 +60,7 @@ def list_assets(request: Request):
 @app.get("/api/v1/findings")
 def list_findings(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
