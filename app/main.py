@@ -23,7 +23,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, enabled as local_ai_enabled, OLLAMA_MODEL
-from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, analyze_brand_impersonation, upsert_event, list_events, create_takedown, list_takedowns
+from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
 bootstrap_scope()
@@ -457,6 +457,17 @@ def asset_timeline(asset_id: str, request: Request):
     }
 
 
+
+@app.post("/api/v1/digital-risk/infrastructure/analyze")
+def digital_risk_infrastructure(payload: InfrastructureIndicator, request: Request):
+    principal=require(request,"assets:read")
+    result=build_infrastructure_links(payload)
+    event=upsert_event(principal.tenant_id,{
+        "category":"infrastructure_cluster","title":f"Infrastructure correlation for {payload.indicator}",
+        "indicator":payload.indicator,"source":payload.source,"severity":"medium" if result["cluster_strength"]>=60 else "low",
+        "confidence":result["cluster_strength"],"evidence":result,"status":"open"})
+    result["event_id"]=event["event_id"]
+    return result
 
 @app.post("/api/v1/digital-risk/brand/analyze")
 def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
