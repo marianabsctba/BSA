@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from .store import ASSETS, FINDINGS
 from .correlation import correlate_evidence
 from .history import record_observations, change_summary
+from .prioritization import prioritize_finding
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -221,3 +222,25 @@ def discovery_risk_paths(target: str):
         "paths": graph["top_risk_paths"],
         "summary": graph["risk_summary"],
     }
+
+
+@app.get("/api/v1/prioritization")
+def prioritization():
+    asset_map = {a.id: a for a in ASSETS}
+    result = []
+    for finding in FINDINGS:
+        asset = asset_map.get(finding.asset_id)
+        item = prioritize_finding(finding, asset)
+        result.append({
+            "finding_id": finding.id,
+            "finding": finding.title,
+            "asset": asset.value if asset else None,
+            "priority": item.priority,
+            "score": item.score,
+            "impact": item.impact,
+            "urgency": item.urgency,
+            "confidence": item.confidence,
+            "reasons": item.reasons,
+            "recommended_action": item.action,
+        })
+    return sorted(result, key=lambda x: (-x["score"], x["priority"]))
