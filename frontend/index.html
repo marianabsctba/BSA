@@ -53,7 +53,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
     <div class="card"><div class="metric-label">Críticos</div><div class="metric" id="critical">—</div></div>
   </section>
 
-  <section class="card" style="margin-top:16px"><div class="section-title"><h3>Exposure Prioritization</h3><span class="pill">Explainable • asset-level</span></div><div id="exposureList"></div></section><section class="two">
+  <section class="card" style="margin-top:16px"><div class="section-title"><h3>Exposure Prioritization</h3><span class="pill">Explainable • asset-level</span></div><div id="exposureList"></div></section><section class="card" style="margin-top:16px"><div class="section-title"><h3>Remediation Queue</h3><span class="pill">Business impact • contextual priority</span></div><div id="priorityList"></div></section><section class="two">
     <div class="card">
       <div class="section-title"><h3>Superfície observada</h3><span class="pill">Ownership-aware</span></div>
       <table>
@@ -116,6 +116,10 @@ async function boot(){
 
   changeList.innerHTML=c.length?c.map(x=>`<div class="change"><span class="delta">+${x.risk_delta}</span><strong>${esc(x.kind)}</strong><div class="muted" style="margin-top:5px">${esc(x.summary)}</div></div>`).join(""):'<div class="muted">Nenhuma mudança relevante.</div>';
   graphList.innerHTML=g.map(x=>`<div class="change"><strong>${esc(x.source_id)} → ${esc(x.target_id)}</strong><div class="muted">${esc(x.kind)} • confiança ${x.confidence}%</div><div class="muted" style="margin-top:4px">${esc(x.evidence)}</div></div>`).join("");
+  const priorities=await fetch(api+"/api/v1/prioritization").then(r=>r.json());
+  priorityList.innerHTML=priorities.slice(0,6).map(function(x){
+    return "<div class=\"change\"><span class=\"delta\">"+esc(x.priority)+" • "+x.score+"/100</span><strong>"+esc(x.finding)+"</strong><div class=\"muted\" style=\"margin-top:5px\">"+esc(x.asset||"ativo não identificado")+" • impacto "+x.impact+" • urgência "+x.urgency+"</div><div class=\"mini\" style=\"margin-top:5px\">"+esc((x.reasons||[]).join(" • "))+"</div><div class=\"mini\" style=\"margin-top:5px\"><strong>Ação:</strong> "+esc(x.recommended_action)+"</div></div>";
+  }).join("")||"<div class=\"muted\">Nenhuma ação prioritária.</div>";
   const ex=await fetch(api+"/api/v1/exposure").then(r=>r.json());
   exposureList.innerHTML=ex.slice(0,5).map(function(x){return "<div style=\"padding:12px 0;border-top:1px solid var(--line)\"><div><strong>"+esc(x.asset)+"</strong><span class=\"delta\">"+x.score+"/100 • "+esc(x.band)+"</span></div><div class=\"riskbar\"><i style=\"width:"+x.score+"%\"></i></div><div class=\"mini\">"+esc((x.rationale||[]).join(" • ")||"Sem fator adicional identificado")+"</div></div>";}).join("");
   stamp.textContent="Atualizado agora";
