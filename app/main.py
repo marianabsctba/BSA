@@ -210,3 +210,14 @@ def dashboard():
         changes_24h=len(changes),
         attack_paths=len(RELATIONSHIPS),
     )
+
+@app.get("/api/v1/discovery/{target}/risk-paths")
+def discovery_risk_paths(target: str):
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    assets = correlate_evidence(data["target"], data["evidence"])
+    graph = build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
+    return {
+        "target": data["target"],
+        "paths": graph["top_risk_paths"],
+        "summary": graph["risk_summary"],
+    }
