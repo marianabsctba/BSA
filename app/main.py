@@ -832,6 +832,24 @@ def dashboard(request: Request):
         attack_paths=len(RELATIONSHIPS),
     )
 
+@app.get("/api/v1/discovery/{target}/infrastructure")
+def discovery_infrastructure(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct"])
+    item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
+    for e in data["evidence"]:
+        kind=e.get("kind",""); value=e.get("value")
+        if kind=="a_record" and not item.ip: item.ip=value
+        elif kind=="certificate_cn" and not item.certificate_sha256: item.certificate_sha256=value
+        elif kind=="certificate_name" and value and value!=data["target"]: item.related_domains.append(value)
+        elif kind=="http_header:server": item.registrar=value
+    result=build_infrastructure_links(item)
+    result["discovery"]={"target":data["target"],"evidence_count":data["evidence_count"],"confidence":data["confidence"]}
+    result["evidence"]=data["evidence"]
+    return result
+
 @app.get("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "assets:read")
