@@ -27,3 +27,13 @@ def test_asset_dna_and_radar():
     r=client.get("/api/v1/radar",headers=h)
     assert r.status_code==200
     assert any(x["asset_id"]=="ast-002" for x in r.json()["assets"])
+
+
+def test_ctem_queue_and_business_impact():
+    h=auth()
+    r=client.get("/api/v1/exposure/ctem",headers=h)
+    assert r.status_code==200
+    assert "items" in r.json()
+    r=client.get("/api/v1/exposure/business-impact",headers=h)
+    assert r.status_code==200
+    assert "items" in r.json()
