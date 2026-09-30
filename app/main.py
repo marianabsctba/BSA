@@ -176,6 +176,23 @@ def graph_simulate(payload: RemediationSimulationRequest, request: Request):
     edges = [type("Edge", (), e)() for e in graph["edges"]]
     return simulate_remediation(nodes, edges, payload.path, payload.finding_node_ids)
 
+@app.get("/api/v1/graph/control-coverage")
+def graph_control_coverage(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    graph=build_risk_graph(f"tenant:{principal.tenant_id}",assets,[],source_assets=assets,findings=findings)
+    covered=[n for n in graph["nodes"] if n.get("control_coverage")=="covered"]
+    unknown=[n for n in graph["nodes"] if n.get("control_coverage")=="unknown" and n.get("kind") not in {"internet","finding","threat","certificate","ip"}]
+    controls={}
+    for n in covered:
+        for control in n.get("security_controls",[]):
+            controls.setdefault(control["type"],{"count":0,"providers":set()})
+            controls[control["type"]]["count"]+=1
+            controls[control["type"]]["providers"].add(control["provider"])
+    return {"coverage":{"covered_assets":len(covered),"unknown_assets":len(unknown),"coverage_percent":round(len(covered)/(len(covered)+len(unknown))*100) if covered or unknown else 0},
+            "controls":[{"type":k,"count":v["count"],"providers":sorted(v["providers"])} for k,v in controls.items()],
+            "choke_points":sorted([{"node_id":n["id"],"label":n["label"],"score":n.get("choke_point_score",0)} for n in graph["nodes"] if n.get("choke_point_score",0)>0],key=lambda x:x["score"],reverse=True)[:10]}
+ 
 @app.get("/api/v1/graph")
 def graph(request: Request):
     principal = require(request, "assets:read")
