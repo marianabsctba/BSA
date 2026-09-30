@@ -143,3 +143,26 @@ def list_tenants(principal: Principal) -> list[dict]:
     rows = conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def audit(principal: Principal, action: str, resource: str, resource_id: str | None = None, metadata: dict | None = None) -> None:
+    conn = _db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        action TEXT NOT NULL, resource TEXT NOT NULL, resource_id TEXT, metadata TEXT,
+        created_at INTEGER NOT NULL)""")
+    conn.execute("INSERT INTO audit_log(tenant_id,user_id,action,resource,resource_id,metadata,created_at) VALUES(?,?,?,?,?,?,?)",
+                 (principal.tenant_id, principal.user_id, action, resource, resource_id, json.dumps(metadata or {}, separators=(",", ":")), int(time.time())))
+    conn.commit(); conn.close()
+
+
+def list_audit(principal: Principal, limit: int = 100) -> list[dict]:
+    if principal.role not in {"admin", "superadmin"}:
+        raise PermissionError("admin required")
+    conn = _db()
+    if principal.role == "superadmin":
+        rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (min(limit, 500),)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM audit_log WHERE tenant_id=? ORDER BY id DESC LIMIT ?", (principal.tenant_id, min(limit, 500))).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
