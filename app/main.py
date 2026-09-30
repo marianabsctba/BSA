@@ -332,6 +332,39 @@ def asset_timeline(asset_id: str, request: Request):
     }
 
 
+
+@app.get("/api/v1/exposure/storyline")
+def exposure_storyline(request: Request, limit: int = 50):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    events = []
+    for asset in assets:
+        dna = build_exposure_dna(asset, findings)
+        if dna.change_type != "stable":
+            events.append({"asset_id": asset.id, "asset": asset.value, "timestamp": asset.last_seen,
+                           "event": dna.change_type, "signals": dna.signals,
+                           "confidence": dna.confidence, "explainability": dna.explainability})
+    return {"events": sorted(events, key=lambda x: x["timestamp"], reverse=True)[:max(1, min(limit, 500))]}
+
+@app.get("/api/v1/exposure/copilot")
+def exposure_copilot(request: Request, question: str):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    q = question.lower()
+    if "owner" in q or "respons" in q:
+        rows = [a for a in assets if not a.owner]
+        answer = "Ativos sem owner informado."
+    elif "mudou" in q or "change" in q or "novo" in q:
+        rows = [a for a in assets if build_exposure_dna(a, findings).change_type != "stable"]
+        answer = "Ativos com sinais materiais de mudança."
+    else:
+        rows = sorted(assets, key=lambda a: exposure_breakdown(a, findings).score, reverse=True)[:10]
+        answer = "Ativos ordenados por exposição contextual."
+    return {"answer": answer, "evidence": [
+        {"asset_id": a.id, "asset": a.value, "confidence": a.confidence,
+         "signals": build_exposure_dna(a, findings).signals} for a in rows
+    ]}
+
 @app.get("/api/v1/exposure/reduction")
 def exposure_reduction(request: Request):
     principal = require(request, "assets:read")
