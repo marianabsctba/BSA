@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .changes import seed_changes
@@ -15,6 +15,9 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token
+
+bootstrap()
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -37,7 +40,8 @@ def health():
 
 
 @app.get("/api/v1/assets")
-def list_assets():
+def list_assets(request: Request):
+    require(request, "assets:read")
     result = []
     for asset in ASSETS:
         item = asset.model_dump()
@@ -53,7 +57,8 @@ def list_assets():
 
 
 @app.get("/api/v1/findings")
-def list_findings():
+def list_findings(request: Request):
+    require(request, "findings:read")
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
@@ -65,7 +70,8 @@ def list_findings():
 
 
 @app.get("/api/v1/changes")
-def list_changes():
+def list_changes(request: Request):
+    require(request, "assets:read")
     return seed_changes(ASSETS)
 
 
@@ -74,13 +80,81 @@ def graph():
     return RELATIONSHIPS
 
 
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8, max_length=256)
+
+class UserCreateRequest(BaseModel):
+    email: str
+    name: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=12, max_length=256)
+    role: str
+
+
+def current_principal(request: Request):
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="authentication required")
+    try:
+        return principal_from_token(header[7:])
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="invalid or expired token") from exc
+
+
+def require(request: Request, permission: str):
+    principal = current_principal(request)
+    if not can(principal, permission):
+        raise HTTPException(status_code=403, detail="permission denied")
+    return principal
+
+
+@app.post("/api/v1/auth/login")
+def login(payload: LoginRequest):
+    token = authenticate(payload.email, payload.password)
+    if not token:
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    principal = principal_from_token(token)
+    return {"access_token": token, "token_type": "bearer", "expires_in": 28800, "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}}
+
+
+@app.get("/api/v1/auth/me")
+def me(request: Request):
+    p = current_principal(request)
+    return {"id": p.user_id, "email": p.email, "name": p.name, "role": p.role, "tenant_id": p.tenant_id}
+
+
+@app.get("/api/v1/users")
+def users(request: Request):
+    p = require(request, "users:read")
+    try:
+        return list_users(p)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/users")
+def users_create(request: Request, payload: UserCreateRequest):
+    p = current_principal(request)
+    if p.role != "admin":
+        raise HTTPException(status_code=403, detail="admin required")
+    try:
+        return create_user(p, payload.email, payload.name, payload.password, payload.role)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="user already exists or invalid data") from exc
+
+
 class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
     checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls", "ct"])
 
 
 @app.get("/api/v1/score")
-def score():
+def score(request: Request):
+    require(request, "assets:read")
     result = exposure_score(FINDINGS, ASSETS)
     breakdowns = []
     for asset in ASSETS:
@@ -109,7 +183,8 @@ def score():
 
 
 @app.post("/api/v1/discovery")
-def discovery(request: DiscoveryRequest):
+def discovery(request: DiscoveryRequest, http_request: Request):
+    require(http_request, "discovery:run")
     allowed = {"dns", "http", "tls", "ct"}
     checks = list(dict.fromkeys(request.checks))
     if not checks or any(check not in allowed for check in checks):
@@ -121,7 +196,8 @@ def discovery(request: DiscoveryRequest):
 
 
 @app.get("/api/v1/discovery/{target}/changes")
-def discovery_changes(target: str):
+def discovery_changes(target: str, request: Request):
+    require(request, "assets:read")
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     record_observations(assets)
@@ -140,13 +216,15 @@ def discovery_changes(target: str):
 
 
 @app.get("/api/v1/discovery/{target}/graph")
-def discovery_graph(target: str):
+def discovery_graph(target: str, request: Request):
+    require(request, "assets:read")
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     return build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
 
 @app.get("/api/v1/discovery/{target}/correlation")
-def discovery_correlation(target: str):
+def discovery_correlation(target: str, request: Request):
+    require(request, "assets:read")
     """Return normalized asset identities for an explicit discovery target."""
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
@@ -173,7 +251,8 @@ def discovery_correlation(target: str):
 
 
 @app.get("/api/v1/exposure")
-def exposure():
+def exposure(request: Request):
+    require(request, "assets:read")
     items = []
     for asset in ASSETS:
         item = exposure_breakdown(asset, FINDINGS)
@@ -196,7 +275,8 @@ def exposure():
 
 
 @app.get("/api/v1/dashboard", response_model=Dashboard)
-def dashboard():
+def dashboard(request: Request):
+    require(request, "assets:read")
     changes = seed_changes(ASSETS)
     ownership = [ownership_confidence(a) for a in ASSETS]
     score = exposure_score(FINDINGS, ASSETS)
@@ -214,7 +294,8 @@ def dashboard():
     )
 
 @app.get("/api/v1/discovery/{target}/risk-paths")
-def discovery_risk_paths(target: str):
+def discovery_risk_paths(target: str, request: Request):
+    require(request, "assets:read")
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     graph = build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
@@ -226,7 +307,8 @@ def discovery_risk_paths(target: str):
 
 
 @app.get("/api/v1/prioritization")
-def prioritization():
+def prioritization(request: Request):
+    require(request, "findings:read")
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
@@ -248,7 +330,8 @@ def prioritization():
 
 
 @app.get("/api/v1/remediation")
-def remediation():
+def remediation(request: Request):
+    require(request, "remediation:write")
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
