@@ -72,7 +72,7 @@ def graph():
 
 class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
-    checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls"])
+    checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls", "ct"])
 
 
 @app.get("/api/v1/score")
@@ -106,7 +106,7 @@ def score():
 
 @app.post("/api/v1/discovery")
 def discovery(request: DiscoveryRequest):
-    allowed = {"dns", "http", "tls"}
+    allowed = {"dns", "http", "tls", "ct"}
     checks = list(dict.fromkeys(request.checks))
     if not checks or any(check not in allowed for check in checks):
         raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http e tls")
