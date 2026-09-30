@@ -17,6 +17,7 @@ from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
+from .asset_view import asset_detail
 
 bootstrap()
 bootstrap_scope()
@@ -57,6 +58,19 @@ def list_assets(request: Request):
         item["blast_radius"] = blast_radius(asset)
         result.append(item)
     return result
+
+
+
+
+@app.get("/api/v1/assets/{asset_id}")
+def asset_detail_view(asset_id: str, request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    asset = next((a for a in assets if a.id == asset_id), None)
+    if not asset:
+        raise HTTPException(status_code=404, detail="asset not found")
+    audit(principal, "read", "asset", asset.id)
+    return asset_detail(asset, findings, assets)
 
 
 @app.get("/api/v1/findings")
