@@ -127,3 +127,46 @@ Swagger: `http://localhost:8000/docs`
 
 **BSA • Be Safe ASM**  
 **Powered by Mariana BS**
+
+
+## O que diferencia o BSA de um ASM convencional
+
+O BSA foi evoluído para combinar **EASM + exposição contextual + CTEM operacional**, sem depender de contagem bruta de ativos.
+
+### 1. Evidence-first Asset Graph
+Cada ativo é tratado como uma identidade sustentada por evidências, com origem, confiança, quantidade de evidências, histórico e relacionamento. Isso reduz a tendência de transformar qualquer observação externa em ativo confirmado.
+
+### 2. Ownership Confidence
+Ownership é uma hipótese mensurável: `confirmed`, `probable` ou `candidate`. O sistema pode separar superfície confirmada de shadow/third-party antes de gerar métricas executivas.
+
+### 3. Scoped Multi-Tenant ASM
+O mesmo console suporta tenants isolados, RBAC, scopes por padrão de domínio/host e grupos de ativos. Um analista pode operar apenas sobre o conjunto autorizado.
+
+### 4. Attack-path contextual
+O BSA correlaciona exposição, criticidade, findings e relacionamentos para produzir caminhos de risco e explicar o elo mais fraco. O objetivo é priorizar exposição alcançável, não simplesmente CVE/finding count.
+
+### 5. Exposure Reduction, não quantidade de alertas
+A plataforma expõe métricas de postura e redução de exposição, permitindo acompanhar ativos Internet-facing, findings abertos, ativos não confirmados e score agregado. A redução histórica só é declarada quando existem snapshots comparáveis.
+
+### 6. Asset 360
+Cada ativo possui uma visão operacional com identidade, ownership, risco, blast radius, findings, remediação, evidências, histórico e grafo.
+
+### 7. CTEM-ready
+O fluxo foi desenhado em torno de:
+`Scope → Discovery → Classification → Prioritization → Validation → Mobilization → Remediation → Retest`.
+
+### 8. Diferencial Be Safe
+- PT-BR nativo;
+- MSSP/multi-tenant;
+- RBAC + scoped RBAC;
+- audit trail;
+- explicabilidade de risco;
+- ownership baseado em evidências;
+- baixo impacto por padrão;
+- autorização e escopo explícitos;
+- arquitetura aberta para SIEM/SOAR/ITSM/CTI;
+- foco em números que podem virar decisão operacional.
+
+## Benchmark de capacidades
+
+As plataformas líderes atuais enfatizam descoberta contínua, visibilidade Internet-scale, validação de exposição, ownership, attack paths, contexto de negócio e workflows de remediação. O BSA está sendo construído para cobrir essas dimensões e adicionar **evidence confidence + scoped multi-tenancy + governança operacional** como diferenciais próprios.
