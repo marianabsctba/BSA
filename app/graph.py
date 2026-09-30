@@ -54,18 +54,35 @@ def _risk_for(asset, findings):
 
 def _path_score(nodes, edges, path):
     edge_by_key = {(e.source_id, e.target_id): e for e in edges}
-    scores = []
     confidences = []
     for left, right in zip(path, path[1:]):
         edge = edge_by_key.get((left, right))
         if edge:
-            scores.append(max(1, edge.confidence))
             confidences.append(edge.confidence)
     node_scores = [nodes[n].risk_score for n in path if nodes[n].risk_score]
     risk = max(node_scores, default=0)
     evidence_confidence = min(confidences, default=0)
     return min(100, round(risk * 0.7 + evidence_confidence * 0.3))
 
+
+def _path_explanation(nodes, edges, path):
+    edge_by_key = {(e.source_id, e.target_id): e for e in edges}
+    evidence = []
+    weakest = None
+    for left, right in zip(path, path[1:]):
+        edge = edge_by_key.get((left, right))
+        if not edge:
+            continue
+        item = {"from": nodes[left].label, "to": nodes[right].label, "relationship": edge.kind, "confidence": edge.confidence, "source": edge.evidence}
+        evidence.append(item)
+        if weakest is None or edge.confidence < weakest["confidence"]:
+            weakest = item
+    reasons = ["cadeia de exposição alcançável pela superfície observada"]
+    if any(nodes[n].risk_band == "critical" for n in path):
+        reasons.append("há ativo crítico na cadeia")
+    if any(nodes[n].kind == "threat" for n in path):
+        reasons.append("há evidência de inteligência de ameaça associada")
+    return {"reasons": reasons, "evidence": evidence, "weakest_link": weakest}
 
 def _top_risk_paths(nodes, edges, limit=10):
     adjacency = {}
@@ -105,6 +122,7 @@ def _top_risk_paths(nodes, edges, limit=10):
                 "nodes": path,
                 "labels": [nodes[n].label for n in path],
                 "kinds": [nodes[n].kind for n in path],
+                "explanation": _path_explanation(nodes, edges, path),
             })
     ranked.sort(key=lambda item: item["score"], reverse=True)
     return ranked[:limit]
