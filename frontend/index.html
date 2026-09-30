@@ -25,9 +25,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
 .timeline{display:grid;gap:10px}.change{padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.delta{float:right;color:var(--pink);font-weight:800}
 .footer{color:#697181;font-size:12px;text-align:center;padding:36px}
 @media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.grid.secondary{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.hero{display:block}.brand small{display:none}}
- .toolbar{display:flex;gap:10px;align-items:center;margin-top:18px}.toolbar input{flex:1;min-width:220px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px 14px}.btn{background:var(--pink);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn:disabled{opacity:.5}.result{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05;font-size:12px}.riskbar{height:7px;background:#252b36;border-radius:99px;overflow:hidden;margin-top:8px}.riskbar i{display:block;height:100%;background:var(--pink)}.mini{font-size:11px;color:var(--muted)} </style>
+ .toolbar{display:flex;gap:10px;align-items:center;margin-top:18px}.toolbar input{flex:1;min-width:220px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px 14px}.btn{background:var(--pink);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn:disabled{opacity:.5}.result{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05;font-size:12px}.riskbar{height:7px;background:#252b36;border-radius:99px;overflow:hidden;margin-top:8px}.riskbar i{display:block;height:100%;background:var(--pink)}.mini{font-size:11px;color:var(--muted)}  .login-gate{position:fixed;inset:0;background:#080a0ff5;display:grid;place-items:center;z-index:20;padding:24px}.login-card{width:min(420px,100%);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:28px}.login-card h2{margin-top:0}.login-card input{width:100%;margin:7px 0 12px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:13px}.login-error{color:#ff7a9f;font-size:12px;min-height:18px}</style>
 </head>
-<body>
+<body><div class="login-gate" id="loginGate"><form class="login-card" id="loginForm"><div class="badge">BSA • SECURE ACCESS</div><h2>Entrar no Be Safe ASM</h2><div class="muted">Tenant-aware console • RBAC</div><label>E-mail</label><input id="loginEmail" type="email" autocomplete="username" required placeholder="seu@email.com"><label>Senha</label><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••"><div class="login-error" id="loginError"></div><button class="btn" type="submit" style="width:100%">Entrar</button></form></div>
 <header>
   <div class="brand"><img src="/assets/bsa-readme-logo.jpg" alt="BSA"><small>External Attack Surface Management</small></div>
   <span class="badge">BSA • v0.3 EXPOSURE INTELLIGENCE</span>
@@ -84,7 +84,27 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
 </main>
 <div class="footer">BSA • Be Safe ASM • Powered by Mariana BS</div>
 <script>
+const nativeFetch=window.fetch.bind(window);
 const api = location.hostname==="localhost" ? "http://localhost:8000" : "";
+function showLogin(){loginGate.style.display="grid";}
+function hideLogin(){loginGate.style.display="none";}
+window.fetch=function(input,init={}){
+  const url=typeof input==="string"?input:input.url;
+  const headers=new Headers(init.headers||{});
+  const token=sessionStorage.getItem("bsa_token");
+  if(token && !url.includes("/api/v1/auth/login")) headers.set("Authorization","Bearer "+token);
+  return nativeFetch(input,{...init,headers}).then(function(r){if(r.status===401 && !url.includes("/api/v1/auth/login")){sessionStorage.removeItem("bsa_token");showLogin();}return r;});
+};
+loginForm.addEventListener("submit",async function(e){
+  e.preventDefault(); loginError.textContent="Entrando…";
+  try{
+    const r=await nativeFetch(api+"/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:loginEmail.value,password:loginPassword.value})});
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.detail||"credenciais inválidas");
+    sessionStorage.setItem("bsa_token",data.access_token); hideLogin(); await boot();
+  }catch(err){loginError.textContent=err.message;}
+});
+if(sessionStorage.getItem("bsa_token")){hideLogin();}else{showLogin();}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 async function boot(){
   const [d,a,f,c,g]=await Promise.all([
