@@ -77,3 +77,14 @@ def change_summary(fingerprint: str) -> dict:
         "last_seen": history[-1].observed_at,
         "changes": changes,
     }
+
+
+def exposure_snapshot(assets, findings):
+    from .exposure import exposure_breakdown
+    total = sum(exposure_breakdown(a, findings).score for a in assets)
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "asset_count": len(assets),
+        "open_findings": sum(1 for f in findings if f.status == "open"),
+        "aggregate_exposure": round(total / len(assets)) if assets else 0,
+    }
