@@ -223,6 +223,14 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
     }
 
 
+def simulate_remediation(nodes, edges, path, remove_finding_ids=None):
+    remove_finding_ids = set(remove_finding_ids or [])
+    remaining_edges = [e for e in edges if not (e.target_id in remove_finding_ids and e.kind == "finding_observed")]
+    before = _path_score(nodes, edges, path)
+    after = _path_score(nodes, remaining_edges, path)
+    reduction = max(0, before - after)
+    return {"before": before, "after": after, "risk_reduction": reduction, "reduction_percent": round(reduction / before * 100) if before else 0}
+
 def build_attack_surface_graph(target: str, assets, evidence: list[dict]):
     return build_risk_graph(target, assets, evidence)
 
