@@ -28,7 +28,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
  .toolbar{display:flex;gap:10px;align-items:center;margin-top:18px}.toolbar input{flex:1;min-width:220px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px 14px}.btn{background:var(--pink);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn:disabled{opacity:.5}.result{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05;font-size:12px}.riskbar{height:7px;background:#252b36;border-radius:99px;overflow:hidden;margin-top:8px}.riskbar i{display:block;height:100%;background:var(--pink)}.mini{font-size:11px;color:var(--muted)}  .login-gate{position:fixed;inset:0;background:#080a0ff5;display:grid;place-items:center;z-index:20;padding:24px}.login-card{width:min(420px,100%);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:28px}.login-card h2{margin-top:0}.login-card input{width:100%;margin:7px 0 12px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:13px}.login-error{color:#ff7a9f;font-size:12px;min-height:18px}</style>
 </head>
 <body><div class="login-gate" id="loginGate"><form class="login-card" id="loginForm"><div class="badge">BSA • SECURE ACCESS</div><h2>Entrar no Be Safe ASM</h2><div class="muted">Tenant-aware console • RBAC</div><label>E-mail</label><input id="loginEmail" type="email" autocomplete="username" required placeholder="seu@email.com"><label>Senha</label><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••"><div class="login-error" id="loginError"></div><button class="btn" type="submit" style="width:100%">Entrar</button></form></div>
-<header>
+<div id="assetDrawer" style="display:none;position:fixed;inset:0;background:#000b;z-index:30;padding:24px"><div style="max-width:1100px;height:100%;margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:auto;padding:22px"><div class="section-title"><div><div class="badge">ASSET INTELLIGENCE</div><h2 id="drawerTitle">Asset</h2><div id="drawerMeta" class="muted"></div></div><button class="btn" id="closeDrawer" type="button" style="background:transparent;border:1px solid var(--line)">Fechar</button></div><div class="grid secondary" id="drawerMetrics"></div><div class="two"><div class="card"><h3>Findings & Remediation</h3><div id="drawerFindings" class="timeline"></div></div><div class="card"><h3>Ownership & Evidence</h3><div id="drawerEvidence"></div></div></div><div class="card" style="margin-top:14px"><h3>Histórico</h3><div id="drawerHistory" class="timeline"></div></div><div class="card" style="margin-top:14px"><h3>Risk Graph</h3><div id="drawerGraph" class="timeline"></div></div></div></div><header>
   <div class="brand"><img src="/assets/bsa-readme-logo.jpg" alt="BSA"><small>External Attack Surface Management</small></div>
   <span style="display:flex;gap:10px;align-items:center"><span class="badge">BSA • v0.3 EXPOSURE INTELLIGENCE</span><button class="btn" id="logoutBtn" type="button" style="background:transparent;border:1px solid var(--line)">Sair</button></span>
 </header>
@@ -106,6 +106,25 @@ loginForm.addEventListener("submit",async function(e){
 });
 if(sessionStorage.getItem("bsa_token")){hideLogin();}else{showLogin();}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function openAsset(id){
+  assetDrawer.style.display="block"; drawerTitle.textContent="Carregando…";
+  const r=await fetch(api+"/api/v1/assets/"+encodeURIComponent(id));
+  if(!r.ok){drawerTitle.textContent="Ativo não encontrado";return}
+  const d=await r.json(), a=d.asset;
+  drawerTitle.textContent=a.value; drawerMeta.textContent=a.type+" • "+a.id+" • "+a.status;
+  drawerMetrics.innerHTML=[
+    ["Risk",d.risk.score+"/100 • "+d.risk.band],["Ownership",d.ownership.score+"% • "+d.ownership.state],
+    ["Blast radius",d.blast_radius+"/100"],["Findings",d.findings.length],["Evidence",d.evidence.evidence_count]
+  ].map(x=>"<div class=\"card\"><div class=\"metric-label\">"+esc(x[0])+"</div><div style=\"font-size:20px;font-weight:900;margin-top:8px\">"+esc(x[1])+"</div></div>").join("");
+  drawerFindings.innerHTML=d.findings.length?d.findings.map(x=>"<div class=\"change\"><span class=\"delta\">"+esc(x.priority)+" • "+x.context_score+"/100</span><strong>"+esc(x.title)+"</strong><div class=\"muted\">"+esc(x.severity)+" • "+esc(x.status)+"</div><div class=\"mini\" style=\"margin-top:6px\">"+esc(x.evidence)+"</div></div>").join(""):"<div class=\"muted\">Nenhum finding associado.</div>";
+  drawerEvidence.innerHTML="<p><strong>Ownership:</strong> "+esc(d.ownership.reasons.join(" • ")||"sem justificativa")+"</p><p><strong>Sources:</strong> "+esc(d.evidence.sources.join(" • ")||"não informado")+"</p><p><strong>Tags:</strong> "+esc(d.evidence.tags.join(" • ")||"nenhuma")+"</p><p><strong>Risco:</strong> "+esc(d.risk.rationale.join(" • "))+"</p>";
+  drawerHistory.innerHTML=d.history.length?d.history.slice().reverse().map(x=>"<div class=\"change\"><strong>"+esc(x.observed_at)+"</strong><div class=\"mini\">confidence "+x.confidence+" • evidence "+x.evidence_count+"</div></div>").join(""):"<div class=\"muted\">Sem histórico persistido nesta sessão.</div>";
+  drawerGraph.innerHTML=(d.graph.nodes||[]).map(x=>"<div class=\"change\"><strong>"+esc(x.label)+"</strong><span class=\"delta\">"+esc(x.kind)+" • "+x.risk_score+"/100</span></div>").join("");
+}
+closeDrawer.addEventListener("click",()=>assetDrawer.style.display="none");
+document.addEventListener("click",e=>{const b=e.target.closest(".asset-open");if(b)openAsset(b.dataset.id)});
+
 async function boot(){
   const meData=await fetch(api+"/api/v1/auth/me").then(r=>r.json());
   adminPanel.style.display=["admin","superadmin"].includes(meData.role)?"block":"none";
@@ -135,7 +154,7 @@ async function boot(){
   scoreRing.style.setProperty("--s",d.exposure_score);scoreRingText.textContent=d.exposure_score;
 
   assetRows.innerHTML=a.map(x=>`<tr>
-    <td><strong>${esc(x.value)}</strong><div class="muted">${esc((x.tags||[]).join(" • "))}</div></td>
+    <td><button class="btn asset-open" data-id="${esc(x.id)}" type="button" style="background:transparent;padding:0;text-align:left"><strong>${esc(x.value)}</strong><div class="muted">${esc((x.tags||[]).join(" • "))}</div></button></td>
     <td><span class="pill">${esc(x.type)}</span></td>
     <td><span class="state-${esc(x.ownership.state)}">${esc(x.ownership.state)}</span> ${x.ownership.score}%</td>
     <td>${x.blast_radius}/100</td>
