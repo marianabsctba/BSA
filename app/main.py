@@ -23,7 +23,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, enabled as local_ai_enabled, OLLAMA_MODEL
-from .digital_risk import DigitalRiskEvent, TakedownRequest, upsert_event, list_events, create_takedown, list_takedowns
+from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, analyze_brand_impersonation, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
 bootstrap_scope()
@@ -457,6 +457,18 @@ def asset_timeline(asset_id: str, request: Request):
     }
 
 
+
+@app.post("/api/v1/digital-risk/brand/analyze")
+def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
+    principal=require(request,"assets:read")
+    result=analyze_brand_impersonation(principal.tenant_id,payload)
+    if result["verdict"]=="likely_impersonation":
+        event=upsert_event(principal.tenant_id,{
+            "category":"brand_abuse","title":f"Possible {payload.brand} impersonation",
+            "indicator":payload.indicator,"source":"bsa_brand_engine","severity":"high" if result["score"]>=85 else "medium",
+            "confidence":result["score"],"evidence":result["evidence"],"status":"open","brand":payload.brand})
+        result["event_id"]=event["event_id"]
+    return result
 
 @app.get("/api/v1/digital-risk")
 def digital_risk(request: Request, category: str|None=None):
