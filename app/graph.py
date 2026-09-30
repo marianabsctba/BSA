@@ -161,6 +161,19 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         elif asset_kind == "service":
             edges.append(Relationship(domain_id, aid, "dns_related_service", asset.confidence, "DNS evidence"))
 
+    internet_id = add_node("internet", "Internet", 100, 20)
+    for source_asset in source_assets:
+        score = _risk_for(source_asset, findings)
+        asset_kind = getattr(getattr(source_asset, "type", None), "value", getattr(source_asset, "asset_type", "asset"))
+        aid = next((n.id for n in nodes.values() if n.label.lower() == source_asset.value.lower()), None)
+        if aid and "internet-facing" in source_asset.tags:
+            edges.append(Relationship(internet_id, aid, "internet_exposed", source_asset.confidence, "asset evidence"))
+        for finding in findings:
+            if finding.asset_id != source_asset.id or finding.status != "open":
+                continue
+            fid = add_node("finding", finding.title, min(source_asset.confidence, 100), score)
+            edges.append(Relationship(aid, fid, "finding_observed", min(source_asset.confidence, 100), "finding record"))
+
     for item in evidence:
         value = str(item.get("value", "")).strip()
         subject = str(item.get("subject", "")).strip().lower()
