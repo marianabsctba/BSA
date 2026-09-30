@@ -223,3 +223,13 @@ def test_infrastructure_graph_contract():
         assert "nodes" in data and "edges" in data and "summary" in data
         for e in data["edges"]:
             assert 0 <= e["confidence"] <= 100
+
+
+def test_easm_overview_contract():
+    h=auth()
+    r=client.get("/api/v1/easm/overview",headers=h)
+    assert r.status_code==200
+    data=r.json()
+    assert "summary" in data and "inventory" in data and "changes" in data and "risk" in data
+    assert data["summary"]["total_assets"]>=0
+    assert 0 <= data["changes"]["low_confidence"] <= data["summary"]["total_assets"]
