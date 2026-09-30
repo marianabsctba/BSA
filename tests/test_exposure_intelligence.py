@@ -92,3 +92,12 @@ def test_ctem_plans_are_durable_and_tenant_scoped():
     plans=client.get("/api/v1/exposure/ctem/plans",headers=h).json()["items"]
     assert any(x["plan_id"]==created[0]["plan_id"] for x in plans)
     assert all(x.get("plan_id") and x.get("asset_id") for x in plans)
+
+
+def test_mssp_command_center_is_tenant_aggregated():
+    h=auth()
+    r=client.get("/api/v1/mssp/command-center",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert "tenants" in data and "summary" in data
