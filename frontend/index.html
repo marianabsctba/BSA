@@ -128,7 +128,15 @@ async function runDiscovery(){
     var data=await res.json(); if(!res.ok) throw new Error(data.detail||"falha na descoberta");
     discoveryResult.innerHTML="<strong>"+esc(data.target)+"</strong> • "+data.evidence_count+" evidências • confiança média "+data.confidence+"%";
     discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";
-    fetch(api+"/api/v1/discovery/"+encodeURIComponent(data.target)+"/graph").then(function(r){return r.json();}).then(function(g){graphResult.innerHTML="<strong>Risk Graph</strong> • "+g.nodes.length+" nodes • "+g.edges.length+" relationships • "+g.risk_summary.critical+" críticos • "+g.risk_summary.risk_paths+" caminhos de risco • maior score "+g.risk_summary.highest_score; if(g.top_risk_paths&&g.top_risk_paths.length){graphResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\"><strong>Top path:</strong> "+g.top_risk_paths[0].labels.map(esc).join(" → ")+" • "+g.top_risk_paths[0].score+"/100</div>";}});
+    fetch(api+"/api/v1/discovery/"+encodeURIComponent(data.target)+"/graph").then(function(r){return r.json();}).then(function(g){
+      graphResult.innerHTML="<strong>Risk Graph</strong> • "+g.nodes.length+" nodes • "+g.edges.length+" relationships • "+g.risk_summary.critical+" críticos • "+g.risk_summary.risk_paths+" caminhos de risco • maior score "+g.risk_summary.highest_score;
+      if(g.top_risk_paths&&g.top_risk_paths.length){
+        var p=g.top_risk_paths[0];
+        graphResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\"><strong>Top path:</strong> "+p.labels.map(esc).join(" → ")+" • "+p.score+"/100</div>";
+        graphResult.innerHTML+="<div class=\"mini\" style=\"margin-top:6px\"><strong>Por quê:</strong> "+(p.explanation.reasons||[]).map(esc).join(" • ")+"</div>";
+        if(p.explanation.weakest_link){graphResult.innerHTML+="<div class=\"mini\" style=\"margin-top:6px\"><strong>Menor confiança:</strong> "+esc(p.explanation.weakest_link.source)+" • "+p.explanation.weakest_link.confidence+"%</div>";}
+      }
+    });
   }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
 }
 discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
