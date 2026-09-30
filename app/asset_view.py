@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from .exposure import exposure_breakdown, exposure_band
 from .exposure_dna import build_exposure_dna
 from .graph import build_risk_graph
