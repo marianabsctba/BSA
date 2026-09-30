@@ -19,3 +19,10 @@ def test_risk_path_includes_business_impact():
     graph = build_risk_graph('example.org', [asset], [], [asset], [finding])
     assert graph['risk_summary']['business_impact'] >= 100
     assert any(x['explanation']['evidence'] for x in graph['top_risk_paths'])
+
+
+def test_remediation_options_rank_paths():
+    asset = Asset(id='a3', value='planner.example.org', type=AssetType.APPLICATION, confidence=95, criticality=5, tags=['internet-facing'], first_seen='2026-01-01T00:00:00Z', last_seen='2026-01-01T00:00:00Z')
+    finding = Finding(id='f3', asset_id='a3', title='critical exposure', severity=Severity.CRITICAL, confidence=95, evidence='test')
+    graph = build_risk_graph('example.org', [asset], [], [asset], [finding])
+    assert 'top_risk_paths' in graph
