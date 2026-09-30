@@ -18,6 +18,7 @@ from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
+from .exposure_dna import build_exposure_dna
 
 bootstrap()
 bootstrap_scope()
@@ -277,6 +278,41 @@ class DiscoveryRequest(BaseModel):
     checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls", "ct"])
 
 
+
+
+
+
+@app.get("/api/v1/assets/{asset_id}/dna")
+def asset_dna(asset_id: str, request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    asset = next((a for a in assets if a.id == asset_id), None)
+    if not asset:
+        raise HTTPException(status_code=404, detail="asset not found")
+    dna = build_exposure_dna(asset, findings)
+    return asdict(dna)
+
+
+@app.get("/api/v1/radar")
+def exposure_radar(request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    rows = []
+    for asset in assets:
+        dna = build_exposure_dna(asset, findings)
+        rows.append({
+            "asset_id": asset.id,
+            "value": asset.value,
+            "type": asset.type.value,
+            "owner": asset.owner,
+            "environment": asset.environment,
+            "confidence": asset.confidence,
+            "criticality": asset.criticality,
+            "dna": dna.fingerprint,
+            "change_type": dna.change_type,
+            "signals": dna.signals,
+        })
+    return {"assets": sorted(rows, key=lambda x: (x["change_type"] != "material-change", -x["criticality"], -x["confidence"]))}
 
 
 @app.get("/api/v1/assets/{asset_id}/timeline")
