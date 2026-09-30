@@ -11,6 +11,31 @@
 
 ---
 
+## Enterprise Exposure Intelligence
+
+A `main` agora inclui um núcleo de exposição explicável e uma coleta controlada por alvo explícito:
+
+- **Asset Exposure Engine**: score 0–100 por ativo, com fatores e justificativas rastreáveis.
+- **Exposure Prioritization**: ranking dos ativos por exposição e faixa de risco.
+- **Discovery API**: DNS + HTTP + TLS para um alvo informado pelo operador; sem varredura recursiva automática.
+- **Evidence confidence**: cada evidência mantém origem, confiança e contexto.
+- **Dashboard**: console Be Safe preto/rosa com descoberta, priorização e contexto operacional.
+- **MSSP/CTEM foundation**: arquitetura preparada para ownership, grafo, threat intelligence, integrações e tenants.
+
+### Discovery API
+
+```text
+POST /api/v1/discovery
+{"target":"cliente.com.br","checks":["dns","http","tls"]}
+```
+
+Use somente em ativos para os quais você possui autorização. A coleta é limitada ao alvo fornecido e não realiza enumeração recursiva por padrão.
+
+### Exposure API
+
+- `GET /api/v1/exposure` — priorização por ativo.
+- `GET /api/v1/score` — postura agregada + breakdown por ativo.
+
 ## O que é o BSA?
 
 O **BSA (Be Safe ASM)** é a plataforma de **Attack Surface Management** da Be Safe, criada para descobrir, correlacionar, contextualizar e priorizar ativos expostos à Internet.
