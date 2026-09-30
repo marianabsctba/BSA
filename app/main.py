@@ -18,14 +18,13 @@ from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
+from .ctem_store import list_plans, get_plan, upsert_plan
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 
 bootstrap()
 bootstrap_scope()
-
-CTEM_PLANS = {}
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -393,7 +392,7 @@ def exposure_copilot(request: Request, question: str):
 @app.get("/api/v1/exposure/ctem/plans")
 def exposure_ctem_plans(request: Request):
     principal = require(request, "assets:read")
-    return {"items": CTEM_PLANS.get(principal.tenant_id, [])}
+    return {"items": list_plans(principal.tenant_id)}
 
 class CTEMStatusRequest(BaseModel):
     status: str = Field(pattern="^(planned|approved|in_progress|remediated|retest|closed)$")
@@ -401,13 +400,13 @@ class CTEMStatusRequest(BaseModel):
 @app.patch("/api/v1/exposure/ctem/plans/{plan_id}")
 def update_ctem_plan(plan_id: str, payload: CTEMStatusRequest, request: Request):
     principal = require(request, "assets:read")
-    plans = CTEM_PLANS.get(principal.tenant_id, [])
-    for item in plans:
-        if item["plan_id"] == plan_id:
-            item["status"] = payload.status
-            item["updated_at"] = datetime.now(timezone.utc).isoformat()
-            audit(principal, "update", "ctem.plan", plan_id, {"status": payload.status})
-            return item
+    item = get_plan(principal.tenant_id, plan_id)
+    if item:
+        item["status"] = payload.status
+        item["updated_at"] = datetime.now(timezone.utc).isoformat()
+        upsert_plan(principal.tenant_id, item)
+        audit(principal, "update", "ctem.plan", plan_id, {"status": payload.status})
+        return item
     raise HTTPException(status_code=404, detail="CTEM plan not found")
 
 @app.get("/api/v1/exposure/ctem")
@@ -438,7 +437,7 @@ def exposure_ctem_plan(payload: dict, request: Request):
     finding_ids = set(payload.get("finding_ids", []))
     selected = [a for a in assets if a.id in asset_ids]
     selected_findings = [f for f in findings if f.id in finding_ids or f.asset_id in asset_ids]
-    items = CTEM_PLANS.setdefault(principal.tenant_id, [])
+    items = list_plans(principal.tenant_id)
     created = []
     now = datetime.now(timezone.utc).isoformat()
     for a in selected:
@@ -457,7 +456,7 @@ def exposure_ctem_plan(payload: dict, request: Request):
                     "risk_reduction": plan.risk_reduction if plan else 0, "action": plan.action if plan else "validar exposição e ownership",
                     "validation": plan.validation if plan else "reexecutar discovery e confirmar evidência", "effort": plan.effort if plan else "médio",
                     "created_at": now, "updated_at": now, "reason": "Selected from Exposure/Attack Path Planner"}
-            items.append(item); created.append(item)
+            upsert_plan(principal.tenant_id, item); items.append(item); created.append(item)
     audit(principal, "create", "ctem.plan", None, {"count": len(created)})
     return {"items": created, "count": len(created)}
 
