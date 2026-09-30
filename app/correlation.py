@@ -51,8 +51,38 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
         elif kind in {"cname", "mx", "ns"}:
             add(AssetType.SERVICE.value, value, source, confidence, ("dns-related",))
 
+    # Merge the same hostname observed through different collectors.
+    # A web observation upgrades a certificate-only hostname to an application asset
+    # while retaining every supporting source and tag.
+    merged: dict[str, dict] = {}
+    type_priority = {
+        AssetType.APPLICATION.value: 3,
+        AssetType.SUBDOMAIN.value: 2,
+        AssetType.DOMAIN.value: 1,
+        AssetType.IP.value: 1,
+        AssetType.SERVICE.value: 1,
+    }
+    for (asset_type, value), item in grouped.items():
+        key = value.lower().strip()
+        current = merged.setdefault(
+            key,
+            {
+                "types": [],
+                "sources": set(),
+                "confidence": [],
+                "count": 0,
+                "tags": set(),
+            },
+        )
+        current["types"].append(asset_type)
+        current["sources"].update(item["sources"])
+        current["confidence"].extend(item["confidence"])
+        current["count"] += item["count"]
+        current["tags"].update(item["tags"])
+
     result = []
-    for (asset_type, value), item in sorted(grouped.items()):
+    for value, item in sorted(merged.items()):
+        asset_type = max(item["types"], key=lambda t: type_priority.get(t, 0))
         avg = round(sum(item["confidence"]) / len(item["confidence"]))
         if len(item["sources"]) >= 3:
             avg = min(100, avg + 5)
