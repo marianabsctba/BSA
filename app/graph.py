@@ -86,6 +86,22 @@ def _path_explanation(nodes, edges, path):
         reasons.append("há evidência de inteligência de ameaça associada")
     return {"reasons": reasons, "evidence": evidence, "weakest_link": weakest}
 
+
+def _security_controls(asset):
+    controls=[]
+    for tag in getattr(asset,"tags",[]) or []:
+        raw=str(tag).strip()
+        if ":" not in raw: continue
+        kind,value=raw.split(":",1)
+        kind=kind.lower().strip(); value=value.strip()
+        if kind in {"edr","xdr","waf","firewall","mfa","vpn","iam","cdn","ngfw","casb","cspm","backup"} and value:
+            controls.append({"type":kind,"provider":value,"source":"asset_tag","confidence":80})
+    for source in getattr(asset,"sources",[]) or []:
+        s=str(source).lower()
+        if any(k in s for k in ("crowdstrike","qualys","sophos","sentinel","defender")) and not any(x["type"] in {"edr","xdr"} for x in controls):
+            controls.append({"type":"edr","provider":source,"source":"asset_source","confidence":55})
+    return controls
+
 def _top_risk_paths(nodes, edges, limit=10):
     adjacency = {}
     for edge in edges:
@@ -206,6 +222,21 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
     edge_list = list(unique.values())
     risk_nodes = [n for n in nodes.values() if n.risk_score > 0 and n.kind not in {"finding", "internet", "threat", "certificate", "ip"}]
     paths = _top_risk_paths(nodes, edge_list)
+    path_frequency = {}
+    for p in paths:
+        for nid in p["nodes"]:
+            path_frequency[nid] = path_frequency.get(nid, 0) + 1
+    for nid, count in path_frequency.items():
+        if nid in nodes:
+            nodes[nid].__dict__["choke_point_score"] = min(100, count * 20)
+    asset_by_node = {node_id(getattr(getattr(a, "type", None), "value", getattr(a, "asset_type", "asset")), a.value): a for a in source_assets}
+    for nid, asset in asset_by_node.items():
+        if nid in nodes:
+            nodes[nid].__dict__["security_controls"] = _security_controls(asset)
+            nodes[nid].__dict__["control_coverage"] = ("covered" if nodes[nid].__dict__["security_controls"] else "unknown")
+    for p in paths:
+        p["choke_points"] = sorted([{"node_id": nid, "label": nodes[nid].label, "score": nodes[nid].__dict__.get("choke_point_score", 0)} for nid in p["nodes"] if nodes[nid].__dict__.get("choke_point_score", 0) > 0], key=lambda x: x["score"], reverse=True)
+        p["control_summary"] = {"covered": sum(1 for nid in p["nodes"] if nodes[nid].__dict__.get("control_coverage") == "covered"), "unknown": sum(1 for nid in p["nodes"] if nodes[nid].__dict__.get("control_coverage") == "unknown")}
 
     return {
         "nodes": [n.__dict__ for n in nodes.values()],
