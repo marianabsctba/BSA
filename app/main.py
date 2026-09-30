@@ -118,6 +118,25 @@ def discovery(request: DiscoveryRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/v1/discovery/{target}/changes")
+def discovery_changes(target: str):
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    assets = correlate_evidence(data["target"], data["evidence"])
+    record_observations(assets)
+    return {
+        "target": data["target"],
+        "changes": [
+            {
+                "fingerprint": asset.fingerprint,
+                "asset": asset.value,
+                "type": asset.asset_type,
+                "change": change_summary(asset.fingerprint),
+            }
+            for asset in assets
+        ],
+    }
+
+
 @app.get("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str):
     """Return normalized asset identities for an explicit discovery target."""
