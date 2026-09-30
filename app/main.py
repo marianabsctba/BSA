@@ -90,8 +90,8 @@ def list_findings(request: Request):
 @app.get("/api/v1/changes")
 def list_changes(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
-    return seed_changes(ASSETS)
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    return seed_changes(assets)
 
 
 @app.get("/api/v1/graph")
@@ -277,14 +277,68 @@ class DiscoveryRequest(BaseModel):
     checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls", "ct"])
 
 
+
+
+@app.get("/api/v1/assets/{asset_id}/timeline")
+def asset_timeline(asset_id: str, request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    asset = next((a for a in assets if a.id == asset_id), None)
+    if not asset:
+        raise HTTPException(status_code=404, detail="asset not found")
+    return {
+        "asset_id": asset.id,
+        "first_seen": asset.first_seen,
+        "last_seen": asset.last_seen,
+        "change_summary": change_summary(asset.fingerprint),
+        "history": [h.__dict__ for h in history_for(asset.fingerprint)],
+    }
+
+
+@app.get("/api/v1/exposure/reduction")
+def exposure_reduction(request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    current = sum(exposure_breakdown(a, findings).score for a in assets)
+    open_findings = sum(1 for f in findings if f.status == "open")
+    internet_assets = sum(1 for a in assets if "internet-facing" in a.tags)
+    unmanaged = sum(1 for a in assets if ownership_confidence(a).state == "candidate")
+    return {
+        "assets": len(assets),
+        "open_findings": open_findings,
+        "internet_facing_assets": internet_assets,
+        "unmanaged_or_unconfirmed_assets": unmanaged,
+        "aggregate_exposure": round(current / len(assets)) if assets else 0,
+        "risk_reduction_model": "baseline-vs-current",
+        "note": "A redução real é calculada quando snapshots históricos comparáveis estiverem disponíveis.",
+    }
+
+
+@app.get("/api/v1/attack-paths")
+def attack_paths(request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    graph = build_risk_graph(
+        "tenant-surface",
+        assets,
+        [],
+        source_assets=assets,
+        findings=findings,
+    )
+    return {
+        "paths": graph["top_risk_paths"],
+        "summary": graph["risk_summary"],
+    }
+
+
 @app.get("/api/v1/score")
 def score(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
-    result = exposure_score(FINDINGS, ASSETS)
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    result = exposure_score(findings, assets)
     breakdowns = []
-    for asset in ASSETS:
-        item = exposure_breakdown(asset, FINDINGS)
+    for asset in assets:
+        item = exposure_breakdown(asset, findings)
         breakdowns.append({
             "asset_id": asset.id,
             "asset": asset.value,
