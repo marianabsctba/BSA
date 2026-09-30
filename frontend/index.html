@@ -132,6 +132,7 @@ async function loadExposureIntelligence(){
 }
 
 async function boot(){
+  await loadExposureIntelligence();
   const meData=await fetch(api+"/api/v1/auth/me").then(r=>r.json());
   adminPanel.style.display=["admin","superadmin"].includes(meData.role)?"block":"none";
   identityPill.textContent=meData.role+" • "+meData.tenant_id;
