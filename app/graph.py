@@ -20,7 +20,6 @@ class Relationship:
     confidence: int
     evidence: str
     impact: int = 0
-    impact: int = 0
 
 
 def node_id(kind: str, value: str) -> str:
@@ -218,7 +217,6 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
             "low": sum(1 for n in risk_nodes if n.risk_band == "low"),
             "highest_score": max((n.risk_score for n in risk_nodes), default=0),
             "risk_paths": len(paths),
-            "business_impact": max((e.impact for e in edge_list), default=0),
             "business_impact": max((e.impact for e in edge_list), default=0),
         },
         "top_risk_paths": paths,
