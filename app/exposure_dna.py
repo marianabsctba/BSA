@@ -1,6 +1,5 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from hashlib import sha256
-import json
 
 @dataclass(frozen=True)
 class ExposureDNA:
@@ -9,21 +8,18 @@ class ExposureDNA:
     change_type: str
     signals: list[str]
     material_changes: list[str]
+    confidence: int = 0
+    explainability: list[str] | None = None
 
 def build_exposure_dna(asset, findings) -> ExposureDNA:
     signals = [
-        str(getattr(asset, "type", "")),
-        asset.value,
-        asset.status,
-        asset.environment,
-        str(asset.cloud_provider or ""),
-        str(asset.owner or ""),
-        str(asset.criticality),
+        str(getattr(asset, "type", "")), asset.value, asset.status,
+        asset.environment, str(asset.cloud_provider or ""),
+        str(asset.owner or ""), str(asset.criticality),
         *sorted(asset.tags),
         *sorted(f"{f.id}:{f.severity}:{f.status}" for f in findings if f.asset_id == asset.id),
     ]
-    raw = "|".join(signals)
-    fp = sha256(raw.encode()).hexdigest()[:24]
+    fp = sha256("|".join(signals).encode()).hexdigest()[:24]
     changes = []
     if "internet-facing" in asset.tags: changes.append("internet-exposed")
     if "new" in asset.tags: changes.append("new-asset")
@@ -31,4 +27,10 @@ def build_exposure_dna(asset, findings) -> ExposureDNA:
     if any(f.status == "open" and f.severity.value in {"high","critical"} for f in findings if f.asset_id == asset.id):
         changes.append("high-risk-finding")
     stability = max(0, min(100, asset.confidence - (20 if "candidate" in asset.tags else 0)))
-    return ExposureDNA(fp, stability, "material-change" if changes else "stable", changes, changes)
+    explainability = [
+        f"confidence={asset.confidence}",
+        f"evidence_count={getattr(asset, 'evidence_count', 0)}",
+        f"criticality={asset.criticality}",
+        f"owner={'present' if asset.owner else 'missing'}",
+    ]
+    return ExposureDNA(fp, stability, "material-change" if changes else "stable", changes, changes, asset.confidence, explainability)
