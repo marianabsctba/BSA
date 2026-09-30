@@ -18,7 +18,7 @@ from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
-from .ctem_store import list_plans, get_plan, upsert_plan
+from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
@@ -45,6 +45,21 @@ app.add_middleware(
 def health():
     return {"status": "ok", "product": "BSA", "version": "0.3.0", "powered_by": "Mariana BS"}
 
+
+@app.get("/api/v1/mssp/command-center/trend")
+def mssp_command_center_trend(request: Request):
+    principal=require(request,"assets:read")
+    if principal.role not in {"superadmin","admin","manager"}:
+        raise HTTPException(status_code=403, detail="MSSP role required")
+    from .auth import _db
+    conn=_db()
+    tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants ORDER BY name").fetchall()]
+    conn.close()
+    out=[]
+    for t in tenants:
+        events=history(t["id"],90)
+        out.append({"tenant_id":t["id"],"tenant":t["name"],"events":events})
+    return {"days":90,"tenants":out}
 
 @app.get("/api/v1/mssp/command-center")
 def mssp_command_center(request: Request):
