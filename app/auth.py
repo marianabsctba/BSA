@@ -80,7 +80,7 @@ def bootstrap():
     if not exists:
         conn.execute(
             "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
-            (secrets.token_hex(12), "tenant-demo", email, "BSA Administrator", _hash(password), os.getenv("BSA_BOOTSTRAP_ROLE", "superadmin"), int(time.time()))
+            (secrets.token_hex(12), "tenant-demo", email, "BSA Administrator", _hash(password), os.getenv("BSA_BOOTSTRAP_ROLE", "admin"), int(time.time()))
         )
     conn.commit()
     conn.close()
