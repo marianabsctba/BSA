@@ -14,6 +14,7 @@ from .store import ASSETS, FINDINGS
 from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
+from .remediation import build_remediation_plan
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -244,3 +245,29 @@ def prioritization():
             "recommended_action": item.action,
         })
     return sorted(result, key=lambda x: (-x["score"], x["priority"]))
+
+
+@app.get("/api/v1/remediation")
+def remediation():
+    asset_map = {a.id: a for a in ASSETS}
+    result = []
+    for finding in FINDINGS:
+        asset = asset_map.get(finding.asset_id)
+        if not asset or finding.status != "open":
+            continue
+        plan = build_remediation_plan(finding, asset)
+        result.append({
+            "finding_id": plan.finding_id,
+            "asset_id": plan.asset_id,
+            "asset": asset.value,
+            "priority": plan.priority,
+            "current_score": plan.current_score,
+            "residual_score": plan.residual_score,
+            "risk_reduction": plan.risk_reduction,
+            "action": plan.action,
+            "validation": plan.validation,
+            "owner": plan.owner,
+            "effort": plan.effort,
+            "rationale": plan.rationale,
+        })
+    return sorted(result, key=lambda x: (-x["risk_reduction"], x["residual_score"]))
