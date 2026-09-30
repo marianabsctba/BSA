@@ -29,6 +29,10 @@ class Asset(BaseModel):
     confidence: int = Field(default=80, ge=0, le=100)
     criticality: int = Field(default=3, ge=1, le=5)
     source: str = "manual"
+    owner: str | None = None
+    business_unit: str | None = None
+    environment: str = "unknown"
+    cloud_provider: str | None = None
     tags: list[str] = []
     first_seen: str
     last_seen: str
