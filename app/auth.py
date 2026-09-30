@@ -13,9 +13,10 @@ DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "CHANGE-ME-IN-PRODUCTION")
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
-ROLES = {"admin", "manager", "analyst", "viewer"}
+ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
 PERMISSIONS = {
-    "admin": {"*"},
+    "superadmin": {"*"},
+    "admin": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write"},
     "manager": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read"},
     "analyst": {"assets:read","findings:read","findings:write","discovery:run","remediation:write"},
     "viewer": {"assets:read","findings:read"},
@@ -100,7 +101,7 @@ def principal_from_token(token: str) -> Principal:
     return Principal(p["sub"], p["tenant"], p["email"], p["role"], p["name"])
 
 def create_user(principal: Principal, email: str, name: str, password: str, role: str) -> dict:
-    if principal.role != "admin":
+    if principal.role not in {"admin", "superadmin"}:
         raise PermissionError("admin required")
     if role not in ROLES:
         raise ValueError("invalid role")
@@ -123,3 +124,22 @@ def list_users(principal: Principal) -> list[dict]:
 def can(principal: Principal, permission: str) -> bool:
     perms = PERMISSIONS[principal.role]
     return "*" in perms or permission in perms
+
+
+def create_tenant(principal: Principal, tenant_id: str, name: str) -> dict:
+    if principal.role != "superadmin":
+        raise PermissionError("superadmin required")
+    conn = _db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)", (tenant_id, name))
+    conn.commit()
+    conn.close()
+    return {"id": tenant_id, "name": name, "active": True}
+
+
+def list_tenants(principal: Principal) -> list[dict]:
+    if principal.role != "superadmin":
+        raise PermissionError("superadmin required")
+    conn = _db()
+    rows = conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
