@@ -365,6 +365,40 @@ def exposure_copilot(request: Request, question: str):
          "signals": build_exposure_dna(a, findings).signals} for a in rows
     ]}
 
+
+@app.get("/api/v1/exposure/ctem")
+def exposure_ctem(request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    queue = []
+    for asset in assets:
+        af = [f for f in findings if f.asset_id == asset.id and f.status == "open"]
+        score = exposure_breakdown(asset, findings).score
+        dna = build_exposure_dna(asset, findings)
+        if score >= 60 or af:
+            queue.append({
+                "asset_id": asset.id, "asset": asset.value,
+                "priority_score": score, "criticality": asset.criticality,
+                "owner": asset.owner, "finding_count": len(af),
+                "dna": dna.fingerprint, "signals": dna.signals,
+                "stage": "prioritize" if af else "validate",
+                "next_action": "validate-exposure" if not af else "mobilize-remediation",
+            })
+    return {"items": sorted(queue, key=lambda x: x["priority_score"], reverse=True)}
+
+@app.get("/api/v1/exposure/business-impact")
+def exposure_business_impact(request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    rows=[]
+    for a in assets:
+        score=exposure_breakdown(a,findings).score
+        rows.append({"asset_id":a.id,"asset":a.value,"business_unit":a.business_unit,
+                     "environment":a.environment,"criticality":a.criticality,
+                     "exposure":score,"owner":a.owner or "unowned",
+                     "impact_index":round(score*(1+a.criticality/5),1)})
+    return {"items":sorted(rows,key=lambda x:x["impact_index"],reverse=True)}
+
 @app.get("/api/v1/exposure/reduction")
 def exposure_reduction(request: Request):
     principal = require(request, "assets:read")
