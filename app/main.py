@@ -11,6 +11,8 @@ from .discovery import collect_target
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS, FINDINGS
+from .correlation import correlate_evidence
+from .history import record_observations, change_summary
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -109,11 +111,38 @@ def discovery(request: DiscoveryRequest):
     allowed = {"dns", "http", "tls", "ct"}
     checks = list(dict.fromkeys(request.checks))
     if not checks or any(check not in allowed for check in checks):
-        raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http e tls")
+        raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http, tls e ct")
     try:
         return collect_target(request.target, checks)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/discovery/{target}/correlation")
+def discovery_correlation(target: str):
+    """Return normalized asset identities for an explicit discovery target."""
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    assets = correlate_evidence(data["target"], data["evidence"])
+    observations = record_observations(assets)
+    return {
+        "target": data["target"],
+        "evidence_count": data["evidence_count"],
+        "confidence": data["confidence"],
+        "assets": [
+            {
+                "fingerprint": asset.fingerprint,
+                "value": asset.value,
+                "type": asset.asset_type,
+                "confidence": asset.confidence,
+                "sources": list(asset.sources),
+                "evidence_count": asset.evidence_count,
+                "tags": list(asset.tags),
+                "history": change_summary(asset.fingerprint),
+            }
+            for asset in assets
+        ],
+        "observation_count": len(observations),
+    }
 
 
 @app.get("/api/v1/exposure")
