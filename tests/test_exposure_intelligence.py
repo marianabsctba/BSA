@@ -212,3 +212,14 @@ def test_discovery_infrastructure_contract():
     if r.status_code==200:
         data=r.json()
         assert "discovery" in data and "links" in data and "cluster_strength" in data
+
+
+def test_infrastructure_graph_contract():
+    h=auth()
+    r=client.get("/api/v1/discovery/example.com/infrastructure/graph",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert "nodes" in data and "edges" in data and "summary" in data
+        for e in data["edges"]:
+            assert 0 <= e["confidence"] <= 100
