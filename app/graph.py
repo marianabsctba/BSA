@@ -45,7 +45,7 @@ def _risk_for(asset, findings):
         score += 8
     if "candidate" in asset.tags or "shadow" in asset.tags:
         score += 10
-    points = {"info": 0, "low": 5, "medium": 12, "high": 22, "critical": 30}
+    points = {"info": 0, "low": 5, "medium": 12, "high": 22, "critical": 40}
     for finding in findings or []:
         if finding.asset_id == asset.id and finding.status == "open":
             score += points.get(finding.severity.value, 0)
