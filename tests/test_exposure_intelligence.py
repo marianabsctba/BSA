@@ -17,3 +17,13 @@ def test_exposure_reduction_and_attack_paths():
     assert r.status_code==200
     assert "paths" in r.json()
     assert "summary" in r.json()
+
+
+def test_asset_dna_and_radar():
+    h=auth()
+    r=client.get("/api/v1/assets/ast-002/dna",headers=h)
+    assert r.status_code==200
+    assert r.json()["fingerprint"]
+    r=client.get("/api/v1/radar",headers=h)
+    assert r.status_code==200
+    assert any(x["asset_id"]=="ast-002" for x in r.json()["assets"])
