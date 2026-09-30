@@ -46,6 +46,30 @@ def health():
     return {"status": "ok", "product": "BSA", "version": "0.3.0", "powered_by": "Mariana BS"}
 
 
+@app.get("/api/v1/mssp/command-center")
+def mssp_command_center(request: Request):
+    principal = require(request, "assets:read")
+    if principal.role not in {"superadmin","admin","manager"}:
+        raise HTTPException(status_code=403, detail="MSSP role required")
+    from .auth import _db
+    conn=_db()
+    tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()]
+    conn.close()
+    rows=[]
+    for t in tenants:
+        scoped=type("P",(),{"tenant_id":t["id"]})()
+        assets=[a for a in STORE_ASSETS if getattr(a,"tenant_id","tenant-demo")==t["id"]]
+        findings=[f for f in STORE_FINDINGS if getattr(f,"tenant_id","tenant-demo")==t["id"] and f.status=="open"]
+        scores=[exposure_breakdown(a,findings).score for a in assets]
+        plans=list_plans(t["id"])
+        overdue=sum(1 for p in plans if p.get("status") in {"planned","approved","in_progress"} and p.get("effort")=="alto")
+        rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":round(sum(scores)/len(scores)) if scores else 0,
+                     "assets":len(assets),"open_findings":len(findings),"ctem":len(plans),"overdue":overdue})
+    rows.sort(key=lambda x:x["risk"],reverse=True)
+    return {"tenants":rows,"summary":{"tenants":len(rows),"critical_tenants":sum(x["risk"]>=80 for x in rows),
+        "open_findings":sum(x["open_findings"] for x in rows),"ctem_plans":sum(x["ctem"] for x in rows),
+        "overdue":sum(x["overdue"] for x in rows)}}
+
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
     principal = require(request, "assets:read")
