@@ -68,14 +68,33 @@ def mssp_command_center(request: Request):
         approved=sum(1 for p in plans if p.get("status")=="approved")
         in_progress=sum(1 for p in plans if p.get("status")=="in_progress")
         remediated=sum(1 for p in plans if p.get("status") in {"remediated","retest","closed"})
+        now_ts=datetime.now(timezone.utc)
+        active_plans=[p for p in plans if p.get("status") not in {"closed","remediated"}]
+        aging_days=[]
+        for p in active_plans:
+            try:
+                created=datetime.fromisoformat(p.get("created_at","").replace("Z","+00:00"))
+                aging_days.append(max(0,(now_ts-created).days))
+            except Exception:
+                pass
+        sla_target=7
+        sla_breaches=sum(1 for d in aging_days if d>sla_target)
+        sla_compliance=round((len(aging_days)-sla_breaches)/len(aging_days)*100) if aging_days else 100
+        residual=round(sum(p.get("residual_score",0) for p in active_plans)/len(active_plans)) if active_plans else 0
+        risk_reduction=sum(max(0,p.get("risk_reduction",0)) for p in plans)
         rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":risk,
                      "assets":len(assets),"open_findings":len(findings),"critical_findings":critical,
                      "ctem":len(plans),"approved":approved,"in_progress":in_progress,"remediated":remediated,
-                     "overdue":overdue,"ctem_aging":sum(1 for p in plans if p.get("status") in {"planned","approved"})})
+                     "overdue":overdue,"ctem_aging":len(active_plans),"avg_ctem_age_days":round(sum(aging_days)/len(aging_days)) if aging_days else 0,
+                     "sla_compliance":sla_compliance,"sla_breaches":sla_breaches,"risk_residual":residual,
+                     "risk_reduction_30d":risk_reduction})
     rows.sort(key=lambda x:x["risk"],reverse=True)
     return {"tenants":rows,"summary":{"tenants":len(rows),"critical_tenants":sum(x["risk"]>=80 for x in rows),
         "open_findings":sum(x["open_findings"] for x in rows),"ctem_plans":sum(x["ctem"] for x in rows),
-        "overdue":sum(x["overdue"] for x in rows),"remediated":sum(x["remediated"] for x in rows),"in_progress":sum(x["in_progress"] for x in rows)}}
+        "overdue":sum(x["overdue"] for x in rows),"remediated":sum(x["remediated"] for x in rows),"in_progress":sum(x["in_progress"] for x in rows),
+        "sla_compliance":round(sum(x["sla_compliance"] for x in rows)/len(rows)) if rows else 100,
+        "sla_breaches":sum(x["sla_breaches"] for x in rows),"risk_residual":round(sum(x["risk_residual"] for x in rows)) if rows else 0,
+        "risk_reduction_30d":sum(x["risk_reduction_30d"] for x in rows)}}
 
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
