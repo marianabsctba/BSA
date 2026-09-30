@@ -15,7 +15,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants
 
 bootstrap()
 
@@ -134,6 +134,34 @@ def login(payload: LoginRequest):
 def me(request: Request):
     p = current_principal(request)
     return {"id": p.user_id, "email": p.email, "name": p.name, "role": p.role, "tenant_id": p.tenant_id}
+
+
+
+
+class TenantCreateRequest(BaseModel):
+    id: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]+$")
+    name: str = Field(min_length=1, max_length=120)
+
+
+@app.get("/api/v1/tenants")
+def tenants(request: Request):
+    p = current_principal(request)
+    if p.role != "superadmin":
+        raise HTTPException(status_code=403, detail="superadmin required")
+    return list_tenants(p)
+
+
+@app.post("/api/v1/tenants")
+def tenants_create(request: Request, payload: TenantCreateRequest):
+    p = current_principal(request)
+    if p.role != "superadmin":
+        raise HTTPException(status_code=403, detail="superadmin required")
+    try:
+        return create_tenant(p, payload.id, payload.name)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="tenant already exists or invalid data") from exc
 
 
 @app.get("/api/v1/users")
