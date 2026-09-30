@@ -22,7 +22,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, enabled as local_ai_enabled, OLLAMA_MODEL
 
 bootstrap()
 bootstrap_scope()
@@ -176,6 +176,24 @@ def graph_simulate(payload: RemediationSimulationRequest, request: Request):
     nodes = {n["id"]: type("Node", (), n)() for n in graph["nodes"]}
     edges = [type("Edge", (), e)() for e in graph["edges"]]
     return simulate_remediation(nodes, edges, payload.path, payload.finding_node_ids)
+
+@app.post("/api/v1/graph/attack-path/explain")
+def explain_attack_path_api(payload: dict, request: Request):
+    principal=require(request,"assets:read")
+    path=payload.get("path") or []
+    if not path or len(path)>30:
+        raise HTTPException(status_code=400,detail="Invalid attack path")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    allowed={a.id for a in assets}
+    graph=build_risk_graph(f"tenant:{principal.tenant_id}",assets,[],source_assets=assets,findings=findings)
+    graph_nodes={n["id"]:n for n in graph["nodes"]}
+    selected=[graph_nodes[n] for n in path if n in graph_nodes]
+    evidence={"nodes":selected,"paths":[p for p in graph.get("top_risk_paths",[]) if any(n in path for n in p.get("nodes",[]))]}
+    result=explain_attack_path(path,evidence)
+    if not result:
+        return {"ai":{"enabled":local_ai_enabled(),"provider":"ollama-local","grounded":False},"summary":"Local AI unavailable.","facts":[],"inference":[],"unknowns":["AI unavailable; use graph evidence directly."],"validation":[],"confidence":0}
+    result["ai"]={"enabled":True,"provider":"ollama-local","model":OLLAMA_MODEL,"grounded":True}
+    return result
 
 @app.get("/api/v1/graph/control-coverage")
 def graph_control_coverage(request: Request):
