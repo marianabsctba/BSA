@@ -407,6 +407,23 @@ def exposure_ctem(request: Request):
             })
     return {"items": sorted(queue, key=lambda x: x["priority_score"], reverse=True)}
 
+@app.post("/api/v1/exposure/ctem/plan")
+def exposure_ctem_plan(payload: dict, request: Request):
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    asset_ids = set(payload.get("asset_ids", []))
+    finding_ids = set(payload.get("finding_ids", []))
+    selected = [a for a in assets if a.id in asset_ids]
+    selected_findings = [f for f in findings if f.id in finding_ids or f.asset_id in asset_ids]
+    items = []
+    for a in selected:
+        af = [f for f in selected_findings if f.asset_id == a.id and f.status == "open"]
+        score = exposure_breakdown(a, findings).score
+        items.append({"asset_id": a.id, "asset": a.value, "owner": a.owner, "priority_score": score,
+                      "finding_ids": [f.id for f in af], "status": "planned",
+                      "reason": "Selected from Exposure/Attack Path Planner"})
+    return {"items": items, "count": len(items)}
+
 @app.get("/api/v1/exposure/business-impact")
 def exposure_business_impact(request: Request):
     principal = require(request, "assets:read")
