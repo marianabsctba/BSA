@@ -124,3 +124,13 @@ def test_mssp_sla_and_residual_metrics():
     for t in data["tenants"]:
         assert 0 <= t["sla_compliance"] <= 100
         assert "avg_ctem_age_days" in t and "risk_reduction_30d" in t
+
+
+def test_mssp_trend_contract():
+    h=auth()
+    r=client.get("/api/v1/mssp/command-center/trend",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert data["days"]==90
+        assert "tenants" in data
