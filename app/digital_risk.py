@@ -117,3 +117,16 @@ def build_infrastructure_links(item: InfrastructureIndicator):
     return {"indicator":item.indicator,"indicator_type":item.indicator_type,"links":links,"link_count":len(links),
             "cluster_strength":min(100, round(sum(x["confidence"] for x in links)/max(1,len(links)))),
             "evidence_required":not bool(links)}
+
+
+def build_infrastructure_graph(item: InfrastructureIndicator):
+    nodes=[{"id":"indicator:"+item.indicator,"type":item.indicator_type,"label":item.indicator,"confidence":item.confidence}]
+    edges=[]
+    seen=set()
+    for link in build_infrastructure_links(item)["links"]:
+        nid=link["type"]+":"+link["value"]
+        if nid in seen: continue
+        seen.add(nid)
+        nodes.append({"id":nid,"type":link["type"],"label":link["value"],"confidence":link["confidence"]})
+        edges.append({"source":"indicator:"+item.indicator,"target":nid,"type":link["type"],"confidence":link["confidence"],"evidence":"explicit_observation"})
+    return {"nodes":nodes,"edges":edges,"summary":{"nodes":len(nodes),"edges":len(edges),"avg_edge_confidence":round(sum(e["confidence"] for e in edges)/len(edges)) if edges else 0}}
