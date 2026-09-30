@@ -52,3 +52,13 @@ def test_graph_contains_exposure_and_finding_relationships():
     data=client.get("/api/v1/graph",headers=h).json()
     assert any(n["kind"]=="internet" for n in data["nodes"])
     assert any(n["kind"]=="finding" for n in data["nodes"])
+
+
+def test_ctem_plan_endpoint():
+    h=auth()
+    data=client.get("/api/v1/exposure/ctem",headers=h).json()
+    item=(data.get("items") or [None])[0]
+    payload={"asset_ids":[item["asset_id"]],"finding_ids":[]} if item else {"asset_ids":[],"finding_ids":[]}
+    r=client.post("/api/v1/exposure/ctem/plan",headers={**h,"Content-Type":"application/json"},json=payload)
+    assert r.status_code==200
+    assert "items" in r.json()
