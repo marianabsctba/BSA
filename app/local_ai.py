@@ -42,3 +42,17 @@ def explain_attack_path(path, evidence):
         return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"summary":raw,"facts":[],"inference":[],"unknowns":["Structured local AI response was not valid JSON."],"validation":[],"confidence":0}
+
+
+def analyze_brand_context(brand, indicator, evidence):
+    system=("You are Be Safe ASM Local Brand Protection Analyst. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence. Do not claim visual similarity unless a numeric visual score is supplied. "
+            "Separate observed facts from inference and always flag human review when evidence is insufficient. "
+            "Return JSON keys: verdict, summary, facts, indicators, unknowns, confidence, recommended_action.")
+    compact=json.dumps({"brand":brand,"indicator":indicator,"evidence":evidence},ensure_ascii=False,separators=(",",":"))
+    raw=ask(system,"Analyze this possible brand impersonation. JSON only.\n"+compact)
+    if not raw: return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"verdict":"needs_review","summary":raw,"facts":[],"indicators":[],"unknowns":["Unstructured AI response"],"confidence":0,"recommended_action":"human_review"}
