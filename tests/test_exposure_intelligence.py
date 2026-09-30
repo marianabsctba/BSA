@@ -134,3 +134,12 @@ def test_mssp_trend_contract():
         data=r.json()
         assert data["days"]==90
         assert "tenants" in data
+
+
+def test_graph_control_coverage_and_chokepoints():
+    h=auth()
+    r=client.get("/api/v1/graph/control-coverage",headers=h)
+    assert r.status_code==200
+    data=r.json()
+    assert "coverage" in data and "controls" in data and "choke_points" in data
+    assert 0 <= data["coverage"]["coverage_percent"] <= 100
