@@ -15,9 +15,11 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit, audit, list_audit
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
+from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 
 bootstrap()
+bootstrap_scope()
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -90,6 +92,18 @@ class LoginRequest(BaseModel):
     email: str
     password: str = Field(min_length=8, max_length=256)
 
+class ScopeCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    pattern: str = Field(min_length=1, max_length=253)
+
+class ScopeAssignRequest(BaseModel):
+    user_id: str
+    scope_id: str
+
+class GroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    pattern: str = Field(min_length=1, max_length=253)
+
 class UserCreateRequest(BaseModel):
     email: str
     name: str = Field(min_length=1, max_length=120)
@@ -98,7 +112,7 @@ class UserCreateRequest(BaseModel):
 
 
 def tenant_scope(principal, assets, findings):
-    scoped_assets = [a for a in assets if getattr(a, "tenant_id", "tenant-demo") == principal.tenant_id]
+    scoped_assets = [a for a in assets if getattr(a, "tenant_id", "tenant-demo") == principal.tenant_id and asset_in_scope(principal, a.value)]
     scoped_ids = {a.id for a in scoped_assets}
     scoped_findings = [f for f in findings if getattr(f, "tenant_id", "tenant-demo") == principal.tenant_id and f.asset_id in scoped_ids]
     return scoped_assets, scoped_findings
@@ -145,6 +159,46 @@ class TenantCreateRequest(BaseModel):
 
 
 
+
+
+
+@app.get("/api/v1/scopes")
+def scopes(request: Request):
+    p=current_principal(request)
+    return list_scopes(p)
+
+@app.post("/api/v1/scopes")
+def scopes_create(request: Request, payload: ScopeCreateRequest):
+    p=current_principal(request)
+    try:
+        result=create_scope(p,payload.name,payload.pattern)
+        audit(p,"create","scope",result["id"],{"pattern":payload.pattern})
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
+
+@app.post("/api/v1/scopes/assign")
+def scopes_assign(request: Request, payload: ScopeAssignRequest):
+    p=current_principal(request)
+    try:
+        assign_scope(p,payload.user_id,payload.scope_id)
+        audit(p,"assign","scope",payload.scope_id,{"user_id":payload.user_id})
+        return {"ok":True}
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+@app.get("/api/v1/groups")
+def groups(request: Request):
+    p=current_principal(request)
+    return list_groups(p)
+
+@app.post("/api/v1/groups")
+def groups_create(request: Request, payload: GroupCreateRequest):
+    p=current_principal(request)
+    try:
+        result=create_group(p,payload.name,payload.pattern)
+        audit(p,"create","asset_group",result["id"],{"pattern":payload.pattern})
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
 
 @app.get("/api/v1/audit")
 def audit_events(request: Request, limit: int = 100):
@@ -240,7 +294,9 @@ def score(request: Request):
 
 @app.post("/api/v1/discovery")
 def discovery(request: DiscoveryRequest, http_request: Request):
-    require(http_request, "discovery:run")
+    principal=require(http_request, "discovery:run")
+    if not asset_in_scope(principal, request.target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
     allowed = {"dns", "http", "tls", "ct"}
     checks = list(dict.fromkeys(request.checks))
     if not checks or any(check not in allowed for check in checks):
@@ -254,6 +310,8 @@ def discovery(request: DiscoveryRequest, http_request: Request):
 @app.get("/api/v1/discovery/{target}/changes")
 def discovery_changes(target: str, request: Request):
     principal = require(request, "assets:read")
+    if not asset_in_scope(principal, target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
@@ -275,6 +333,8 @@ def discovery_changes(target: str, request: Request):
 @app.get("/api/v1/discovery/{target}/graph")
 def discovery_graph(target: str, request: Request):
     principal = require(request, "assets:read")
+    if not asset_in_scope(principal, target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
@@ -283,6 +343,8 @@ def discovery_graph(target: str, request: Request):
 @app.get("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str, request: Request):
     principal = require(request, "assets:read")
+    if not asset_in_scope(principal, target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
     """Return normalized asset identities for an explicit discovery target."""
     data = collect_target(target, ["dns", "http", "tls", "ct"])
@@ -357,6 +419,8 @@ def dashboard(request: Request):
 @app.get("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "assets:read")
+    if not asset_in_scope(principal, target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
