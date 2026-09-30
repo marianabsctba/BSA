@@ -19,6 +19,7 @@ class Relationship:
     kind: str
     confidence: int
     evidence: str
+    impact: int = 0
 
 
 def node_id(kind: str, value: str) -> str:
@@ -62,7 +63,8 @@ def _path_score(nodes, edges, path):
     node_scores = [nodes[n].risk_score for n in path if nodes[n].risk_score]
     risk = max(node_scores, default=0)
     evidence_confidence = min(confidences, default=0)
-    return min(100, round(risk * 0.7 + evidence_confidence * 0.3))
+    impact = max((next((e.impact for e in edges if e.source_id==left and e.target_id==right), 0) for left,right in zip(path,path[1:])), default=0)
+    return min(100, round(risk * 0.55 + evidence_confidence * 0.25 + impact * 0.20))
 
 
 def _path_explanation(nodes, edges, path):
@@ -73,7 +75,7 @@ def _path_explanation(nodes, edges, path):
         edge = edge_by_key.get((left, right))
         if not edge:
             continue
-        item = {"from": nodes[left].label, "to": nodes[right].label, "relationship": edge.kind, "confidence": edge.confidence, "source": edge.evidence}
+        item = {"from": nodes[left].label, "to": nodes[right].label, "relationship": edge.kind, "confidence": edge.confidence, "impact": edge.impact, "source": edge.evidence}
         evidence.append(item)
         if weakest is None or edge.confidence < weakest["confidence"]:
             weakest = item
@@ -167,12 +169,13 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         asset_kind = getattr(getattr(source_asset, "type", None), "value", getattr(source_asset, "asset_type", "asset"))
         aid = next((n.id for n in nodes.values() if n.label.lower() == source_asset.value.lower()), None)
         if aid and "internet-facing" in source_asset.tags:
-            edges.append(Relationship(internet_id, aid, "internet_exposed", source_asset.confidence, "asset evidence"))
+            edges.append(Relationship(internet_id, aid, "internet_exposed", source_asset.confidence, "asset evidence", min(100, source_asset.criticality*20)))
         for finding in findings:
             if finding.asset_id != source_asset.id or finding.status != "open":
                 continue
             fid = add_node("finding", finding.title, min(source_asset.confidence, 100), score)
-            edges.append(Relationship(aid, fid, "finding_observed", min(source_asset.confidence, 100), "finding record"))
+            impact = {"info":5,"low":15,"medium":35,"high":70,"critical":100}.get(finding.severity.value, 0)
+            edges.append(Relationship(aid, fid, "finding_observed", min(source_asset.confidence, 100), "finding record", impact))
 
     for item in evidence:
         value = str(item.get("value", "")).strip()
@@ -214,6 +217,7 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
             "low": sum(1 for n in risk_nodes if n.risk_band == "low"),
             "highest_score": max((n.risk_score for n in risk_nodes), default=0),
             "risk_paths": len(paths),
+            "business_impact": max((e.impact for e in edge_list), default=0),
         },
         "top_risk_paths": paths,
     }
