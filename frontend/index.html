@@ -25,12 +25,12 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
 .timeline{display:grid;gap:10px}.change{padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.delta{float:right;color:var(--pink);font-weight:800}
 .footer{color:#697181;font-size:12px;text-align:center;padding:36px}
 @media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.grid.secondary{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.hero{display:block}.brand small{display:none}}
-</style>
+ .toolbar{display:flex;gap:10px;align-items:center;margin-top:18px}.toolbar input{flex:1;min-width:220px;background:#0d1118;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px 14px}.btn{background:var(--pink);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn:disabled{opacity:.5}.result{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05;font-size:12px}.riskbar{height:7px;background:#252b36;border-radius:99px;overflow:hidden;margin-top:8px}.riskbar i{display:block;height:100%;background:var(--pink)}.mini{font-size:11px;color:var(--muted)} </style>
 </head>
 <body>
 <header>
   <div class="brand"><img src="/assets/bsa-readme-logo.jpg" alt="BSA"><small>External Attack Surface Management</small></div>
-  <span class="badge">BSA • v0.2 INTELLIGENCE</span>
+  <span class="badge">BSA • v0.3 EXPOSURE INTELLIGENCE</span>
 </header>
 <main>
   <div class="hero">
@@ -38,7 +38,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
     <div class="muted" id="stamp">Sincronizando…</div>
   </div>
 
-  <section class="grid">
+  <section class="card"><div class="section-title"><h3>Discovery Control</h3><span class="pill">Explicit target • bounded collection</span></div><div class="toolbar"><input id="targetInput" placeholder="ex.: cliente.com.br" autocomplete="off"><button class="btn" id="discoverBtn">Descobrir</button></div><div id="discoveryResult" class="result muted">Informe um domínio ou host autorizado para executar DNS, HTTP e TLS.</div></section><section class="grid" style="margin-top:16px">
     <div class="card"><div class="metric-label">Ativos</div><div class="metric" id="assets">—</div></div>
     <div class="card"><div class="metric-label">Serviços expostos</div><div class="metric" id="services">—</div></div>
     <div class="card"><div class="metric-label">Findings abertos</div><div class="metric" id="findings">—</div></div>
@@ -53,7 +53,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
     <div class="card"><div class="metric-label">Críticos</div><div class="metric" id="critical">—</div></div>
   </section>
 
-  <section class="two">
+  <section class="card" style="margin-top:16px"><div class="section-title"><h3>Exposure Prioritization</h3><span class="pill">Explainable • asset-level</span></div><div id="exposureList"></div></section><section class="two">
     <div class="card">
       <div class="section-title"><h3>Superfície observada</h3><span class="pill">Ownership-aware</span></div>
       <table>
@@ -116,8 +116,21 @@ async function boot(){
 
   changeList.innerHTML=c.length?c.map(x=>`<div class="change"><span class="delta">+${x.risk_delta}</span><strong>${esc(x.kind)}</strong><div class="muted" style="margin-top:5px">${esc(x.summary)}</div></div>`).join(""):'<div class="muted">Nenhuma mudança relevante.</div>';
   graphList.innerHTML=g.map(x=>`<div class="change"><strong>${esc(x.source_id)} → ${esc(x.target_id)}</strong><div class="muted">${esc(x.kind)} • confiança ${x.confidence}%</div><div class="muted" style="margin-top:4px">${esc(x.evidence)}</div></div>`).join("");
+  const ex=await fetch(api+"/api/v1/exposure").then(r=>r.json());
+  exposureList.innerHTML=ex.slice(0,5).map(function(x){return "<div style=\"padding:12px 0;border-top:1px solid var(--line)\"><div><strong>"+esc(x.asset)+"</strong><span class=\"delta\">"+x.score+"/100 • "+esc(x.band)+"</span></div><div class=\"riskbar\"><i style=\"width:"+x.score+"%\"></i></div><div class=\"mini\">"+esc((x.rationale||[]).join(" • ")||"Sem fator adicional identificado")+"</div></div>";}).join("");
   stamp.textContent="Atualizado agora";
 }
+async function runDiscovery(){
+  var target=targetInput.value.trim(); if(!target) return;
+  discoverBtn.disabled=true; discoveryResult.textContent="Executando coleta controlada…";
+  try{
+    var res=await fetch(api+"/api/v1/discovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:target,checks:["dns","http","tls"]})});
+    var data=await res.json(); if(!res.ok) throw new Error(data.detail||"falha na descoberta");
+    discoveryResult.innerHTML="<strong>"+esc(data.target)+"</strong> • "+data.evidence_count+" evidências • confiança média "+data.confidence+"%";
+    discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";
+  }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
+}
+discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
 boot().catch(()=>stamp.textContent="API indisponível");
 </script>
 </body>
