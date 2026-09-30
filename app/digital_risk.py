@@ -62,3 +62,31 @@ def create_takedown(tenant_id,event_id,provider,reason,priority):
 def list_takedowns(tenant_id):
     c=_db(); rows=c.execute("SELECT payload FROM takedowns WHERE tenant_id=? ORDER BY updated_at DESC",(tenant_id,)).fetchall(); c.close()
     return [json.loads(r["payload"]) for r in rows]
+
+
+class BrandAnalysis(BaseModel):
+    indicator: str
+    brand: str
+    title: str=""
+    html_excerpt: str=""
+    image_hash: str|None=None
+    visual_similarity: int|None=None
+    text_similarity: int|None=None
+
+def _similarity(a,b):
+    a=set(str(a).lower().split()); b=set(str(b).lower().split())
+    return round(len(a&b)/max(1,len(a|b))*100)
+
+def analyze_brand_impersonation(tenant_id, analysis: BrandAnalysis):
+    visual=analysis.visual_similarity
+    text=analysis.text_similarity if analysis.text_similarity is not None else _similarity(analysis.title,analysis.brand)
+    score=round((visual*0.65 + text*0.35)) if visual is not None else text
+    reasons=[]
+    if visual is not None and visual>=75: reasons.append("high_visual_similarity")
+    if text>=60: reasons.append("brand_text_similarity")
+    if analysis.indicator.lower().find(analysis.brand.lower().replace(" ",""))>=0: reasons.append("brand_in_indicator")
+    verdict="likely_impersonation" if score>=70 and len(reasons)>=1 else ("needs_review" if score>=45 else "low_signal")
+    return {"indicator":analysis.indicator,"brand":analysis.brand,"score":score,"visual_similarity":visual,
+            "text_similarity":text,"verdict":verdict,"reasons":reasons,
+            "evidence":{"html_excerpt":analysis.html_excerpt,"image_hash":analysis.image_hash},
+            "human_review_required":verdict!="likely_impersonation"}
