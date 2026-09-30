@@ -406,7 +406,7 @@ def update_ctem_plan(plan_id: str, payload: CTEMStatusRequest, request: Request)
         if item["plan_id"] == plan_id:
             item["status"] = payload.status
             item["updated_at"] = datetime.now(timezone.utc).isoformat()
-            audit(principal, "ctem.plan.status", {"plan_id": plan_id, "status": payload.status})
+            audit(principal, "update", "ctem.plan", plan_id, {"status": payload.status})
             return item
     raise HTTPException(status_code=404, detail="CTEM plan not found")
 
@@ -456,7 +456,7 @@ def exposure_ctem_plan(payload: dict, request: Request):
                     "validation": plan.validation if plan else "reexecutar discovery e confirmar evidência", "effort": plan.effort if plan else "médio",
                     "created_at": now, "updated_at": now, "reason": "Selected from Exposure/Attack Path Planner"}
             items.append(item); created.append(item)
-    audit(principal, "ctem.plan.create", {"count": len(created)})
+    audit(principal, "create", "ctem.plan", None, {"count": len(created)})
     return {"items": created, "count": len(created)}
 
 @app.get("/api/v1/exposure/business-impact")
