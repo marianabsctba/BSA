@@ -38,7 +38,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
     <div class="muted" id="stamp">Sincronizando…</div>
   </div>
 
-  <section class="card"><div class="section-title"><h3>Discovery Control</h3><span class="pill">Explicit target • DNS / HTTP / TLS / CT</span></div><div class="toolbar"><input id="targetInput" placeholder="ex.: cliente.com.br" autocomplete="off"><button class="btn" id="discoverBtn">Descobrir</button></div><div id="discoveryResult" class="result muted">Informe um domínio ou host autorizado para executar DNS, HTTP e TLS.</div></section><section class="grid" style="margin-top:16px">
+  <section class="card"><div class="section-title"><h3>Discovery Control</h3><span class="pill">Explicit target • DNS / HTTP / TLS / CT</span></div><div class="toolbar"><input id="targetInput" placeholder="ex.: cliente.com.br" autocomplete="off"><button class="btn" id="discoverBtn">Descobrir</button></div><div id="discoveryResult" class="result muted">Informe um domínio ou host autorizado para executar DNS, HTTP, TLS e CT.</div><div id="graphResult" class="result muted" style="margin-top:8px">Grafo: aguardando discovery.</div></section><section class="grid" style="margin-top:16px">
     <div class="card"><div class="metric-label">Ativos</div><div class="metric" id="assets">—</div></div>
     <div class="card"><div class="metric-label">Serviços expostos</div><div class="metric" id="services">—</div></div>
     <div class="card"><div class="metric-label">Findings abertos</div><div class="metric" id="findings">—</div></div>
@@ -127,7 +127,7 @@ async function runDiscovery(){
     var res=await fetch(api+"/api/v1/discovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:target,checks:["dns","http","tls"]})});
     var data=await res.json(); if(!res.ok) throw new Error(data.detail||"falha na descoberta");
     discoveryResult.innerHTML="<strong>"+esc(data.target)+"</strong> • "+data.evidence_count+" evidências • confiança média "+data.confidence+"%";
-    discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";
+    discoveryResult.innerHTML+="<div class=\"mini\" style=\"margin-top:8px\">"+data.evidence.slice(0,8).map(function(e){return esc(e.source+" / "+e.kind+" = "+e.value);}).join("<br>")+"</div>";\n    fetch(api+"/api/v1/discovery/"+encodeURIComponent(data.target)+"/graph").then(function(r){return r.json();}).then(function(g){graphResult.innerHTML="<strong>Attack Surface Graph</strong> • "+g.nodes.length+" nodes • "+g.edges.length+" relationships";});
   }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
 }
 discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
