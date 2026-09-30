@@ -1,7 +1,7 @@
 # BSA — Be Safe ASM
 
 <p align="center">
-  <img src="assets/bsa-panther.svg" alt="BSA Panther" width="520">
+  <img src="assets/bsa-readme-logo.jpg" alt="BSA Panther" width="760">
 </p>
 
 <p align="center">
