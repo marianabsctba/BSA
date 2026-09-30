@@ -50,3 +50,7 @@ class Dashboard(BaseModel):
     open_findings: int
     critical_findings: int
     exposure_score: int
+    confirmed_assets: int
+    candidate_assets: int
+    changes_24h: int
+    attack_paths: int
