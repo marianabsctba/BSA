@@ -98,8 +98,16 @@ def list_changes(request: Request):
 
 @app.get("/api/v1/graph")
 def graph(request: Request):
-    require(request, "assets:read")
-    return RELATIONSHIPS
+    principal = require(request, "assets:read")
+    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    result = build_risk_graph(
+        f"tenant:{principal.tenant_id}",
+        assets,
+        [],
+        source_assets=assets,
+        findings=findings,
+    )
+    return result
 
 
 
