@@ -22,7 +22,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, explain_attack_path, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, enabled as local_ai_enabled, OLLAMA_MODEL
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, analyze_brand_impersonation, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -462,6 +462,9 @@ def asset_timeline(asset_id: str, request: Request):
 def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
     principal=require(request,"assets:read")
     result=analyze_brand_impersonation(principal.tenant_id,payload)
+    ai=analyze_brand_context(payload.brand,payload.indicator,result["evidence"])
+    if ai:
+        result["ai_analysis"]=ai
     if result["verdict"]=="likely_impersonation":
         event=upsert_event(principal.tenant_id,{
             "category":"brand_abuse","title":f"Possible {payload.brand} impersonation",
