@@ -156,3 +156,16 @@ def test_local_ai_status_and_copilot_grounding():
     out=r.json()
     assert "evidence" in out and "ai" in out
     assert out["ai"]["internet_required"] if "internet_required" in out["ai"] else True
+
+
+def test_attack_path_local_ai_contract():
+    h=auth()
+    r=client.post("/api/v1/graph/attack-path/explain",headers={**h,"Content-Type":"application/json"},json={"path":[]})
+    assert r.status_code==400
+    r=client.get("/api/v1/graph")
+    graph=r.json()
+    path=(graph.get("top_risk_paths") or [None])[0]
+    if path:
+        r=client.post("/api/v1/graph/attack-path/explain",headers={**h,"Content-Type":"application/json"},json={"path":path["nodes"]})
+        assert r.status_code==200
+        assert "ai" in r.json()
