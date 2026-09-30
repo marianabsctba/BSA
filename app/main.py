@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .changes import seed_changes
-from .graph import RELATIONSHIPS
+from .graph import RELATIONSHIPS, build_attack_surface_graph
 from .intelligence import ownership_confidence, blast_radius, finding_context_score
 from .models import Dashboard
 from .scoring import exposure_score
@@ -136,6 +136,12 @@ def discovery_changes(target: str):
         ],
     }
 
+
+@app.get("/api/v1/discovery/{target}/graph")
+def discovery_graph(target: str):
+    data = collect_target(target, ["dns", "http", "tls", "ct"])
+    assets = correlate_evidence(data["target"], data["evidence"])
+    return build_attack_surface_graph(data["target"], assets, data["evidence"])
 
 @app.get("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str):
