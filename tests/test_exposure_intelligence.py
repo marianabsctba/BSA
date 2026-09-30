@@ -101,3 +101,16 @@ def test_mssp_command_center_is_tenant_aggregated():
     if r.status_code==200:
         data=r.json()
         assert "tenants" in data and "summary" in data
+
+
+def test_mssp_command_center_has_ctem_lifecycle_metrics():
+    h=auth()
+    r=client.get("/api/v1/mssp/command-center",headers=h)
+    if r.status_code != 200:
+        return
+    data=r.json()
+    for tenant in data["tenants"]:
+        assert "critical_findings" in tenant
+        assert "in_progress" in tenant
+        assert "remediated" in tenant
+        assert "ctem_aging" in tenant
