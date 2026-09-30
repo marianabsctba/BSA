@@ -62,3 +62,20 @@ def test_ctem_plan_endpoint():
     r=client.post("/api/v1/exposure/ctem/plan",headers={**h,"Content-Type":"application/json"},json=payload)
     assert r.status_code==200
     assert "items" in r.json()
+
+
+def test_ctem_plan_persists_and_lifecycle():
+    h=auth()
+    data=client.get("/api/v1/exposure/ctem",headers=h).json()
+    item=(data.get("items") or [None])[0]
+    if not item:
+        return
+    payload={"asset_ids":[item["asset_id"]],"finding_ids":[]}
+    created=client.post("/api/v1/exposure/ctem/plan",headers={**h,"Content-Type":"application/json"},json=payload).json()["items"]
+    assert created
+    plan_id=created[0]["plan_id"]
+    listed=client.get("/api/v1/exposure/ctem/plans",headers=h).json()["items"]
+    assert any(x["plan_id"]==plan_id for x in listed)
+    updated=client.patch(f"/api/v1/exposure/ctem/plans/{plan_id}",headers={**h,"Content-Type":"application/json"},json={"status":"approved"})
+    assert updated.status_code==200
+    assert updated.json()["status"]=="approved"
