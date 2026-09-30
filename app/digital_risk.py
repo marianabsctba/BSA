@@ -57,7 +57,7 @@ def create_takedown(tenant_id,event_id,provider,reason,priority):
     tid=str(uuid.uuid4()); now=int(time.time())
     p={"takedown_id":tid,"event_id":event_id,"provider":provider or "auto-routing","reason":reason,
        "priority":priority,"status":"queued","attempts":0,"sla_hours":24,"timeline":[{"status":"queued","ts":now}]}
-    c=_db(); c.execute("INSERT INTO takedowns VALUES(?,?,?,?,?)",(tid,tenant_id,event_id,json.dumps(p),now,now)); c.commit(); c.close(); return p
+    c=_db(); c.execute("INSERT INTO takedowns VALUES(?,?,?,?,?,?)",(tid,tenant_id,event_id,json.dumps(p),now,now)); c.commit(); c.close(); return p
 
 def list_takedowns(tenant_id):
     c=_db(); rows=c.execute("SELECT payload FROM takedowns WHERE tenant_id=? ORDER BY updated_at DESC",(tenant_id,)).fetchall(); c.close()
