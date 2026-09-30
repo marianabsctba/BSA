@@ -446,7 +446,9 @@ def exposure_ctem_plan(payload: dict, request: Request):
         score = exposure_breakdown(a, findings).score
         for f in af or [None]:
             plan_id = f"ctp-{principal.tenant_id[:8]}-{a.id}-{f.id if f else 'asset'}"
-            if any(x["plan_id"] == plan_id for x in items):
+            existing = next((x for x in items if x["plan_id"] == plan_id), None)
+            if existing:
+                created.append(existing)
                 continue
             plan = build_remediation_plan(f, a) if f else None
             item = {"plan_id": plan_id, "asset_id": a.id, "asset": a.value, "owner": (plan.owner if plan else a.owner),
