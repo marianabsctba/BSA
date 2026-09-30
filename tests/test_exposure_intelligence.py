@@ -143,3 +143,16 @@ def test_graph_control_coverage_and_chokepoints():
     data=r.json()
     assert "coverage" in data and "controls" in data and "choke_points" in data
     assert 0 <= data["coverage"]["coverage_percent"] <= 100
+
+
+def test_local_ai_status_and_copilot_grounding():
+    h=auth()
+    r=client.get("/api/v1/exposure/ai/status",headers=h)
+    assert r.status_code==200
+    data=r.json()
+    assert data["provider"]=="ollama-local"
+    r=client.get("/api/v1/exposure/copilot",headers=h,params={"question":"quais ativos estão sem owner?"})
+    assert r.status_code==200
+    out=r.json()
+    assert "evidence" in out and "ai" in out
+    assert out["ai"]["internet_required"] if "internet_required" in out["ai"] else True
