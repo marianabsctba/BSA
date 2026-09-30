@@ -1,10 +1,24 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bsa-ollama
+    restart: unless-stopped
+    volumes:
+      - bsa_ollama:/root/.ollama
+
   api:
     build: .
     container_name: bsa-api
     restart: unless-stopped
     ports:
       - "8000:8000"
+    environment:
+      BSA_AI_ENABLED: "1"
+      BSA_OLLAMA_URL: "http://ollama:11434"
+      BSA_OLLAMA_MODEL: "qwen2.5:7b"
+      BSA_AI_TIMEOUT: "15"
+    depends_on:
+      - ollama
 
   web:
     build:
@@ -16,5 +30,6 @@ services:
       - api
     ports:
       - "8080:80"
-    volumes:
 
+volumes:
+  bsa_ollama:
