@@ -22,7 +22,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, enabled as local_ai_enabled, OLLAMA_MODEL
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -462,6 +462,9 @@ def asset_timeline(asset_id: str, request: Request):
 def digital_risk_infrastructure(payload: InfrastructureIndicator, request: Request):
     principal=require(request,"assets:read")
     result=build_infrastructure_links(payload)
+    ai=analyze_infrastructure_cluster(payload.indicator,result["links"])
+    if ai:
+        result["ai_analysis"]=ai
     event=upsert_event(principal.tenant_id,{
         "category":"infrastructure_cluster","title":f"Infrastructure correlation for {payload.indicator}",
         "indicator":payload.indicator,"source":payload.source,"severity":"medium" if result["cluster_strength"]>=60 else "low",
