@@ -45,3 +45,10 @@ def test_tenant_scoped_live_graph():
     assert r.status_code==200
     data=r.json()
     assert "nodes" in data and "edges" in data and "top_risk_paths" in data
+
+
+def test_graph_contains_exposure_and_finding_relationships():
+    h=auth()
+    data=client.get("/api/v1/graph",headers=h).json()
+    assert any(n["kind"]=="internet" for n in data["nodes"])
+    assert any(n["kind"]=="finding" for n in data["nodes"])
