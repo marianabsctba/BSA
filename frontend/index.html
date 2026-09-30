@@ -30,7 +30,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
 <body><div class="login-gate" id="loginGate"><form class="login-card" id="loginForm"><div class="badge">BSA • SECURE ACCESS</div><h2>Entrar no Be Safe ASM</h2><div class="muted">Tenant-aware console • RBAC</div><label>E-mail</label><input id="loginEmail" type="email" autocomplete="username" required placeholder="seu@email.com"><label>Senha</label><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••"><div class="login-error" id="loginError"></div><button class="btn" type="submit" style="width:100%">Entrar</button></form></div>
 <header>
   <div class="brand"><img src="/assets/bsa-readme-logo.jpg" alt="BSA"><small>External Attack Surface Management</small></div>
-  <span class="badge">BSA • v0.3 EXPOSURE INTELLIGENCE</span>
+  <span style="display:flex;gap:10px;align-items:center"><span class="badge">BSA • v0.3 EXPOSURE INTELLIGENCE</span><button class="btn" id="logoutBtn" type="button" style="background:transparent;border:1px solid var(--line)">Sair</button></span>
 </header>
 <main>
   <div class="hero">
@@ -81,7 +81,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;bor
       <div id="graphList"></div>
     </div>
   </section>
-</main>
+<section class="card" id="adminPanel" style="margin-top:16px;display:none"><div class="section-title"><h3>Administração</h3><span class="pill" id="identityPill">RBAC</span></div><div class="muted" id="identityText"></div><div class="toolbar"><input id="newUserEmail" placeholder="e-mail do usuário"><input id="newUserName" placeholder="nome"><input id="newUserPassword" type="password" placeholder="senha ≥ 12"><select id="newUserRole" style="background:#0d1118;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px"><option value="viewer">viewer</option><option value="analyst">analyst</option><option value="manager">manager</option><option value="admin">admin</option></select><button class="btn" id="createUserBtn" type="button">Criar usuário</button></div><div id="adminMessage" class="mini"></div><div id="userList" class="timeline" style="margin-top:12px"></div><div id="tenantList" class="timeline" style="margin-top:12px"></div></section></main>
 <div class="footer">BSA • Be Safe ASM • Powered by Mariana BS</div>
 <script>
 const nativeFetch=window.fetch.bind(window);
@@ -107,6 +107,18 @@ loginForm.addEventListener("submit",async function(e){
 if(sessionStorage.getItem("bsa_token")){hideLogin();}else{showLogin();}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 async function boot(){
+  const meData=await fetch(api+"/api/v1/auth/me").then(r=>r.json());
+  adminPanel.style.display=["admin","superadmin"].includes(meData.role)?"block":"none";
+  identityPill.textContent=meData.role+" • "+meData.tenant_id;
+  identityText.textContent=meData.name+" • "+meData.email;
+  if(["admin","superadmin"].includes(meData.role)){
+    const ur=await fetch(api+"/api/v1/users");
+    if(ur.ok){const us=await ur.json(); userList.innerHTML=us.map(u=>"<div class=\"change\"><strong>"+esc(u.name)+"</strong><span class=\"delta\">"+esc(u.role)+"</span><div class=\"mini\">"+esc(u.email)+" • "+(u.active?"ativo":"inativo")+"</div></div>").join("");}
+  }
+  if(meData.role==="superadmin"){
+    const tr=await fetch(api+"/api/v1/tenants");
+    if(tr.ok){const ts=await tr.json(); tenantList.innerHTML="<strong>Tenants</strong>"+ts.map(t=>"<div class=\"change\"><strong>"+esc(t.name)+"</strong><span class=\"delta\">"+esc(t.id)+"</span></div>").join("");}
+  }
   const [d,a,f,c,g]=await Promise.all([
     fetch(api+"/api/v1/dashboard").then(r=>r.json()),
     fetch(api+"/api/v1/assets").then(r=>r.json()),
@@ -163,7 +175,7 @@ async function runDiscovery(){
     });
   }catch(e){discoveryResult.textContent="Falha: "+e.message;} finally{discoverBtn.disabled=false;}
 }
-discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
+createUserBtn.addEventListener("click",async function(){adminMessage.textContent="Criando…";const r=await fetch(api+"/api/v1/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:newUserEmail.value,name:newUserName.value,password:newUserPassword.value,role:newUserRole.value})});adminMessage.textContent=r.ok?"Usuário criado.":((await r.json()).detail||"Falha ao criar usuário");});logoutBtn.addEventListener("click",function(){sessionStorage.removeItem("bsa_token");location.reload();});discoverBtn.addEventListener("click",runDiscovery); targetInput.addEventListener("keydown",function(e){if(e.key==="Enter")runDiscovery();});
 boot().catch(()=>stamp.textContent="API indisponível");
 </script>
 </body>
