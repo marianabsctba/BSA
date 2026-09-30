@@ -170,3 +170,28 @@ O fluxo foi desenhado em torno de:
 ## Benchmark de capacidades
 
 As plataformas líderes atuais enfatizam descoberta contínua, visibilidade Internet-scale, validação de exposição, ownership, attack paths, contexto de negócio e workflows de remediação. O BSA está sendo construído para cobrir essas dimensões e adicionar **evidence confidence + scoped multi-tenancy + governança operacional** como diferenciais próprios.
+
+
+## IA local / Exposure Copilot
+
+O BSA pode usar **Ollama no próprio servidor** para interpretar evidências do Exposure Graph sem enviar dados do tenant para uma API externa.
+
+Variáveis:
+- `BSA_AI_ENABLED=1`
+- `BSA_OLLAMA_URL=http://ollama:11434`
+- `BSA_OLLAMA_MODEL=qwen2.5:7b`
+- `BSA_AI_TIMEOUT=15`
+
+Após subir o stack, baixe o modelo no servidor:
+
+```bash
+docker exec bsa-ollama ollama pull qwen2.5:7b
+```
+
+O Copilot continua funcionando em **fallback determinístico** se o modelo estiver indisponível. A IA recebe somente o conjunto de evidências selecionado para a pergunta e é instruída a não inventar fatos.
+
+Endpoints:
+- `GET /api/v1/exposure/ai/status`
+- `GET /api/v1/exposure/copilot?question=...`
+
+A arquitetura é local-first: **internet não é necessária para inferência**, depois que o modelo estiver instalado no servidor.
