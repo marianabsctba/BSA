@@ -37,3 +37,11 @@ def test_ctem_queue_and_business_impact():
     r=client.get("/api/v1/exposure/business-impact",headers=h)
     assert r.status_code==200
     assert "items" in r.json()
+
+
+def test_tenant_scoped_live_graph():
+    h=auth()
+    r=client.get("/api/v1/graph",headers=h)
+    assert r.status_code==200
+    data=r.json()
+    assert "nodes" in data and "edges" in data and "top_risk_paths" in data
