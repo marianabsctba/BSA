@@ -21,6 +21,7 @@ class Severity(str, Enum):
 
 
 class Asset(BaseModel):
+    tenant_id: str = "tenant-demo"
     id: str
     value: str
     type: AssetType
@@ -34,6 +35,7 @@ class Asset(BaseModel):
 
 
 class Finding(BaseModel):
+    tenant_id: str = "tenant-demo"
     id: str
     asset_id: str
     title: str
