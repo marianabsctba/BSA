@@ -83,3 +83,36 @@ def expand_discovery_chain(pivots: Iterable[DiscoveryPivot], max_rounds: int = 3
             break
         current.extend(fresh)
     return current
+
+def pivots_from_evidence(evidence: Iterable[object]) -> list[DiscoveryPivot]:
+    """Convert collector evidence into bounded discovery pivots."""
+    rows=[]
+    for item in evidence:
+        kind=str(getattr(item,"kind",""))
+        value=str(getattr(item,"value","")).strip()
+        source=str(getattr(item,"source",""))
+        confidence=int(getattr(item,"confidence",0) or 0)
+        metadata=getattr(item,"metadata",{}) or {}
+        evidence_ref=str(metadata.get("evidence_ref") or f"{source}:{kind}:{value}")
+        if kind in {"a_record","aaaa_record"}:
+            rows.append(("ip",value,source,confidence,evidence_ref))
+        elif kind in {"alias","cname","certificate_name"}:
+            rows.append(("hostname",value,source,confidence,evidence_ref))
+        elif kind=="rdap_nameserver":
+            rows.append(("hostname",value,source,confidence,evidence_ref))
+        elif kind=="rdap_network":
+            rows.append(("asn",value,source,confidence,evidence_ref))
+    return build_discovery_pivots(rows)
+
+def collect_discovery_pivots(target: str, collectors: Iterable[object]) -> list[DiscoveryPivot]:
+    """Run only caller-approved collectors and normalize their evidence."""
+    evidence=[]
+    for collector in collectors:
+        collect=getattr(collector,"collect",None)
+        if not callable(collect):
+            continue
+        try:
+            evidence.extend(collect(target))
+        except Exception:
+            continue
+    return pivots_from_evidence(evidence)
