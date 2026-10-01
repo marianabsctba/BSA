@@ -254,3 +254,12 @@ def test_ctem_audit_timeline_is_chronological_and_evidence_linked():
     assert [x["event"] for x in out]==["created","verification","verification"]
     assert out[-1]["result"]=="passed"
     assert out[-1]["evidence_refs"]==["retest:e3"]
+
+def test_ctem_verification_history_is_tenant_scoped(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "audit.db"))
+    history.upsert_ctem_item({"item_id":"ctem-1","asset_id":"a","priority":80,
+        "action":"expedite","title":"x","drivers":[],"evidence_refs":[]},"tenant-a")
+    history.verify_ctem_item("ctem-1","tenant-a","passed",["retest:1"],"fixed")
+    assert history.ctem_verification_history("ctem-1","tenant-a")[0]["result"]=="passed"
+    assert history.ctem_verification_history("ctem-1","tenant-b")==[]
