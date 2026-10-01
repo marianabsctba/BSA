@@ -97,3 +97,64 @@ def test_same_cve_from_multiple_engines_is_one_finding():
     assert finding["evidence"]["corroboration_count"] == 2
     assert finding["evidence"]["validation_state"] == "confirmed_evidence"
     assert len(finding["evidence"]["references"]) == 2
+
+
+def test_same_cve_from_multiple_engines_is_deduplicated():
+    rows = [
+        {
+            "asset": "api.example.com",
+            "category": "vulnerability",
+            "title": "Scanner A title",
+            "severity": "high",
+            "confidence": 90,
+            "evidence": {
+                "vulnerability_id": "CVE-2026-1234",
+                "matched_at": "https://api.example.com/login",
+                "relationship": "vulnerability-validation",
+                "reference": ["ref-a"],
+            },
+        },
+        {
+            "asset": "api.example.com",
+            "category": "vulnerability",
+            "title": "Scanner B title",
+            "severity": "critical",
+            "confidence": 92,
+            "evidence": {
+                "vulnerability_id": "CVE-2026-1234",
+                "matched_at": "https://api.example.com/login",
+                "relationship": "vulnerability-assessment",
+                "reference": ["ref-b"],
+            },
+        },
+    ]
+    deduped, duplicate_count = _deduplicate_findings(rows)
+    assert duplicate_count == 1
+    assert len(deduped) == 1
+    assert deduped[0]["severity"] == "critical"
+    assert deduped[0]["evidence"]["corroboration_count"] == 2
+    assert sorted(deduped[0]["evidence"]["references"]) == ["ref-a", "ref-b"]
+
+
+def test_distinct_web_findings_are_not_collapsed():
+    rows = [
+        {
+            "asset": "app.example.com",
+            "category": "web_assessment",
+            "title": "Missing CSP",
+            "severity": "low",
+            "confidence": 80,
+            "evidence": {"url": "https://app.example.com", "cwe": "693", "relationship": "web-assessment"},
+        },
+        {
+            "asset": "app.example.com",
+            "category": "web_assessment",
+            "title": "Cookie without Secure",
+            "severity": "low",
+            "confidence": 80,
+            "evidence": {"url": "https://app.example.com", "cwe": "614", "relationship": "web-assessment"},
+        },
+    ]
+    deduped, duplicate_count = _deduplicate_findings(rows)
+    assert duplicate_count == 0
+    assert len(deduped) == 2
