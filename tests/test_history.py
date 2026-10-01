@@ -337,3 +337,11 @@ def test_ctem_next_action_follows_safe_state_workflow():
     assert ctem_next_action({"state":"resolved"})["action"]=="verify"
     assert ctem_next_action({"state":"verified"})["action"]=="closed"
     assert ctem_next_action({"state":"resolved"})["requires_evidence"] is True
+
+def test_ctem_action_transition_rejects_state_skips():
+    from app.history import ctem_action_transition
+    assert ctem_action_transition({"state":"new"},"acknowledge")=="acknowledged"
+    assert ctem_action_transition({"state":"resolved"},"verify")=="verified"
+    import pytest
+    with pytest.raises(ValueError):
+        ctem_action_transition({"state":"new"},"verify")
