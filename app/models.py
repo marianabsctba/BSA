@@ -39,6 +39,7 @@ class Asset(BaseModel):
     fingerprint: str | None = None
     evidence_count: int = 0
     sources: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class Finding(BaseModel):
