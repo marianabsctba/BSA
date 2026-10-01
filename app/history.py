@@ -264,7 +264,9 @@ def diff_risk_context(diff: dict, assets: list, findings: list) -> dict:
         a=by_fp.get(item.get("fingerprint"))
         if a:
             e=exposure_breakdown(a,findings)
-            added.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"rationale":e.rationale})
+            af=[x for x in findings if getattr(x,"asset_id",None)==getattr(a,"id",None) and getattr(x,"status","open")=="open"]
+            risks=[assess_risk(x,a) for x in af]
+            added.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"risk_score":max((x.score for x in risks),default=0),"risk_band":max((x.band for x in risks),default="low",key=lambda b:{"low":0,"medium":1,"high":2,"critical":3}[b]),"rationale":e.rationale})
         else: added.append(item)
     for item in diff.get("removed",[]):
         removed.append({**item,"state":"removed_from_latest_observation"})
@@ -272,10 +274,14 @@ def diff_risk_context(diff: dict, assets: list, findings: list) -> dict:
         a=by_fp.get(item.get("fingerprint"))
         if a:
             e=exposure_breakdown(a,findings)
-            changed.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"rationale":e.rationale})
+            af=[x for x in findings if getattr(x,"asset_id",None)==getattr(a,"id",None) and getattr(x,"status","open")=="open"]
+            risks=[assess_risk(x,a) for x in af]
+            changed.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"risk_score":max((x.score for x in risks),default=0),"risk_band":max((x.band for x in risks),default="low",key=lambda b:{"low":0,"medium":1,"high":2,"critical":3}[b]),"rationale":e.rationale})
         else: changed.append(item)
     result["added"]=added; result["removed"]=removed; result["changed"]=changed
     result["risk_context"]={"new_exposure":sum(x.get("exposure_score",0) for x in added),
                             "changed_exposure":sum(x.get("exposure_score",0) for x in changed),
+                            "new_risk":sum(x.get("risk_score",0) for x in added),
+                            "changed_risk":sum(x.get("risk_score",0) for x in changed),
                             "removed_count":len(removed)}
     return result
