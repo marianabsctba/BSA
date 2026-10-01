@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
-JWT_SECRET = os.getenv("BSA_JWT_SECRET", "CHANGE-ME-IN-PRODUCTION")
+JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
+ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
+MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14"))
+_LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
 ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
@@ -29,6 +32,18 @@ class Principal:
     email: str
     role: str
     name: str
+
+def _require_security_config():
+    if ENVIRONMENT in {"production","prod"} and (not JWT_SECRET or len(JWT_SECRET) < 32):
+        raise RuntimeError("BSA_JWT_SECRET must be set to a random secret of at least 32 characters in production")
+
+
+def _validate_password(password: str):
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"password must contain at least {MIN_PASSWORD_LENGTH} characters")
+    if password.lower() in {"changeme!123","password","password123"}:
+        raise ValueError("password is not allowed")
+
 
 def _db():
     conn = sqlite3.connect(DB_PATH)
@@ -57,6 +72,7 @@ def _b64(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 
 def _token(payload: dict) -> str:
+    _require_security_config()
     body = _b64(json.dumps(payload, separators=(",", ":")).encode())
     sig = _b64(hmac.new(JWT_SECRET.encode(), body.encode(), hashlib.sha256).digest())
     return body + "." + sig
@@ -72,10 +88,16 @@ def _decode(token: str) -> dict:
     return payload
 
 def bootstrap():
+    _require_security_config()
     conn = _db()
     conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)", ("tenant-demo", "Be Safe Demo"))
     email = os.getenv("BSA_ADMIN_EMAIL", "admin@besafe.local").lower()
-    password = os.getenv("BSA_ADMIN_PASSWORD", "ChangeMe!123")
+    password = os.getenv("BSA_ADMIN_PASSWORD", "")
+    if ENVIRONMENT in {"production","prod"}:
+        if not password: raise RuntimeError("BSA_ADMIN_PASSWORD must be set in production")
+        _validate_password(password)
+    elif password:
+        _validate_password(password)
     exists = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
     if not exists:
         conn.execute(
@@ -86,11 +108,20 @@ def bootstrap():
     conn.close()
 
 def authenticate(email: str, password: str) -> str | None:
+    now=time.time()
+    key=email.strip().lower()
+    attempts=_LOGIN_ATTEMPTS.get(key, {"count":0,"until":0})
+    if attempts["until"] > now: return None
     conn = _db()
     row = conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1", (email,)).fetchone()
     conn.close()
     if not row or not _verify(password, row["password_hash"]):
+        attempts["count"]+=1
+        if attempts["count"]>=5:
+            attempts={"count":attempts["count"],"until":now+300}
+        _LOGIN_ATTEMPTS[key]=attempts
         return None
+    _LOGIN_ATTEMPTS.pop(key,None)
     now = int(time.time())
     return _token({"sub": row["id"], "tenant": row["tenant_id"], "email": row["email"], "name": row["name"], "role": row["role"], "iat": now, "exp": now + TOKEN_TTL})
 
@@ -105,6 +136,7 @@ def create_user(principal: Principal, email: str, name: str, password: str, role
         raise PermissionError("admin required")
     if role not in ROLES:
         raise ValueError("invalid role")
+    _validate_password(password)
     conn = _db()
     uid = secrets.token_hex(12)
     conn.execute("INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
