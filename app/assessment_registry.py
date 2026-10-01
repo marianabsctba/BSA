@@ -86,7 +86,10 @@ class AssessmentRegistry:
             OpenVASProvider,
             ZAPProvider,
             ThreatFoxProvider,
+            ThreatIntelProvider,
+            CredentialExposureProvider,
             HIBPProvider,
+            HudsonRockProvider,
         ):
             self.register(provider.name, provider)
 
@@ -129,7 +132,7 @@ class AssessmentRegistry:
             "service_exposure": ("naabu", "nmap"),
             "web_assessment": ("safeweb", "zap", "katana"),
             "intelligence": ("cti", "threatfox"),
-            "credential_exposure": ("leak", "trufflehog"),
+            "credential_exposure": ("leak", "hibp", "hudsonrock", "trufflehog"),
             "cloud_intelligence": ("cloud",),
             "network_intelligence": ("asnmap",),
         }
