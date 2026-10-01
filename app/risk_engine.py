@@ -38,12 +38,18 @@ def cpe_product(cpe: str | None) -> tuple[str|None,str|None]:
 def apply_attack_path_context(priority: dict, paths: list[object]) -> dict:
     """Increase CTEM urgency only when paths are backed by evidence."""
     result=dict(priority)
-    valid=[p for p in paths if getattr(p,"evidence",None) or getattr(p,"edges",())]
+    def field(path, name, default=0):
+        if isinstance(path, dict):
+            return path.get(name, default)
+        return getattr(path, name, default)
+
+    valid=[p for p in paths if field(p,"evidence",None) or field(p,"edges",()) or field(p,"explanation",None)]
     if not valid:
         return result
-    best=max(valid,key=lambda p:getattr(p,"score",0))
-    path_score=int(getattr(best,"score",0))
-    path_conf=int(getattr(best,"confidence",0))
+    best=max(valid,key=lambda p:field(p,"score",0))
+    path_score=int(field(best,"score",0))
+    explanation=field(best,"explanation",{}) or {}
+    path_conf=int(field(best,"confidence",0) or explanation.get("confidence",0) or 0)
     result["attack_path_score"]=path_score
     result["attack_path_confidence"]=path_conf
     result["priority"]=min(100,round(result["priority"]*.75+path_score*.15+path_conf*.10))
