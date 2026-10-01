@@ -100,8 +100,48 @@ Inventário, API, dashboard, evidências, score e normalização.
 ### Fase 2 — Discovery Engine
 DNS, RDAP/WHOIS, Certificate Transparency, HTTP/TLS, portas expostas, fingerprints e relacionamento entre ativos.
 
-### Fase 3 — Intelligence
-Shadow IT, dangling DNS, certificados, takeover signals, serviços administrativos, exposição de cloud, mudanças de ASN/IP e correlação de risco.
+**Extensão planejada — Web Exposure & Artifact Discovery**
+- descoberta controlada de artefatos públicos: `robots.txt`, `sitemap.xml`, `.well-known/`, `security.txt`, manifests e arquivos públicos;
+- detecção de `swagger.json`, `openapi.json` e especificações de API expostas;
+- análise segura de JSON/XML/YAML/TXT públicos;
+- extração de URLs, hosts, domínios, caminhos, referências de cloud e outros indicadores observados;
+- descoberta de caminhos referenciados em HTML/JavaScript público, sem exploração ou autenticação;
+- source maps e artefatos JS somente quando publicamente acessíveis;
+- classificação de evidência como **observada, inferida ou candidata**;
+- correlação dos artefatos com aplicações, tecnologias, endpoints e ativos já conhecidos;
+- limites de tamanho, profundidade, quantidade e tempo para impedir abuso de recursos;
+- integração com Evidence Graph, Change Intelligence e Risk Engine.
+
+O objetivo não é transformar o BSA em um directory brute-forcer: é construir **Web Exposure Intelligence**, aproveitando informações que a própria aplicação publica.
+
+### Fase 3 — Infrastructure & Exposure Intelligence
+- Shadow IT e ownership;
+- dangling DNS e sinais de takeover com validação humana;
+- certificados, SANs e relações de infraestrutura;
+- ASN/IP correlation e infraestrutura compartilhada;
+- CDN/WAF/reverse proxy fingerprinting;
+- cloud exposure e identificação de provedores;
+- mudanças de ASN/IP e infraestrutura;
+- correlação domínio → subdomínio → certificado → IP → ASN → tecnologia → serviço → API;
+- contextualização de exposição e attack paths;
+- correlação de vulnerability intelligence somente quando houver evidência técnica suficiente.
+
+### Fase 4 — Intelligence & Risk
+- vulnerability intelligence;
+- CPE e identificação de versão;
+- CVE/EPSS/KEV/exploit context;
+- Risk Engine explicável;
+- confidence/evidence quality;
+- blast radius;
+- attack paths;
+- CTEM prioritization;
+- remediation impact simulation.
+
+### Fase 5 — Operations
+Workflows, responsáveis, SLA, exceções, comentários, reteste, Jira/GLPI/Freshservice, webhooks e exportações.
+
+### Fase 6 — BSA Intelligence Graph
+Grafo de ativos e relacionamentos, confiança por evidência, descoberta recursiva controlada, infraestrutura compartilhada, threat intelligence e priorização baseada em contexto.
 
 ### Fase 4 — Operations
 Workflows, responsáveis, SLA, exceções, comentários, reteste, Jira/GLPI/Freshservice, webhooks e exportações.
