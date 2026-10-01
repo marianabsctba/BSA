@@ -115,6 +115,16 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
         visited.add(current)
         data = collect_target(current, ["dns", "http", "tls", "ct"])
         all_evidence.extend(data["evidence"])
+        artifact_candidates = set()
+        for e in data["evidence"]:
+            if e.get("kind") != "discovery_candidate":
+                continue
+            try:
+                candidate_host, _ = normalize_target(str(e.get("value", "")))
+            except ValueError:
+                continue
+            if candidate_host == registrable or candidate_host.endswith("." + registrable):
+                artifact_candidates.add(candidate_host)
         assets = correlate_evidence(data["target"], data["evidence"])
         nodes.append({
             "target": current, "depth": depth, "reason": reason,
@@ -130,6 +140,7 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
             if name == registrable or name.endswith("." + registrable):
                 candidates.add(name)
 
+        candidates.update(artifact_candidates)
         for candidate in sorted(candidates):
             if candidate == current or candidate in visited:
                 continue
