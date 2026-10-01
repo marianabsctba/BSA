@@ -57,31 +57,52 @@ def apply_attack_path_context(priority: dict, paths: list[object]) -> dict:
     return result
 
 def assess_ctem_priority(finding: Finding, asset: Asset | None) -> dict:
-    """Return a deterministic CTEM priority breakdown using vulnerability intelligence and exposure context."""
+    """Return deterministic CTEM priority using exploitability, exposure and evidence assurance."""
     risk=assess_risk(finding,asset)
     exploitability=risk.exploitability
     exposure=risk.exposure
     business=risk.business_criticality
     confidence=risk.confidence
+    evidence_quality=max(0,min(100,int(getattr(finding,"evidence_quality",50) or 50)))
+    validation_state=str(getattr(finding,"validation_state","observed") or "observed").lower()
+
     priority=min(100,round(exploitability*0.35+exposure*0.25+business*0.25+confidence*0.15))
-    validation_state = getattr(finding, "validation_state", "observed")
-    if validation_state == "needs_validation":
-        priority = min(priority, 69)
-        action = "validate"
-    elif validation_state == "confirmed":
+    decision_reasons=list(risk.drivers)
+
+    confirmed=validation_state in {"confirmed","confirmed_evidence"}
+    high_assurance=confirmed and evidence_quality>=75
+
+    if finding.kev and high_assurance:
+        priority=min(100,priority+12)
+        decision_reasons.append("KEV confirmado com evidência suficiente")
+    if finding.epss is not None and finding.epss>=0.70 and high_assurance:
+        priority=min(100,priority+8)
+        decision_reasons.append("EPSS alto em finding confirmado")
+    if asset and "internet-facing" in asset.tags and high_assurance and (finding.kev or (finding.epss or 0)>=0.70):
+        priority=min(100,priority+5)
+        decision_reasons.append("exploração plausível em ativo exposto à Internet")
+
+    if validation_state=="needs_validation" or evidence_quality<50:
+        priority=min(priority,69)
+        action="validate"
+    elif confirmed:
         action="immediate" if priority>=85 else "expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
     else:
         action="expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
+
     return {
         "priority":priority,
         "action":action,
-        "drivers":risk.drivers,
+        "drivers":decision_reasons,
         "exploitability":exploitability,
         "exposure":exposure,
         "business_criticality":business,
         "confidence":confidence,
-        "validation_state": validation_state,
-        "evidence_quality": int(getattr(finding, "evidence_quality", 50) or 50),
+        "validation_state":validation_state,
+        "evidence_quality":evidence_quality,
+        "known_exploited":bool(finding.kev),
+        "high_exploitation_probability":bool(finding.epss is not None and finding.epss>=0.70),
+        "internet_exposed":bool(asset and "internet-facing" in asset.tags),
     }
 
 def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
