@@ -60,3 +60,26 @@ def plan_collectors(pivots: Iterable[object], enabled: set[str] | None = None, m
 def is_cache_fresh(entry: CollectionCacheEntry, now: datetime | None = None) -> bool:
     now=now or datetime.now(timezone.utc)
     return now <= entry.collected_at+timedelta(seconds=max(0,entry.ttl_seconds))
+
+
+def plan_candidate_collection(candidates: Iterable[dict], enabled: set[str] | None = None,
+                              max_jobs: int = 100, cache: Iterable[CollectionCacheEntry] = (),
+                              now: datetime | None = None) -> list[CollectorPlan]:
+    """Turn evidence-backed discovery candidates into bounded collector jobs.
+
+    Candidate evidence is treated as a pivot, not as authorization. Callers
+    must perform tenant/scope authorization before executing the returned plan.
+    """
+    class Pivot:
+        def __init__(self, item: dict):
+            self.kind = str(item.get("kind") or "hostname")
+            self.value = str(item.get("value") or "")
+            self.confidence = int(item.get("confidence", 0) or 0)
+
+    pivots=[]
+    for item in candidates:
+        value=str(item.get("value","")).strip()
+        if not value:
+            continue
+        pivots.append(Pivot(item))
+    return plan_collectors(pivots, enabled=enabled, max_jobs=max_jobs, cache=cache, now=now)
