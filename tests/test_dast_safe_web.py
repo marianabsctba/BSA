@@ -53,3 +53,15 @@ def test_safe_dast_does_not_follow_external_links(monkeypatch):
     monkeypatch.setattr(dast, "_pinned_fetch", fake)
     dast.run_safe_web_assessment("https://example.test/")
     assert not any("outside.example" in call[0] for call in calls)
+
+
+def test_safe_dast_exposes_api_validation_as_evidence(monkeypatch):
+    spec = b'{"openapi":"3.0.0","paths":{"/health":{"get":{"operationId":"health"}},"/users/{id}":{"get":{"operationId":"user"}}}}'
+    def fake(url, **kwargs):
+        return 200, {"content-type":"application/json"}, spec, url
+    monkeypatch.setattr(dast, "validate_external_target", lambda target: None)
+    monkeypatch.setattr(dast, "resolve_public", lambda host: ["203.0.113.10"])
+    monkeypatch.setattr(dast, "_pinned_fetch", fake)
+    result = dast.run_safe_web_assessment("https://example.test/openapi.json")
+    assert any(x["check"] == "api_status" for x in result["evidence"])
+    assert any(x["check"] == "api_template" for x in result["evidence"])
