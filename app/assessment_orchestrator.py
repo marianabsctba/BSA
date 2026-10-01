@@ -10,22 +10,24 @@ from typing import Callable
 
 from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
+from .exposure_signals import cloud_signals, summarize_signals
 
 
 PROFILES = {
-    "surface": ("subfinder", "amass", "dnsx", "httpx", "tlsx", "gau"),
+    "surface": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
     "rapid": ("httpx", "tlsx", "nuclei"),
     "network": ("dnsx", "httpx", "naabu", "nmap"),
-    "balanced": ("subfinder", "amass", "dnsx", "httpx", "tlsx", "gau", "katana", "safeweb", "nuclei", "naabu", "nmap"),
+    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau", "katana", "safeweb", "nuclei", "naabu", "nmap", "trufflehog"),
 }
 
 PROFILE_CAPABILITIES = {
-    "surface": ("discovery", "dns_intelligence", "fingerprint", "certificate_intelligence", "historical_surface"),
+    "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
     "rapid": ("fingerprint", "certificate_intelligence", "vulnerability"),
     "network": ("dns_intelligence", "fingerprint", "service_exposure"),
     "balanced": (
         "discovery",
         "dns_intelligence",
+        "network_intelligence",
         "fingerprint",
         "certificate_intelligence",
         "historical_surface",
@@ -33,8 +35,44 @@ PROFILE_CAPABILITIES = {
         "web_assessment",
         "vulnerability",
         "service_exposure",
+        "cloud_intelligence",
+        "credential_exposure",
     ),
 }
+
+
+def _cloud_intelligence(findings: list[dict]) -> list[dict]:
+    values = []
+    for row in findings:
+        values.append(str(row.get("asset") or ""))
+        evidence = row.get("evidence") or {}
+        for key in ("url", "matched_at", "asset"):
+            value = evidence.get(key)
+            if value:
+                values.append(str(value))
+        for key in ("cname", "san"):
+            seq = evidence.get(key) or []
+            if isinstance(seq, list):
+                values.extend(str(x) for x in seq if x)
+            elif seq:
+                values.append(str(seq))
+    summary = summarize_signals(cloud_signals(values))
+    return [
+        {
+            "asset": signal.get("value") or "cloud",
+            "category": "cloud_intelligence",
+            "title": "Cloud infrastructure signal",
+            "severity": "info",
+            "confidence": int(signal.get("confidence", 80)),
+            "evidence": {
+                "cloud_provider": signal.get("value"),
+                "reason": signal.get("reason"),
+                "validation_required": signal.get("validation_required", False),
+            },
+        }
+        for signal in summary.get("signals", [])
+    ]
+
 
 
 def run_assessment(
@@ -59,7 +97,7 @@ def run_assessment(
     for provider_name in PROFILES[profile]:
         internal["attempted"].append(provider_name)
         try:
-            if not registry.available(provider_name):
+            if not registry.available(provider_name, target):
                 continue
             internal["available"].append(provider_name)
             results = registry.execute(provider_name, target=target)
@@ -82,6 +120,10 @@ def run_assessment(
             )
 
     public = engine.export_public()
+    cloud = _cloud_intelligence(public.get("findings", []))
+    if cloud:
+        public["findings"].extend(cloud)
+        public["finding_count"] = len(public["findings"])
     public.update(
         {
             "profile": profile,
