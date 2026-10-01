@@ -80,17 +80,23 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         self.sock=self._context.wrap_socket(self.sock,server_hostname=self._tunnel_host or self.host)
 
 
-def _pinned_fetch(url: str, timeout: float = 4.0, max_bytes: int = 262144):
+def _pinned_fetch(url: str, timeout: float = 4.0, max_bytes: int = 262144, approved_ips: list[str] | None = None):
     parsed=urlparse(url)
     if parsed.scheme not in {"http","https"} or not parsed.hostname:
         raise ValueError("invalid URL")
     host=parsed.hostname.rstrip(".")
     try:
         ipaddress.ip_address(host)
+        from ..security import _public_ip
+        if not _public_ip(host):
+            raise ValueError("target resolves to non-public address")
         ips=[host]
     except ValueError:
-        from ..security import resolve_public
-        ips=resolve_public(host)
+        if approved_ips is not None:
+            ips=list(approved_ips)
+        else:
+            from ..security import resolve_public
+            ips=resolve_public(host)
     if not ips:
         raise ValueError("hostname did not resolve")
     port=parsed.port or (443 if parsed.scheme=="https" else 80)
@@ -111,7 +117,6 @@ def _pinned_fetch(url: str, timeout: float = 4.0, max_bytes: int = 262144):
 
 def _safe_surface_fetch(base_url: str, path: str, timeout: float = 2.5):
     candidate=urljoin(base_url,path)
-    validate_external_target(candidate)
     try:
         return _pinned_fetch(candidate,timeout=timeout,max_bytes=262144)
     except (OSError,ValueError,ssl.SSLError,http.client.HTTPException):
@@ -658,7 +663,6 @@ class HTTPCollector:
     name = "http"
 
     def collect(self, url: str, timeout: float = 4.0) -> list[Evidence]:
-        validate_external_target(url)
         body=b""
         redirect_chain=[]
         try:
