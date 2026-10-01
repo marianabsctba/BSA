@@ -10,6 +10,7 @@ from typing import Dict, Type
 from .assessment_providers import (
     AssessmentProvider,
     AmassProvider,
+    AsnIntelligenceProvider,
     CredentialExposureProvider,
     DnsValidationProvider,
     HistoricalUrlProvider,
@@ -23,6 +24,7 @@ from .assessment_providers import (
     ThreatIntelProvider,
     TlsIntelligenceProvider,
     WebCrawlProvider,
+    SecretExposureProvider,
     ZAPProvider,
 )
 
@@ -46,6 +48,8 @@ class AssessmentRegistry:
             "web_assessment": EngineCapability("web_assessment", "application", "Safe web exposure assessment"),
             "intelligence": EngineCapability("intelligence", "cti", "Threat intelligence correlation"),
             "credential_exposure": EngineCapability("credential_exposure", "identity", "Credential exposure intelligence"),
+            "cloud_intelligence": EngineCapability("cloud_intelligence", "cloud", "Cloud footprint and exposure intelligence"),
+            "network_intelligence": EngineCapability("network_intelligence", "network", "ASN and network ownership intelligence"),
         }
         self._register_defaults()
 
@@ -53,6 +57,7 @@ class AssessmentRegistry:
         for provider in (
             SubdomainProvider,
             AmassProvider,
+            AsnIntelligenceProvider,
             DnsValidationProvider,
             HttpProbeProvider,
             TlsIntelligenceProvider,
@@ -62,6 +67,7 @@ class AssessmentRegistry:
             NmapProvider,
             PortExposureProvider,
             SafeWebProvider,
+            SecretExposureProvider,
             OpenVASProvider,
             ZAPProvider,
             ThreatIntelProvider,
@@ -81,8 +87,11 @@ class AssessmentRegistry:
     def execute(self, name: str, *, target: str):
         return self.provider(name).execute(target)
 
-    def available(self, name: str) -> bool:
+    def available(self, name: str, target: str | None = None) -> bool:
         provider = self.provider(name)
+        supports = getattr(provider, "supports", None)
+        if callable(supports) and target is not None and not supports(target):
+            return False
         check = getattr(provider, "available", None)
         return bool(check()) if callable(check) else True
 
