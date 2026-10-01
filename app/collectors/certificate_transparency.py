@@ -18,7 +18,7 @@ class CertificateTransparencyCollector:
         req = Request(url, headers={"User-Agent": "BSA-ASM/0.3 defensive-passive-discovery"})
         try:
             with urlopen(req, timeout=timeout) as resp:
-                payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+                payload = json.loads(resp.read(2 * 1024 * 1024).decode("utf-8", errors="replace"))
         except (URLError, HTTPError, ValueError, TimeoutError):
             return []
 
