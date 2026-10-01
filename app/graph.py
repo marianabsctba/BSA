@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from hashlib import sha256
+from .risk_policy import calculate_risk
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,10 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
     for asset in assets:
         source = by_value.get(asset.value.lower())
         score = _risk_for(source, findings)
+        if source is not None:
+            asset_findings=[f for f in findings if f.asset_id==source.id and f.status=="open"]
+            if asset_findings:
+                score=max([calculate_risk(f,source)["residual_score"] for f in asset_findings]+[score])
         aid = add_node(getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset")), asset.value, asset.confidence, score)
         asset_kind = getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset"))
         if asset_kind in {"subdomain", "application"}:
@@ -189,9 +194,10 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         for finding in findings:
             if finding.asset_id != source_asset.id or finding.status != "open":
                 continue
-            fid = add_node("finding", finding.title, min(source_asset.confidence, 100), score)
-            impact = {"info":5,"low":15,"medium":35,"high":70,"critical":100}.get(finding.severity.value, 0)
-            edges.append(Relationship(aid, fid, "finding_observed", min(source_asset.confidence, 100), "finding record", impact))
+            risk=calculate_risk(finding,source_asset)
+            fid = add_node("finding", finding.title, risk["confidence"], risk["residual_score"])
+            impact = risk["impact"]
+            edges.append(Relationship(aid, fid, "finding_observed", risk["confidence"], "contextual risk engine", impact))
 
     for item in evidence:
         value = str(item.get("value", "")).strip()
