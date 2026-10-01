@@ -142,7 +142,7 @@ def extract_source_map_metadata(body: bytes, url: str) -> list[Evidence]:
                     kind="source_map_external_reference" if is_external and not in_scope else "source_map_reference"
                     if value.startswith("/api/") or value.startswith("/graphql") or value.startswith("/auth") or value.startswith("/login"):
                         kind="source_map_api_reference"
-                    elif re.search(r"\.(?:json|ya?ml|xml|env|config|ini|toml)(?:[?#].*)?$",value,re.I):
+                    elif re.search(r"\.(?:json|ya?ml|xml|env|config|ini|toml)(?:[?#].*)?$",value,re.I) or re.search(r"/(?:config|settings|manifest)(?:/|\.|$)",value,re.I):
                         kind="source_map_config_reference"
                     out.append(Evidence("http",url,kind,value,84,{"source_index":idx,"derived_from":"sourcesContent"}))
                     if len(out)>=1000:return out
