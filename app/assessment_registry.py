@@ -9,11 +9,13 @@ from typing import Dict, Type
 
 from .assessment_providers import (
     AssessmentProvider,
+    AmassProvider,
     CredentialExposureProvider,
     HttpProbeProvider,
     NmapProvider,
     NucleiProvider,
     OpenVASProvider,
+    SafeWebProvider,
     SubdomainProvider,
     ThreatIntelProvider,
     ZAPProvider,
@@ -45,9 +47,11 @@ class AssessmentRegistry:
     def _register_defaults(self):
         for provider in (
             SubdomainProvider,
+            AmassProvider,
             HttpProbeProvider,
             NucleiProvider,
             NmapProvider,
+            SafeWebProvider,
             OpenVASProvider,
             ZAPProvider,
             ThreatIntelProvider,
