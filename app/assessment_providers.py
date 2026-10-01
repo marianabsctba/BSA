@@ -14,8 +14,9 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 from .dast import run_safe_web_assessment
 from .exposure_signals import cloud_signals
@@ -683,6 +684,72 @@ class ThreatFoxProvider(_ConfiguredJsonIntelProvider):
                 "relationship": "threat-intelligence",
             },
         )]
+
+
+class HIBPProvider:
+    name = "hibp"
+    timeout = 10
+
+    def available(self) -> bool:
+        return bool(os.getenv("BSA_HIBP_API_KEY", "").strip())
+
+    def supports(self, target: str) -> bool:
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        return bool(parsed.hostname)
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        api_key = os.getenv("BSA_HIBP_API_KEY", "").strip()
+        if not api_key:
+            return []
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        domain = (parsed.hostname or "").lower()
+        if not domain:
+            return []
+        endpoint = SOURCES["hibp"].endpoint.rstrip("/") + "/breachedDomain/" + quote(domain, safe="")
+        req = Request(
+            endpoint,
+            headers={
+                "Accept": "application/json",
+                "hibp-api-key": api_key,
+                "user-agent": "Be-Safe-ASM/0.3",
+            },
+        )
+        try:
+            with urlopen(req, timeout=self.timeout) as response:
+                raw = response.read(524288)
+        except HTTPError as exc:
+            if exc.code in {403, 404}:
+                return []
+            raise
+        try:
+            data = json.loads(raw.decode("utf-8", "ignore"))
+        except ValueError:
+            return []
+        if not isinstance(data, dict) or not data:
+            return []
+        aliases = len(data)
+        breaches = sorted({
+            str(name)
+            for values in data.values()
+            if isinstance(values, list)
+            for name in values
+            if name
+        })
+        return [
+            ProviderResult(
+                "Credential exposure detected",
+                "high" if aliases >= 10 else "medium",
+                92,
+                {
+                    "asset": domain,
+                    "exposed_account_count": aliases,
+                    "breach_count": len(breaches),
+                    "breach_names": breaches[:50],
+                    "redacted": True,
+                    "relationship": "credential-exposure",
+                },
+            )
+        ]
 
 
 class OpenVASProvider:
