@@ -17,6 +17,7 @@ _LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
 ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
+CUSTOM_ROLE_PREFIX = "custom:"
 PERMISSION_CATALOG = ["assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write","audit:read","tenant:manage"]
 PERMISSIONS = {
     "superadmin": {"*"},
@@ -57,6 +58,9 @@ def _db():
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
         active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS custom_roles(
+        name TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL)
+    """)
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -235,10 +239,21 @@ def can(principal: Principal, permission: str) -> bool:
     perms = PERMISSIONS[principal.role]
     return "*" in perms or permission in perms
 
+def validate_permissions(permissions: list[str]) -> list[str]:
+    normalized=sorted(set(permissions))
+    invalid=[p for p in normalized if p not in PERMISSION_CATALOG]
+    if invalid: raise ValueError("invalid permission: "+invalid[0])
+    return normalized
+
 def role_permissions(role: str) -> list[str]:
-    if role not in ROLES:
-        raise ValueError("invalid role")
-    return sorted(PERMISSIONS[role])
+
+    if role in PERMISSIONS:
+        return sorted(PERMISSIONS[role])
+    if role.startswith(CUSTOM_ROLE_PREFIX):
+        conn=_db(); row=conn.execute("SELECT permissions FROM custom_roles WHERE name=?",(role,)).fetchone(); conn.close()
+        if not row: raise ValueError("invalid role")
+        return json.loads(row["permissions"])
+    raise ValueError("invalid role")
 
 
 def create_tenant(principal: Principal, tenant_id: str, name: str) -> dict:
