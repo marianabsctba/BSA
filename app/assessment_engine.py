@@ -172,3 +172,8 @@ class AssessmentEngine:
             text,
         )
         return text
+
+
+def mask_public_data(value: Any) -> Any:
+    """Reusable public-boundary masking for normalized product payloads."""
+    return AssessmentEngine._mask_value("payload", value)
