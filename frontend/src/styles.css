@@ -666,3 +666,54 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .lifecycle-actions,.easm-discovery-row{padding-inline:0}
  .timeline{margin-left:6px}
 }
+
+
+/* OVERVIEW EXECUTIVE PASS */
+.kpis{grid-template-columns:minmax(180px,1.35fr) repeat(4,minmax(130px,1fr));gap:11px}
+.kpi{min-height:118px;display:flex;flex-direction:column;justify-content:center;padding:17px 18px}
+.kpi span{font:700 7px "DM Mono";letter-spacing:.11em;text-transform:uppercase;color:#737f90}
+.kpi strong{font:800 30px "DM Mono";letter-spacing:-.055em;line-height:1;margin:9px 0 5px}
+.kpi small{font-size:9px;color:#697586}
+.hero-kpi{min-height:118px;border-color:#ff2d8450}
+.hero-kpi strong{font-size:40px}
+.hero-kpi span{color:#ff78af}
+.grid-main{gap:14px;margin-bottom:14px}
+.grid-main.lower{gap:14px}
+.panel-head{gap:14px}
+.panel-head h3{font-size:13px}
+.panel-head span{padding:4px 7px;border:1px solid #ffffff08;border-radius:999px;background:#ffffff02;white-space:nowrap}
+.rank-list{gap:2px}
+.rank{position:relative;border-radius:9px;padding:11px 8px}
+.rank:hover{background:linear-gradient(90deg,#ff2d8408,#ffffff025)}
+.rank strong{font-size:11px}
+.rank span{line-height:1.45}
+.rank>b{min-width:42px;text-align:center;padding:7px 8px;border:1px solid #ff2d8428;border-radius:8px;background:#ff2d8408}
+.row{border-radius:9px;padding:11px 8px}
+.row:hover{background:#ffffff025}
+.chart-panel{overflow:hidden}
+.chart-panel .chart{margin:0 -5px -2px}
+.table-panel{overflow:auto}
+.table-panel table{min-width:760px}
+.copilot{position:relative;overflow:hidden}
+.copilot:after{content:"";position:absolute;right:-90px;top:-90px;width:220px;height:220px;border-radius:50%;background:#ff2d8408;filter:blur(26px);pointer-events:none}
+.copilot-body,.copilot-icon{position:relative;z-index:1}
+@media(max-width:1250px){
+ .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .hero-kpi{grid-row:span 1}
+}
+@media(max-width:800px){
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .kpi,.hero-kpi{min-height:104px}
+ .hero-kpi strong{font-size:32px}
+ .panel-head{align-items:flex-start}
+ .panel-head span{white-space:normal;text-align:right;line-height:1.4}
+}
+@media(max-width:480px){
+ .kpis{grid-template-columns:1fr 1fr}
+ .kpi{padding:13px;min-height:94px}
+ .kpi strong{font-size:24px}
+ .hero-kpi{grid-column:1/-1}
+ .hero-kpi strong{font-size:34px}
+ .panel-head{display:block}
+ .panel-head span{display:inline-block;margin-top:6px;text-align:left}
+}
