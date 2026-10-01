@@ -259,3 +259,25 @@ def test_easm_lifecycle_contract():
         data=r.json()
         assert "summary" in data and "assets" in data
         assert data["summary"]["new"] + data["summary"]["changed"] + data["summary"]["stable"] == data["summary"]["assets"]
+
+
+def test_risk_overview_contract():
+    h=auth()
+    r=client.get("/api/v1/risk/overview",headers=h)
+    assert r.status_code==200
+    data=r.json()
+    assert "summary" in data and "items" in data
+    for item in data["items"]:
+        risk=item["risk"]
+        assert 0 <= risk["score"] <= 100
+        assert 0 <= risk["likelihood"] <= 100
+        assert 0 <= risk["impact"] <= 100
+        assert 0 <= risk["exposure"] <= 100
+
+def test_cpe_normalization_is_conservative():
+    h=auth()
+    r=client.get("/api/v1/risk/overview",headers=h)
+    assert r.status_code==200
+    for item in r.json()["items"]:
+        if item["cpe"]:
+            assert item["cpe"].startswith("cpe:2.3:") or item["cpe"].startswith("cpe:/")
