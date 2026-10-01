@@ -154,3 +154,16 @@ def prioritize_collection(target, evidence, deterministic_signals, candidate_che
     except json.JSONDecodeError:
         return {"priorities":[],"rejected_checks":[],"evidence_gaps":["Unstructured local AI response"],"rationale":raw,"confidence":0}
 
+
+def validate_asset_identity(assets, evidence):
+    system=("You are Be Safe ASM Local Asset Identity Validator. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied correlated assets and evidence. Validate whether observations should remain one asset or be split. "
+            "Never infer ownership from shared cloud/CDN/provider infrastructure. Conflicts must reduce confidence. "
+            "Return JSON only with keys: confirmed_identities, split_candidates, conflicts, unknowns, confidence, validation.")
+    raw=ask(system,"Validate asset identities. JSON only.\n"+json.dumps({"assets":assets[:200],"evidence":evidence[:500]},ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"confirmed_identities":[],"split_candidates":[],"conflicts":[],"unknowns":["Unstructured local AI response"],"confidence":0,"validation":[]}
+
