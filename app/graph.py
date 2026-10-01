@@ -77,7 +77,9 @@ def _path_explanation(nodes, edges, path):
         edge = edge_by_key.get((left, right))
         if not edge:
             continue
-        left_node = nodes.get(left)\n        right_node = nodes.get(right)\n        item = {"from": getattr(left_node, "label", left), "to": getattr(right_node, "label", right), "relationship": edge.kind, "confidence": edge.confidence, "impact": edge.impact, "source": edge.evidence}
+        left_node = nodes.get(left)
+        right_node = nodes.get(right)
+        item = {"from": getattr(left_node, "label", left), "to": getattr(right_node, "label", right), "relationship": edge.kind, "confidence": edge.confidence, "impact": edge.impact, "source": edge.evidence}
         evidence.append(item)
         if weakest is None or edge.confidence < weakest["confidence"]:
             weakest = item
