@@ -52,7 +52,7 @@ def _query(name,qtype,server,timeout):
             flags=data[off]
             tag_len=data[off+1]
             tag=data[off+2:off+2+tag_len].decode("utf-8","ignore")
-            value=f"{flags} {tag} {data[off+2+tag_len:rstart+rdlen].decode("utf-8","ignore")}"
+            value=f"{flags} {tag} {data[off+2+tag_len:rstart+rdlen].decode('utf-8','ignore')}"
         elif typ==33 and rdlen>=7:
             pri,weight,port=struct.unpack("!HHH",data[off:off+6]); host,_=_read_name(data,off+6); value=f"{pri} {weight} {port} {host}"
         else:value=""
