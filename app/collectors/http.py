@@ -368,6 +368,12 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,js_url))
         evidence.extend(extract_js_literals(js,js_url))
+        if any(x in js_url.lower() for x in ("manifest", "build-manifest", "asset-manifest", "_buildmanifest", "_ssgmanifest")):
+            for asset in extract_manifest_asset_references(body,js_url)[:100]:
+                asset_url=urljoin(origin,asset.value)
+                if urlparse(asset_url).hostname == urlparse(origin).hostname:
+                    evidence.append(Evidence("http",js_url,"manifest_discovered_asset",asset_url,86,{"source":js_url}))
+
     return evidence
 
 def _artifact_evidence(url, headers, body):
