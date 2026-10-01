@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse, urljoin
 import uuid
 import re
+import json
 from .collectors.http import _pinned_fetch, security_header_evidence
 from .security import validate_external_target, resolve_public
 
@@ -41,6 +42,20 @@ def run_safe_web_assessment(target: str) -> dict:
             findings.append(DASTFinding("surface_inventory","info",f"forms observed: {forms}",f"forms={forms}",95))
         if scripts:
             findings.append(DASTFinding("surface_inventory","info",f"scripts observed: {scripts}",f"scripts={scripts}",95))
+    api_inventory=[]
+    content_type=lower_headers.get("content-type","").lower()
+    if "json" in content_type and body:
+        try:
+            spec=json.loads(body.decode("utf-8","ignore"))
+            if isinstance(spec,dict) and (spec.get("openapi") or spec.get("swagger")):
+                for path,item in list(spec.get("paths",{}).items())[:500]:
+                    if isinstance(path,str) and isinstance(item,dict):
+                        for method,op in item.items():
+                            if method.lower() in {"get","post","put","patch","delete","head","options","trace"}:
+                                api_inventory.append({"path":path,"method":method.upper(),"operation_id":op.get("operationId") if isinstance(op,dict) else None,"auth_declared":bool(op.get("security",spec.get("security"))) if isinstance(op,dict) else bool(spec.get("security"))})
+        except (ValueError,TypeError):
+            pass
+
     # Bounded same-origin crawl: GET only, no payload mutation and no external hosts.
     discovered = []
     if body:
@@ -76,4 +91,4 @@ def run_safe_web_assessment(target: str) -> dict:
                 nxt=urljoin(candidate,ref)
                 if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
                     queue.append(nxt)
-    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
+    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"api_inventory":api_inventory,"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
