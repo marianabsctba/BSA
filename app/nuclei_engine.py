@@ -93,3 +93,23 @@ def run_nuclei(target: str, profile: str = "safe", timeout_seconds: int = 120) -
         "findings": findings,
         "invalid_output_lines": invalid_lines,
     }
+
+
+def normalize_findings(scan: dict, asset_id: str) -> list[dict]:
+    """Map Nuclei detections to the BSA finding contract without persisting them."""
+    severity_map = {"info":"info", "low":"low", "medium":"medium", "high":"high", "critical":"critical"}
+    normalized = []
+    for item in scan.get("findings", []):
+        severity = severity_map.get(str(item.get("severity", "info")).lower(), "info")
+        cve = item.get("cve_id")
+        normalized.append({
+            "asset_id": asset_id,
+            "title": item.get("name") or item.get("template_id") or "Nuclei detection",
+            "severity": severity,
+            "confidence": 90,
+            "evidence": json.dumps({"engine":"nuclei","template_id":item.get("template_id"),"matched_at":item.get("matched_at"),"matcher_name":item.get("matcher_name"),"extracted_results":item.get("extracted_results",[])}, ensure_ascii=False, sort_keys=True),
+            "vulnerability_id": cve,
+            "source_refs": item.get("references", []),
+            "affected_component": item.get("host") or item.get("url"),
+        })
+    return normalized
