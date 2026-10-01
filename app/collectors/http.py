@@ -68,6 +68,26 @@ def _safe_surface_fetch(base_url: str, path: str, timeout: float = 2.5):
     except (URLError,OSError,ValueError):
         return None, {}, b"", candidate
 
+
+JS_CHUNK_PATHS = ("/_next/static/","/static/js/","/assets/","/js/")
+
+def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
+    out=[]; seen=set()
+    patterns=[
+        (r"""['"]([^'"]+\.map(?:\?[^'"]*)?)['"]""","js_sourcemap_reference"),
+        (r"""['"]([^'"]+(?:\.chunk|\.bundle|\.min)\.js(?:\?[^'"]*)?)['"]""","js_chunk_reference"),
+        (r"""['"]((?:/api/|/graphql|/v\d+/)[A-Za-z0-9._~:/?#[\]-]{1,240})['"]""","js_endpoint_reference"),
+        (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#[\]-]{2,180}(?:json|yaml|xml|config|env|map))['"]""","js_artifact_reference"),
+    ]
+    for pattern,kind in patterns:
+        for m in re.finditer(pattern,js,re.I):
+            value=urljoin(source_url,m.group(1))
+            if value in seen: continue
+            seen.add(value)
+            out.append(Evidence("http",source_url,kind,value,84,{"source":"javascript"}))
+            if len(out)>=200: return out
+    return out
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
@@ -126,6 +146,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
                 evidence.append(Evidence("http",js_url,"js_artifact_reference",m.group(1),80,{"source":"javascript"}))
         except (URLError,OSError,ValueError):
             continue
+            evidence.extend(extract_js_surface_references(js,js_url))
     return evidence
 
 def _artifact_evidence(url, headers, body):
