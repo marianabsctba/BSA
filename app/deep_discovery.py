@@ -66,3 +66,20 @@ def derive_certificate_pivots(pivots: Iterable[DiscoveryPivot], names: Iterable[
 
 def pivot_candidates(pivots: Iterable[DiscoveryPivot], allowed_kinds: set[str]) -> list[DiscoveryPivot]:
     return [p for p in pivots if p.kind in allowed_kinds]
+
+def expand_discovery_chain(pivots: Iterable[DiscoveryPivot], max_rounds: int = 3) -> list[DiscoveryPivot]:
+    """Derive deterministic discovery candidates from already observed pivots."""
+    current=list(pivots)
+    seen={(p.kind,p.value,p.evidence_ref) for p in current}
+    for _ in range(max(1,max_rounds)):
+        derived=derive_network_pivots(current)
+        fresh=[]
+        for p in derived:
+            key=(p.kind,p.value,p.evidence_ref)
+            if key not in seen:
+                seen.add(key)
+                fresh.append(p)
+        if not fresh:
+            break
+        current.extend(fresh)
+    return current
