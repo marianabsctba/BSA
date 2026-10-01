@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1583,9 +1583,11 @@ def ctem_state(item_id: str, request: Request, payload: dict):
         target=ctem_action_transition(item,action)
         operation_key=ctem_action_idempotency_key(item_id,action,request_id)
         if not ctem_claim_operation(principal.tenant_id,operation_key,action,item_id):
-            return {"status":"already_processed","operation_key":operation_key,"state":item.get("state")}
+            previous=ctem_operation_result(principal.tenant_id,operation_key)
+            return previous or {"status":"already_processed","operation_key":operation_key}
         result=update_ctem_state(item_id,principal.tenant_id,target)
         audit(principal,"ctem_state_transition","ctem",item_id,{"action":action,"from":item.get("state"),"to":target})
+        ctem_store_operation_result(principal.tenant_id,operation_key,result)
         return result
     except KeyError:
         raise HTTPException(status_code=404,detail="CTEM item not found")
