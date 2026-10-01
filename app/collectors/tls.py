@@ -3,15 +3,17 @@ import ssl
 from datetime import datetime, timezone
 
 from .base import Evidence
+from ..security import validate_external_target
 
 
 class TLSCollector:
     name = "tls"
 
     def collect(self, target: str, port: int = 443, timeout: float = 3.0) -> list[Evidence]:
+        host, _ = validate_external_target(target)
         context = ssl.create_default_context()
-        with socket.create_connection((target, port), timeout=timeout) as sock:
-            with context.wrap_socket(sock, server_hostname=target) as tls:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=host) as tls:
                 cert = tls.getpeercert()
                 cipher = tls.cipher()
                 protocol = tls.version()
