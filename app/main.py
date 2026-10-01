@@ -19,7 +19,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
+from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
@@ -69,6 +69,18 @@ async def security_headers(request: Request, call_next):
         response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
     return response
 
+
+@app.post("/api/v1/auth/logout")
+def auth_logout(request: Request):
+    principal=require(request,"assets:read")
+    auth=request.headers.get("Authorization","")
+    token=auth.split(" ",1)[1] if auth.lower().startswith("bearer ") else ""
+    try:
+        claims=__import__("app.auth",fromlist=["_decode"])._decode(token)
+        revoke_session(principal,claims.get("jti"))
+    except Exception:
+        revoke_session(principal)
+    return {"ok":True}
 
 @app.get("/health")
 def health():
