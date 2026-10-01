@@ -206,7 +206,7 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         confidence = int(item.get("confidence", 0) or 0)
         source = str(item.get("source", "unknown"))
 
-        if kind in {"a", "aaaa"} and value:
+        if kind in {"a", "aaaa", "a_record", "aaaa_record"} and value:
             ip_id = add_node("ip", value, confidence)
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
             if host_id:
@@ -217,6 +217,18 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
             cert_id = add_node("certificate", value, confidence)
             if host_id:
                 edges.append(Relationship(host_id, cert_id, "certificate_observed", confidence, "Certificate Transparency"))
+
+        if kind.startswith("technology:") and value:
+            host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
+            tech_id = add_node("technology", value, confidence)
+            if host_id:
+                edges.append(Relationship(host_id, tech_id, "technology_observed", confidence, source))
+
+        if kind == "caa" and value:
+            host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
+            caa_id = add_node("certificate-policy", value, confidence)
+            if host_id:
+                edges.append(Relationship(host_id, caa_id, "certificate_policy", confidence, source))
 
         if source in {"threat-intelligence", "threat_intel", "cti"} and value:
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
