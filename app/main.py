@@ -664,8 +664,7 @@ def rbac_permissions():
     return {"permissions": PERMISSION_CATALOG}
 
 class UserScopeRequest(BaseModel):
-    scope_type: str
-    scope_value: str = Field(min_length=1, max_length=240)
+    scope_id: str = Field(min_length=1, max_length=120)
     active: bool = True
 
 @app.get("/api/v1/users/{user_id}/scopes")
@@ -678,7 +677,7 @@ def users_scopes_list(user_id: str, request: Request):
 def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
     p=current_principal(request)
     try:
-        result=assign_scope_to_user(p,user_id,payload.scope_value)
+        result=assign_scope_to_user(p,user_id,payload.scope_id)
         audit(p,"scope_change","user",user_id,result)
         return result
     except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
