@@ -45,7 +45,8 @@ def _artifact_evidence(url, headers, body):
         evidence.append(Evidence("http",url,f"web_artifact:{kind}",f"content-type:{content_type}",91,{"sha256":digest,"bytes":len(body)}))
         text_body=body.decode("utf-8","ignore")[:65536]
         # Extract only public references; no execution and no recursive fetching here.
-        for match in re.finditer(r"https?://[^\\s<>'\"\\]+|(?:^|[\\s\"'(/])/[A-Za-z0-9._~:/?#[\\]-]{2,}", text_body):
+        pattern = r"""https?://[^\s<>'"\\]+|(?:^|[\s"'(/])/[A-Za-z0-9._~:/?#[\]-]{2,}"""
+        for match in re.finditer(pattern, text_body):
             ref=match.group(0).strip(" \\"'()[]{}<>")
             if ref:
                 evidence.append(Evidence("http",url,"artifact_reference",ref[:500],78,{"artifact_kind":kind}))
