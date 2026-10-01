@@ -547,7 +547,7 @@ def require(request: Request, permission: str):
 
 @app.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
-    token = authenticate(payload.email, payload.password)
+    token = authenticate(payload.email, payload.password, request.client.host if request.client else "")
     if not token:
         raise HTTPException(status_code=401, detail="invalid credentials")
     principal = principal_from_token(token)
