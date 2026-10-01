@@ -292,3 +292,16 @@ def test_cve_correlation_requires_confirmed_version():
     assert confirmed[0].state=="confirmed_affected"
     safe=match_cve("nginx","1.3.0",None,candidates)
     assert safe[0].state=="not_affected"
+
+
+def test_policy_aware_risk_has_inherent_and_residual_scores():
+    h=auth()
+    response=client.get("/api/v1/risk/register",headers=h)
+    assert response.status_code==200
+    data=response.json()
+    assert "policy" in data and "summary" in data and "items" in data
+    for item in data["items"]:
+        risk=item["risk"]
+        assert 0<=risk["inherent_score"]<=100
+        assert 0<=risk["residual_score"]<=100
+        assert 0<=risk["uncertainty"]<=100
