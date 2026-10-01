@@ -87,40 +87,7 @@ def _cloud_intelligence(findings: list[dict]) -> list[dict]:
 
 
 def _finding_key(row: dict) -> tuple:
-    evidence = row.get("evidence") or {}
-    classification = evidence.get("classification") if isinstance(evidence, dict) else {}
-    classification = classification if isinstance(classification, dict) else {}
-    vulnerability_id = (
-        evidence.get("vulnerability_id")
-        or evidence.get("cve")
-        or classification.get("cve-id")
-        or classification.get("cve_id")
-    )
-    if isinstance(vulnerability_id, list):
-        vulnerability_id = next(
-            (str(x).upper() for x in vulnerability_id if str(x).upper().startswith("CVE-")),
-            "",
-        )
-    else:
-        vulnerability_id = str(vulnerability_id or "").upper()
-    asset = str(row.get("asset") or "").strip().lower().rstrip(".")
-    if vulnerability_id:
-        component = str(
-            evidence.get("matched_at")
-            or evidence.get("url")
-            or evidence.get("asset")
-            or evidence.get("host")
-            or asset
-        ).strip().lower().rstrip(".")
-        return ("vulnerability", asset, vulnerability_id, component)
-    relationship = evidence.get("relationship") if isinstance(evidence, dict) else None
-    return (
-        "generic",
-        asset,
-        str(row.get("category") or ""),
-        str(row.get("title") or ""),
-        str(relationship or ""),
-    )
+    return vulnerability_identity_key(row)
 
 
 def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
