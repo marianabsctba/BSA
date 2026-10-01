@@ -1,9 +1,17 @@
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+from urllib.parse import urljoin
 from hashlib import sha256
 
 from .base import Evidence
 from ..security import validate_external_target, validate_redirect
+
+
+
+
+class _NoRedirect:
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 SECURITY_HEADERS = (
@@ -45,17 +53,22 @@ class HTTPCollector:
         body=b""
         redirect_chain=[]
         try:
-            with urlopen(req, timeout=timeout) as resp:
+            opener = __import__("urllib.request", fromlist=["build_opener"]).build_opener(_NoRedirect())
+            with opener.open(req, timeout=timeout) as resp:
                 headers=resp.headers
                 status=resp.status
                 final_url=resp.geturl()
                 validate_redirect(final_url)
                 body=resp.read(131072)
-                if final_url != url:
-                    redirect_chain.append(final_url)
         except HTTPError as exc:
             headers = exc.headers
             status = exc.code
+            if 300 <= status < 400:
+                location = headers.get("Location")
+                if location:
+                    redirect_url = urljoin(url, location)
+                    validate_redirect(redirect_url)
+                    redirect_chain.append(redirect_url)
         except URLError:
             return []
 
