@@ -478,6 +478,27 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_audit_timeline(item: dict, verifications: list[dict]) -> list[dict]:
+    """Return a chronological, evidence-linked CTEM audit timeline."""
+    timeline=[{
+        "event":"created",
+        "timestamp":item.get("created_at"),
+        "state":item.get("state"),
+        "priority":int(item.get("priority",0) or 0),
+        "evidence_refs":list(item.get("evidence_refs",[]) or []),
+    }]
+    for verification in sorted(verifications,key=lambda x:str(x.get("verified_at",""))):
+        timeline.append({
+            "event":"verification",
+            "timestamp":verification.get("verified_at"),
+            "result":verification.get("result"),
+            "state":verification.get("state"),
+            "evidence_refs":list(verification.get("evidence_refs",[]) or []),
+            "notes":verification.get("notes",""),
+        })
+    return timeline
+
+
 def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: list[str], notes: str = "") -> dict:
     """Close a CTEM item only with explicit verification evidence."""
     import uuid
