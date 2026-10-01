@@ -19,6 +19,7 @@ class Scope:
         return bool(host and self.allows_hostname(host))
 
 import fnmatch
+import os
 import secrets
 import time
 from .auth import _db, Principal
@@ -39,7 +40,7 @@ def bootstrap_scope(tenant_id="tenant-demo"):
     ensure_scope_schema()
     conn=_db()
     row=conn.execute("SELECT id FROM scopes WHERE tenant_id=? LIMIT 1",(tenant_id,)).fetchone()
-    if not row:
+    if not row and os.getenv("BSA_ENV","development").lower() not in {"production","prod"}:
         sid=secrets.token_hex(10)
         conn.execute("INSERT INTO scopes(id,tenant_id,name,pattern,created_at) VALUES(?,?,?,?,?)",
                      (sid,tenant_id,"Tenant Full Scope","*",int(time.time())))
@@ -77,9 +78,12 @@ def scoped_patterns(principal: Principal):
     conn.close(); return {r["pattern"] for r in rows}
 
 def asset_in_scope(principal: Principal,value:str):
-    if principal.role in {"admin","superadmin"}: return True
     patterns=scoped_patterns(principal)
-    return bool(patterns) and any(fnmatch.fnmatch(value.lower(),p.lower()) for p in patterns)
+    if patterns:
+        return any(fnmatch.fnmatch(value.lower(),p.lower()) for p in patterns)
+    if os.getenv("BSA_ENV","development").lower() not in {"production","prod"} and principal.role=="superadmin":
+        return True
+    return False
 
 def create_group(principal: Principal,name:str,pattern:str):
     if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
