@@ -431,6 +431,23 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             map_url=urljoin(asset_url,sm.group(1))
             if urlparse(map_url).hostname == urlparse(origin).hostname:
                 evidence.append(Evidence("http",asset_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
+    # Fetch bounded source-map candidates and extract metadata.
+    source_maps=[ev.value for ev in evidence if ev.kind=="source_map_candidate" and isinstance(ev.value,str)]
+    for map_url in list(dict.fromkeys(source_maps))[:max_js]:
+        parsed=urlparse(map_url)
+        if parsed.hostname != urlparse(origin).hostname:
+            continue
+        map_path=parsed.path or "/"
+        if parsed.query:
+            map_path += "?" + parsed.query
+        status,headers,body,final_url=_safe_surface_fetch(origin,map_path,timeout=3.0)
+        if not (status and 200 <= status < 300 and body):
+            continue
+        evidence.append(Evidence("http",map_url,"source_map_analyzed",map_url,88,{"bytes":len(body)}))
+        try:
+            evidence.extend(extract_source_map_metadata(body,map_url))
+        except Exception:
+            pass
     return evidence
 
 def _artifact_evidence(url, headers, body):
