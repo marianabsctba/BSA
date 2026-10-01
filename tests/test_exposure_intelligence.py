@@ -316,3 +316,15 @@ def test_risk_attack_paths_contract():
     for path in data["paths"]:
         assert 0<=path["score"]<=100
         assert "decision_factors" in path
+
+
+def test_risk_remediation_options_contract():
+    h=auth()
+    response=client.get("/api/v1/risk/remediation-options",headers=h)
+    assert response.status_code==200
+    data=response.json()
+    assert "summary" in data and "options" in data
+    for item in data["options"]:
+        assert 0<=item["before"]<=100
+        assert 0<=item["after"]<=100
+        assert 0<=item["reduction_percent"]<=100
