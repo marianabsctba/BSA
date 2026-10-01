@@ -6,7 +6,7 @@ client=TestClient(app)
 def auth():
     r=client.post("/api/v1/auth/login",json={"email":"admin@besafe.local","password":"Bsa-Test-Only-2026!"})
     assert r.status_code==200
-    return {"Authorization":"Bearer "+r.json()["access_token"]}
+    return {}
 
 def test_asset_detail_contains_operational_context():
     r=client.get("/api/v1/assets/ast-002",headers=auth())
