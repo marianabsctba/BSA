@@ -36,6 +36,7 @@ from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, T
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
+from .dast import run_safe_web_assessment
 
 bootstrap()
 bootstrap_scope()
@@ -895,6 +896,10 @@ class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
     checks: list[str] = Field(default_factory=lambda: ["dns", "http", "tls", "ct"])
 
+class DASTRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=2048)
+    authorization_ref: str = Field(min_length=1, max_length=200)
+
 
 
 
@@ -1198,6 +1203,19 @@ def score(request: Request):
         "rationale": result.rationale,
         "assets": breakdowns,
     }
+
+
+@app.post("/api/v1/dast/safe-web")
+def dast_safe_web(payload: DASTRequest, request: Request):
+    principal=require(request, "discovery:run")
+    if not payload.authorization_ref.strip():
+        raise HTTPException(status_code=400, detail="authorization_ref is required")
+    if not asset_in_scope(principal, payload.target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
+    try:
+        return run_safe_web_assessment(payload.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/discovery")
