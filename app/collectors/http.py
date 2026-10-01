@@ -134,16 +134,16 @@ def extract_source_map_metadata(body: bytes, url: str) -> list[Evidence]:
             text_body=contents[idx][:262144]
             for m in re.finditer(r"""(?:https?://|/)(?:[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{2,300})""",text_body):
                 value=m.group(0)
-                if value.startswith("/") or urlparse(value).hostname == urlparse(url).hostname:
+                is_external=value.startswith("http://") or value.startswith("https://")
+                in_scope=value.startswith("/") or (urlparse(value).hostname == urlparse(url).hostname)
+                if in_scope or is_external:
                     out.append(Evidence("http",url,"source_map_embedded_reference",value,82,{"source_index":idx}))
                     out.append(Evidence("http",url,"sourcemap_embedded_reference",value,82,{"source_index":idx}))
-                    kind="source_map_reference"
+                    kind="source_map_external_reference" if is_external and not in_scope else "source_map_reference"
                     if value.startswith("/api/") or value.startswith("/graphql") or value.startswith("/auth") or value.startswith("/login"):
                         kind="source_map_api_reference"
                     elif re.search(r"\.(?:json|ya?ml|xml|env|config|ini|toml)(?:[?#].*)?$",value,re.I):
                         kind="source_map_config_reference"
-                    elif value.startswith("http://") or value.startswith("https://"):
-                        kind="source_map_external_reference"
                     out.append(Evidence("http",url,kind,value,84,{"source_index":idx,"derived_from":"sourcesContent"}))
                     if len(out)>=1000:return out
     return out[:1000]
