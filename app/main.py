@@ -994,7 +994,12 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         cpe = vuln_ctx["cpe"]
 
         title = str(row.get("title") or "Exposure evidence")
-        finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}|{vulnerability_id or ''}".encode()).hexdigest()[:16]
+        component_key = str(vuln_ctx.get("affected_component") or canonical_value).strip().lower().rstrip(".")
+        if vulnerability_id:
+            finding_identity = f"{principal.tenant_id}|{asset.id}|{vulnerability_id}|{component_key}"
+        else:
+            finding_identity = f"{principal.tenant_id}|{asset.id}|{title}"
+        finding_digest = sha256(finding_identity.encode()).hexdigest()[:16]
         finding_id = f"fdg-{finding_digest}"
         finding = next((x for x in STORE_FINDINGS if x.tenant_id == principal.tenant_id and x.id == finding_id), None)
 
