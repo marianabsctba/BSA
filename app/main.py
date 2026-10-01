@@ -6,11 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 import os
+from hashlib import sha256
 
 from .changes import seed_changes
 from .graph import RELATIONSHIPS, build_attack_surface_graph, build_risk_graph, simulate_remediation
 from .intelligence import ownership_confidence, blast_radius, finding_context_score
-from .models import Dashboard
+from .models import Dashboard, Asset, AssetType, Finding, Severity
 from .scoring import exposure_score
 from .exposure import exposure_breakdown, exposure_band
 from .discovery import collect_target, discover_surface, adaptive_discovery
@@ -911,6 +912,99 @@ class AssessmentRequest(BaseModel):
     profile: str = Field(default="rapid", pattern="^(surface|rapid|network|balanced)$")
 
 
+def _materialize_assessment_result(principal, result: dict) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    created_assets = 0
+    created_findings = 0
+    created_ctem = 0
+
+    scoped_assets, _ = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    by_value = {a.value.lower(): a for a in scoped_assets}
+
+    for row in result.get("findings", []):
+        value = str(row.get("asset") or "").strip()
+        if not value:
+            continue
+        confidence = max(0, min(100, int(row.get("confidence", 50) or 50)))
+        asset = by_value.get(value.lower())
+
+        if asset is None:
+            digest = sha256(f"{principal.tenant_id}|{value}".encode()).hexdigest()[:16]
+            kind = AssetType.APPLICATION if "://" in value else AssetType.SUBDOMAIN if value.count(".") >= 2 else AssetType.DOMAIN
+            asset = Asset(
+                tenant_id=principal.tenant_id,
+                id=f"ast-{digest}",
+                value=value,
+                type=kind,
+                status="observed",
+                confidence=confidence,
+                criticality=3,
+                source="assessment-intelligence",
+                tags=["assessment-observed"],
+                first_seen=now,
+                last_seen=now,
+                fingerprint=f"fp-{digest}",
+                evidence_count=1,
+                sources=["assessment-intelligence"],
+            )
+            STORE_ASSETS.append(asset)
+            by_value[value.lower()] = asset
+            created_assets += 1
+        else:
+            asset.last_seen = now
+            asset.confidence = max(asset.confidence, confidence)
+            asset.evidence_count += 1
+            if "assessment-intelligence" not in asset.sources:
+                asset.sources.append("assessment-intelligence")
+
+        try:
+            severity = Severity(str(row.get("severity") or "info").lower())
+        except ValueError:
+            severity = Severity.INFO
+
+        title = str(row.get("title") or "Exposure evidence")
+        finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}".encode()).hexdigest()[:16]
+        finding_id = f"fdg-{finding_digest}"
+        finding = next((x for x in STORE_FINDINGS if x.tenant_id == principal.tenant_id and x.id == finding_id), None)
+
+        if finding is None:
+            finding = Finding(
+                tenant_id=principal.tenant_id,
+                id=finding_id,
+                asset_id=asset.id,
+                title=title,
+                severity=severity,
+                confidence=confidence,
+                status="open",
+                evidence="Evidence confirmed by assessment intelligence.",
+                remediation="Review the exposure and validate remediation.",
+                detected_at=now,
+            )
+            STORE_FINDINGS.append(finding)
+            created_findings += 1
+
+        base = {"critical": 90, "high": 75, "medium": 55, "low": 30, "info": 10}[severity.value]
+        priority = max(0, min(100, round(base * .8 + confidence * .2)))
+        if priority >= 45:
+            upsert_ctem_item({
+                "item_id": f"assessment:{principal.tenant_id}:{finding.id}",
+                "asset_id": asset.id,
+                "finding_id": finding.id,
+                "priority": priority,
+                "action": "immediate" if priority >= 85 else "expedite" if priority >= 70 else "plan",
+                "title": "Exposure requiring remediation attention",
+                "drivers": [f"severity={severity.value}", f"confidence={confidence}"],
+                "evidence_refs": [],
+            }, principal.tenant_id)
+            created_ctem += 1
+
+    return {
+        "assets_created": created_assets,
+        "findings_created": created_findings,
+        "ctem_items": created_ctem,
+    }
+
+
 @app.post("/api/v1/exposure/assessment")
 def exposure_assessment(payload: AssessmentRequest, request: Request):
     principal = require(request, "discovery:run")
@@ -940,6 +1034,7 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
             "partial_coverage": result.get("partial_coverage", False),
         },
     )
+    result["materialization"] = _materialize_assessment_result(principal, result)
     return result
 
 
