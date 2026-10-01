@@ -293,6 +293,33 @@ def extract_frontend_manifest_candidates(body: bytes, url: str) -> list[Evidence
             if len(out)>=200: return out
     return out
 
+
+def extract_manifest_asset_references(body: bytes, manifest_url: str) -> list[Evidence]:
+    """Parse common frontend manifests without executing JavaScript."""
+    raw=body[:2097152].decode("utf-8","ignore")
+    out=[]; seen=set()
+    def add(value,kind="manifest_asset"):
+        if not isinstance(value,str) or not value or value in seen: return
+        if not (value.endswith((".js",".map",".json",".css")) or "/_next/" in value or "/_nuxt/" in value):
+            return
+        seen.add(value)
+        out.append(Evidence("http",manifest_url,kind,value,84,{"source":"frontend_manifest"}))
+    try:
+        obj=json.loads(raw)
+        def walk(v):
+            if len(out)>=500:return
+            if isinstance(v,str): add(v)
+            elif isinstance(v,dict):
+                for x in v.values(): walk(x)
+            elif isinstance(v,list):
+                for x in v: walk(x)
+        walk(obj)
+    except Exception:
+        for m in re.finditer(r"""["']([^"']+\.(?:js|map|json|css)(?:\?[^"']*)?)["']""",raw,re.I):
+            add(m.group(1))
+            if len(out)>=500: break
+    return out
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery."""
     validate_external_target(url)
