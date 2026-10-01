@@ -14,10 +14,10 @@ from .exposure_signals import cloud_signals, summarize_signals
 
 
 PROFILES = {
-    "surface": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
+    "surface": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
     "rapid": ("httpx", "tlsx", "nuclei"),
     "network": ("dnsx", "httpx", "naabu", "nmap"),
-    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "threatfox", "hibp", "trufflehog"),
+    "balanced": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "threatfox", "hibp", "trufflehog"),
 }
 
 PROFILE_CAPABILITIES = {
