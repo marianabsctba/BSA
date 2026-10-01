@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1497,6 +1497,16 @@ def ctem_operations(request: Request):
     summary=ctem_operational_summary(items)
     summary["remediation_coverage"]=ctem_remediation_coverage(items)
     return {"summary":summary,"items":items}
+
+@app.get("/api/v1/ctem/{item_id}/audit")
+def ctem_audit(item_id: str, request: Request):
+    principal=require(request,"findings:read")
+    items=list_ctem_items(principal.tenant_id)
+    item=next((x for x in items if x.get("item_id")==item_id),None)
+    if item is None:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    verifications=ctem_verification_history(item_id,principal.tenant_id)
+    return {"item_id":item_id,"timeline":ctem_audit_timeline(item,verifications)}
 
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
