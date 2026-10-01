@@ -376,21 +376,43 @@ def create_custom_role(principal: Principal, name: str, permissions: list[str]) 
     conn.commit(); conn.close()
     return {"name":role_name,"permissions":perms}
 
-def create_tenant(principal: Principal, tenant_id: str, name: str) -> dict:
+SUPPORTED_LOCALES={"pt-BR","en","es"}
+
+def tenant_settings(principal: Principal) -> dict:
+    conn=_db()
+    row=conn.execute("SELECT id,name,active,locale FROM tenants WHERE id=?",(principal.tenant_id,)).fetchone()
+    conn.close()
+    if not row: raise ValueError("tenant not found")
+    return dict(row)
+
+def update_tenant_locale(principal: Principal, locale: str) -> dict:
+    if principal.role not in {"admin","superadmin"} and not can(principal,"tenant:manage"):
+        raise PermissionError("admin required")
+    if locale not in SUPPORTED_LOCALES:
+        raise ValueError("unsupported locale")
+    conn=_db()
+    conn.execute("UPDATE tenants SET locale=? WHERE id=?",(locale,principal.tenant_id))
+    conn.commit()
+    row=conn.execute("SELECT id,name,active,locale FROM tenants WHERE id=?",(principal.tenant_id,)).fetchone()
+    conn.close()
+    return dict(row)
+
+def create_tenant(principal: Principal, tenant_id: str, name: str, locale: str = "pt-BR") -> dict:
     if principal.role != "superadmin":
         raise PermissionError("superadmin required")
     conn = _db()
-    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)", (tenant_id, name))
+    if locale not in SUPPORTED_LOCALES: raise ValueError("unsupported locale")
+    conn.execute("INSERT INTO tenants(id,name,locale) VALUES(?,?,?)", (tenant_id, name, locale))
     conn.commit()
     conn.close()
-    return {"id": tenant_id, "name": name, "active": True}
+    return {"id": tenant_id, "name": name, "active": True, "locale": locale}
 
 
 def list_tenants(principal: Principal) -> list[dict]:
     if principal.role != "superadmin":
         raise PermissionError("superadmin required")
     conn = _db()
-    rows = conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()
+    rows = conn.execute("SELECT id,name,active,locale FROM tenants ORDER BY name").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
