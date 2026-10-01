@@ -95,3 +95,23 @@ def test_surface_change_without_evidence_is_not_prioritized():
     out=prioritize_surface_change({"fingerprint":"x","exposure_score":90},asset,[])
     assert out["state"] == "insufficient_evidence"
     assert out["priority"] == 0
+
+def test_ctem_queue_has_controlled_state_transitions_and_tenant_isolation(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "ctem.db"))
+    item=history.upsert_ctem_item({
+        "asset_id":"asset-1","finding_id":"finding-1","priority":90,"action":"immediate",
+        "title":"Critical exposed service","drivers":["KEV"],"evidence_refs":["e:1"]},"tenant-a")
+    assert item["state"] == "new"
+    history.update_ctem_state(item["item_id"],"tenant-a","acknowledged")
+    history.update_ctem_state(item["item_id"],"tenant-a","in_progress")
+    history.update_ctem_state(item["item_id"],"tenant-a","resolved")
+    done=history.update_ctem_state(item["item_id"],"tenant-a","verified")
+    assert done["state"] == "verified"
+    assert history.list_ctem_items("tenant-b") == []
+    try:
+        history.update_ctem_state(item["item_id"],"tenant-a","new")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid backward CTEM transition was accepted")
