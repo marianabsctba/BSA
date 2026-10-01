@@ -745,6 +745,7 @@ class HIBPProvider:
                     "exposed_account_count": aliases,
                     "breach_count": len(breaches),
                     "breach_names": breaches[:50],
+                    "source_attribution": "Have I Been Pwned",
                     "redacted": True,
                     "relationship": "credential-exposure",
                 },
