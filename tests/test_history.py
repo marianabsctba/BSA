@@ -358,7 +358,7 @@ def test_tenant_scope_never_leaks_cross_tenant_assets_or_findings(monkeypatch):
     monkeypatch.setattr(main, "asset_in_scope", lambda principal, value: value == "public.example")
     from app.main import tenant_scope
     from types import SimpleNamespace
-    principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user",role="user")
+    principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user",role="superadmin")
     assets=[
       SimpleNamespace(id="a1",tenant_id="tenant-a",value="public.example"),
       SimpleNamespace(id="b1",tenant_id="tenant-b",value="b.example"),
