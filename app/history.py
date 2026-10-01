@@ -478,6 +478,28 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_next_action(item: dict) -> dict:
+    """Derive an operationally safe next action from explicit CTEM state."""
+    state=item.get("state")
+    if state=="new":
+        action="acknowledge"
+    elif state=="acknowledged":
+        action="start_remediation"
+    elif state=="in_progress":
+        action="submit_for_verification"
+    elif state=="resolved":
+        action="verify"
+    elif state=="verified":
+        action="closed"
+    else:
+        action="review"
+    return {
+        "action":action,
+        "requires_evidence":action in {"submit_for_verification","verify"},
+        "state":state,
+    }
+
+
 def ctem_queue_page(items: list[dict], *, page: int = 1, page_size: int = 50) -> dict:
     """Paginate the canonical CTEM queue with bounded server-side page size."""
     if page < 1:
