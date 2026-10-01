@@ -63,5 +63,5 @@ def test_safe_dast_exposes_api_validation_as_evidence(monkeypatch):
     monkeypatch.setattr(dast, "resolve_public", lambda host: ["203.0.113.10"])
     monkeypatch.setattr(dast, "_pinned_fetch", fake)
     result = dast.run_safe_web_assessment("https://example.test/openapi.json")
-    assert any(x["check"] == "api_status" for x in result["evidence"])
-    assert any(x["check"] == "api_template" for x in result["evidence"])
+    assert any(x.get("check") == "api_status" for x in result["evidence"])
+    assert any(x.get("check") == "api_template" for x in result["evidence"])
