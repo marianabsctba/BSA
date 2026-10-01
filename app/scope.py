@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from urllib.parse import urlparse
+import ipaddress
+import unicodedata
 
 
 @dataclass(frozen=True)
@@ -77,10 +79,47 @@ def scoped_patterns(principal: Principal):
         WHERE us.user_id=? AND s.tenant_id=? AND s.active=1""",(principal.user_id,principal.tenant_id)).fetchall()
     conn.close(); return {r["pattern"] for r in rows}
 
+def _normalize_scope_hostname(value: str) -> str:
+    raw=str(value or "").strip()
+    if not raw or any(ch in raw for ch in "/?#@"):
+        raise ValueError("target must be a hostname")
+    candidate=raw.rstrip(".").lower()
+    try:
+        ipaddress.ip_address(candidate)
+        return candidate
+    except ValueError:
+        pass
+    try:
+        candidate=candidate.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("invalid hostname") from exc
+    labels=candidate.split(".")
+    if any(not label or len(label)>63 or label.startswith("-") or label.endswith("-") for label in labels):
+        raise ValueError("invalid hostname")
+    return candidate
+
+def _scope_pattern_matches(hostname: str, pattern: str) -> bool:
+    try:
+        normalized=_normalize_scope_hostname(hostname)
+    except ValueError:
+        return False
+    pattern=pattern.strip().rstrip(".").lower()
+    if pattern=="*":
+        return True
+    try:
+        pattern=_normalize_scope_hostname(pattern)
+    except ValueError:
+        return False
+    return normalized==pattern or normalized.endswith("." + pattern)
+
 def asset_in_scope(principal: Principal,value:str):
+    try:
+        hostname=_normalize_scope_hostname(value)
+    except ValueError:
+        return False
     patterns=scoped_patterns(principal)
     if patterns:
-        return any(fnmatch.fnmatch(value.lower(),p.lower()) for p in patterns)
+        return any(_scope_pattern_matches(hostname,p) for p in patterns)
     if os.getenv("BSA_ENV","development").lower() not in {"production","prod"} and principal.role=="superadmin":
         return True
     return False
