@@ -48,3 +48,15 @@ def test_discovery_run_diff_tracks_added_removed_and_changed(tmp_path, monkeypat
     assert second["summary"]["added"] == 1
     assert second["summary"]["removed"] == 1
     assert second["summary"]["changed"] == 1
+
+def test_diff_risk_context_adds_exposure_for_new_and_changed_assets():
+    from app.history import diff_risk_context
+    from types import SimpleNamespace
+    from app.models import Finding, Severity
+    a=SimpleNamespace(fingerprint="a",id="asset-a",value="api.example.org",criticality=5,
+                      confidence=95,tags=["internet-facing","production"],type=SimpleNamespace(value="application"))
+    finding=Finding(id="f",asset_id="asset-a",title="critical",severity=Severity.CRITICAL,confidence=95,evidence="e")
+    diff={"added":[{"fingerprint":"a","value":"api.example.org"}],"removed":[],"changed":[]}
+    out=diff_risk_context(diff,[a],[finding])
+    assert out["added"][0]["exposure_score"] > 0
+    assert out["added"][0]["exposure_band"] in {"low","medium","high","critical"}
