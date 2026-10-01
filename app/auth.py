@@ -190,6 +190,43 @@ def list_users(principal: Principal) -> list[dict]:
     conn.close()
     return [dict(r) for r in rows]
 
+def update_user(principal: Principal, user_id: str, name: str, role: str | None = None) -> dict:
+    if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
+    if role is not None and role not in ROLES: raise ValueError("invalid role")
+    conn=_db()
+    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    if not row: conn.close(); raise ValueError("user not found")
+    if user_id == principal.user_id and role and role != principal.role: conn.close(); raise ValueError("cannot change your own role")
+    conn.execute("UPDATE users SET name=?, role=COALESCE(?,role) WHERE id=? AND tenant_id=?", (name,role,user_id,principal.tenant_id))
+    conn.commit()
+    out=dict(conn.execute("SELECT id,tenant_id,email,name,role,active,created_at FROM users WHERE id=?", (user_id,)).fetchone())
+    conn.close()
+    return out
+
+def set_user_active(principal: Principal, user_id: str, active: bool) -> dict:
+    if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
+    conn=_db()
+    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    if not row: conn.close(); raise ValueError("user not found")
+    if user_id == principal.user_id and not active: conn.close(); raise ValueError("cannot deactivate current user")
+    conn.execute("UPDATE users SET active=? WHERE id=? AND tenant_id=?", (1 if active else 0,user_id,principal.tenant_id))
+    if not active: conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id))
+    conn.commit()
+    out=dict(conn.execute("SELECT id,tenant_id,email,name,role,active,created_at FROM users WHERE id=?", (user_id,)).fetchone())
+    conn.close()
+    return out
+
+def reset_user_password(principal: Principal, user_id: str, password: str) -> dict:
+    if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
+    _validate_password(password)
+    conn=_db()
+    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    if not row: conn.close(); raise ValueError("user not found")
+    conn.execute("UPDATE users SET password_hash=? WHERE id=? AND tenant_id=?", (_hash(password),user_id,principal.tenant_id))
+    conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id))
+    conn.commit(); conn.close()
+    return {"ok":True,"user_id":user_id,"sessions_revoked":True}
+
 def can(principal: Principal, permission: str) -> bool:
     perms = PERMISSIONS[principal.role]
     return "*" in perms or permission in perms
