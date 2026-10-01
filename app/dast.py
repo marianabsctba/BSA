@@ -62,6 +62,8 @@ def run_safe_web_assessment(target: str) -> dict:
         if "{" in path:
             api_validation.append({"path":path,"method":item["method"],"status":"template","reason":"path parameter requires an explicit test value"})
             continue
+        if item["method"] != "GET":
+            continue
         candidate=urljoin(url,path)
         cp=urlparse(candidate)
         if cp.hostname != parsed.hostname:
@@ -85,7 +87,7 @@ def run_safe_web_assessment(target: str) -> dict:
                 discovered.append(absolute)
         if parsed.scheme == "https" and re.search(r"(?:src|href)=['\"]http://", html, re.I):
             findings.append(DASTFinding("mixed_content","medium","HTTPS page references HTTP resources","http:// resource",90))
-        for action in re.findall(r"<form[^>]+action=['\"]([^'\"]+)['\"]", html, re.I)[:50]:
+        forms=len(re.findall(r"<form\\b",html,re.I))
             ap = urlparse(urljoin(url, action))
             if parsed.scheme == "https" and ap.scheme == "http" and ap.hostname == parsed.hostname:
                 findings.append(DASTFinding("form_transport","medium","HTTPS page posts a form to HTTP","form action",94))
