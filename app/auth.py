@@ -61,6 +61,9 @@ def _db():
     conn.execute("""CREATE TABLE IF NOT EXISTS custom_roles(
         name TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL)
     """)
+    conn.execute("""CREATE TABLE IF NOT EXISTS user_scopes(
+        user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, scope_type TEXT NOT NULL, scope_value TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, UNIQUE(user_id,scope_type,scope_value))
+    """)
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -256,6 +259,28 @@ def role_permissions(role: str, tenant_id: str | None = None) -> list[str]:
         return json.loads(row["permissions"])
     raise ValueError("invalid role")
 
+
+def scope_allowed(principal: Principal, scope_type: str, scope_value: str) -> bool:
+    if principal.role == "superadmin": return True
+    conn=_db()
+    row=conn.execute("SELECT 1 FROM user_scopes WHERE user_id=? AND tenant_id=? AND scope_type=? AND scope_value=? AND active=1",(principal.user_id,principal.tenant_id,scope_type,scope_value)).fetchone()
+    conn.close()
+    return bool(row)
+
+def list_user_scopes(principal: Principal, user_id: str) -> list[dict]:
+    if not can(principal, "users:read"): raise PermissionError("users:read required")
+    conn=_db()
+    rows=conn.execute("SELECT scope_type,scope_value,active,created_at FROM user_scopes WHERE user_id=? AND tenant_id=? ORDER BY scope_type,scope_value",(user_id,principal.tenant_id)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def set_user_scope(principal: Principal, user_id: str, scope_type: str, scope_value: str, active: bool=True) -> dict:
+    if not can(principal, "users:write"): raise PermissionError("users:write required")
+    if scope_type not in {"asset_group","asset","module"}: raise ValueError("invalid scope type")
+    conn=_db()
+    conn.execute("INSERT INTO user_scopes(user_id,tenant_id,scope_type,scope_value,active,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,scope_type,scope_value) DO UPDATE SET active=excluded.active",(user_id,principal.tenant_id,scope_type,scope_value,1 if active else 0,int(time.time())))
+    conn.commit(); conn.close()
+    return {"user_id":user_id,"scope_type":scope_type,"scope_value":scope_value,"active":active}
 
 def list_custom_roles(principal: Principal) -> list[dict]:
     if not can(principal, "users:read"):
