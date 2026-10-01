@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, role_permissions, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
@@ -659,6 +659,26 @@ def users_create(request: Request, payload: UserCreateRequest):
 def auth_permissions(request: Request):
     p=current_principal(request)
     return {"role":p.role,"permissions":role_permissions(p.role)}
+
+class CustomRoleRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    permissions: list[str] = Field(min_length=1, max_length=50)
+
+@app.get("/api/v1/rbac/custom-roles")
+def custom_roles_list(request: Request):
+    p=current_principal(request)
+    try: return list_custom_roles(p)
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+
+@app.post("/api/v1/rbac/custom-roles")
+def custom_roles_create(request: Request, payload: CustomRoleRequest):
+    p=current_principal(request)
+    try:
+        result=create_custom_role(p,payload.name,payload.permissions)
+        audit(p,"create","custom_role",result["name"],{"permissions":result["permissions"]})
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
 
 class UserUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
