@@ -88,6 +88,35 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
             if len(out)>=200: return out
     return out
 
+
+def analyze_public_artifact_references(url: str, body: bytes, content_type: str = "") -> list[Evidence]:
+    """Parse public structured artifacts without executing their contents."""
+    if not body: return []
+    text_body=body[:1048576].decode("utf-8","ignore")
+    kind="text"
+    low=content_type.lower()
+    if "json" in low or url.lower().endswith(".json"): kind="json"
+    elif "yaml" in low or url.lower().endswith((".yaml",".yml")): kind="yaml"
+    elif "xml" in low or url.lower().endswith(".xml"): kind="xml"
+    out=artifact_discovery_candidates(url,kind,body)
+    if kind=="json":
+        try:
+            obj=json.loads(text_body)
+            if isinstance(obj,dict) and (obj.get("openapi") or obj.get("swagger")):
+                out.extend(extract_openapi_inventory(url,body))
+        except Exception:
+            pass
+    # Source maps: record source paths as evidence; do not fetch arbitrary sources here.
+    if url.lower().endswith(".map"):
+        try:
+            obj=json.loads(text_body)
+            for src in obj.get("sources",[])[:500] if isinstance(obj,dict) else []:
+                if isinstance(src,str) and src:
+                    out.append(Evidence("http",url,"sourcemap_source",src,82,{"source_map":url}))
+        except Exception:
+            pass
+    return out[:1000]
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
