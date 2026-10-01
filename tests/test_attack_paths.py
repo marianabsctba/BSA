@@ -46,3 +46,18 @@ def test_paths_from_risk_graph_uses_only_evidence_backed_edges():
     assert len(paths)==1
     assert paths[0].confidence==90
     assert all(edge.evidence_refs for edge in paths[0].edges)
+
+
+def test_attack_path_context_changes_ctem_priority_only_for_relevant_path():
+    from app.risk_engine import attack_path_ctem_context
+    item={"asset_id":"asset-1","priority":70,"drivers":["exposure"]}
+    out=attack_path_ctem_context(item,[{"nodes":["internet","asset-1","finding-1"],"score":90}])
+    assert out["priority"] == 85
+    assert out["attack_path_count"] == 1
+    assert out["attack_path_score"] == 90
+
+def test_attack_path_context_does_not_invent_priority():
+    from app.risk_engine import attack_path_ctem_context
+    out=attack_path_ctem_context({"asset_id":"asset-2","priority":70},[{"nodes":["internet","asset-1"],"score":99}])
+    assert out["priority"] == 70
+    assert out["attack_path_count"] == 0
