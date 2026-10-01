@@ -197,29 +197,84 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40, scope_
     }
 
 def adaptive_discovery(seed: str, max_rounds: int = 3, max_assets: int = 40) -> dict:
-    """Evidence-driven bounded discovery. AI may prioritize only supported checks."""
+    """Evidence-driven bounded discovery with explicit candidate provenance.
+
+    The adaptive loop may change collector selection, but it never expands scope
+    blindly. Candidate hosts are emitted from observed evidence and remain
+    bounded by max_assets; callers can decide whether to validate/collect them.
+    """
     hostname, _ = normalize_target(seed)
     validate_external_target(seed)
+    registrable = registrable_domain(hostname)
     rounds=[]
     accumulated=[]
+    candidates: dict[str, dict] = {}
     selected=["dns","http","tls","ct"]
-    for round_no in range(1,max(1,min(max_rounds,5))+1):
-        data=collect_target(hostname,selected)
+    limit=max(1, min(int(max_assets), 500))
+
+    for round_no in range(1, max(1, min(int(max_rounds), 5)) + 1):
+        data=collect_target(hostname, selected)
         accumulated.extend(data["evidence"])
+
+        for e in data["evidence"]:
+            kind=str(e.get("kind",""))
+            value=str(e.get("value","")).strip()
+            if kind not in {"certificate_name", "discovery_candidate"} or not value:
+                continue
+            try:
+                candidate,_=normalize_target(value)
+            except ValueError:
+                continue
+            if candidate == hostname or not (candidate == registrable or candidate.endswith("." + registrable)):
+                continue
+            ref=evidence_reference(e, str(e.get("source","unknown")), kind, value)
+            item=candidates.setdefault(candidate, {"value":candidate, "reasons":set(), "evidence_refs":set(), "confidence":[]})
+            item["reasons"].add(kind)
+            item["evidence_refs"].add(ref)
+            item["confidence"].append(int(e.get("confidence",0) or 0))
+            if len(candidates) >= limit:
+                break
+
         signals=[{"kind":e.get("kind"),"value":e.get("value"),"confidence":e.get("confidence")}
-                 for e in data["evidence"] if e.get("kind") in {"http_status","certificate_name","a_record","aaaa","openapi_endpoint"}]
+                 for e in data["evidence"]
+                 if e.get("kind") in {"http_status","certificate_name","a_record","aaaa","openapi_endpoint"}]
         ai=prioritize_collection(hostname,data["evidence"],signals,
                                  ["dns","http","tls","ct","ports","rdap","ip_intel"])
-        rounds.append({"round":round_no,"checks":selected,"evidence_count":len(data["evidence"]),
-                       "ai_prioritization":ai})
-        if not ai or not ai.get("priorities"): break
+        rounds.append({
+            "round":round_no,
+            "checks":selected,
+            "evidence_count":len(data["evidence"]),
+            "candidate_count":len(candidates),
+            "ai_prioritization":ai,
+        })
+        if len(candidates) >= limit or not ai or not ai.get("priorities"):
+            break
+
         proposed=[]
         for item in ai.get("priorities",[]):
             check=item.get("check") if isinstance(item,dict) else None
             if check in {"dns","http","tls","ct","ports","rdap","ip_intel"} and check not in proposed:
                 proposed.append(check)
-        if not proposed or proposed==selected: break
+        if not proposed or proposed==selected:
+            break
         selected=proposed
-    return {"seed":hostname,"rounds":rounds,"evidence_count":len(accumulated),
-            "max_rounds":max_rounds,"max_assets":max_assets}
 
+    candidate_list=[]
+    for item in candidates.values():
+        scores=item["confidence"]
+        candidate_list.append({
+            "value":item["value"],
+            "reasons":sorted(item["reasons"]),
+            "evidence_refs":sorted(item["evidence_refs"]),
+            "confidence":provenance_confidence(scores, len(item["reasons"]), len(item["evidence_refs"])),
+        })
+    candidate_list.sort(key=lambda x:(x["confidence"], x["value"]), reverse=True)
+
+    return {
+        "seed":hostname,
+        "rounds":rounds,
+        "evidence_count":len(accumulated),
+        "candidates":candidate_list[:limit],
+        "max_rounds":max_rounds,
+        "max_assets":max_assets,
+    }
