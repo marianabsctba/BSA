@@ -72,7 +72,7 @@ def run_safe_web_assessment(target: str) -> dict:
             findings.append(DASTFinding("http_status","medium","same-origin resource returned 5xx",f"{cstatus} {candidate}",85))
         if cbody:
             ctext=cbody.decode("utf-8","ignore")[:131072]
-        for ref in re.findall(r"(?:href|src|action)=['\"]([^'\"]+)['\"]", html, re.I)[:150]:
+            for ref in re.findall(r"(?:href|src|action)=[\"']([^\"']+)[\"']", ctext, re.I)[:50]:
                 nxt=urljoin(candidate,ref)
                 if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
                     queue.append(nxt)
