@@ -229,7 +229,35 @@ def extract_js_literals(js: str, source_url: str, max_items: int = 500) -> list[
     """Extract non-executed, same-origin-relevant literals from public JS bundles."""
     out=[]; seen=set()
     patterns=[
-        (r"""['"]((?:https?://|//)[A-Za-z0-9._~:/?#\[\]@!def discover_web_surface'()*+,;=%-]{3,400})['"]""","js_url_literal"),
+        (r"""['"]((?:https?://|//)[A-Za-z0-9._~:/?#\[\]@!
+def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
+    text_body=body[:1048576].decode("utf-8","ignore")
+    low=text_body.lower()
+    markers=[]
+    signatures=[
+        ("nextjs",("__next_data__","/_next/")),
+        ("vite",("/@vite/client","vite/")),
+        ("webpack",("webpackjsonp","webpack-runtime","webpack")),
+        ("angular",("ng-version","runtime.","main.")),
+        ("react",("react","react-dom")),
+        ("nuxt",("__nuxt__","/_nuxt/")),
+        ("svelte",("__svelte","svelte")),
+    ]
+    for framework,needles in signatures:
+        hits=[n for n in needles if n in low]
+        if hits:
+            markers.append(Evidence("http",url,"frontend_framework_marker",framework,82,{"markers":hits}))
+    asset_patterns=[
+        r"""['"]([^'"]+/_next/static/[^'"]+\.js[^'"]*)['"]""",
+        r"""['"]([^'"]+/_nuxt/[^'"]+\.js[^'"]*)['"]""",
+        r"""['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*\.js(?:\?[^'"]*)?)['"]""",
+    ]
+    for pattern in asset_patterns:
+        for m in re.finditer(pattern,text_body,re.I):
+            markers.append(Evidence("http",url,"frontend_build_asset",m.group(1),84,{"source":"html"}))
+    return markers[:200]
+
+def discover_web_surface'()*+,;=%-]{3,400})['"]""","js_url_literal"),
         (r"""['"]((?:/api/|/graphql|/oauth|/auth|/login|/admin|/internal|/health|/metrics)[A-Za-z0-9._~:/?#\[\]-]{0,300})['"]""","js_route_literal"),
         (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#\[\]-]{2,240}\.(?:json|yaml|yml|xml|txt|config|map|wasm))['"]""","js_file_reference"),
     ]
@@ -309,6 +337,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             continue
             evidence.extend(extract_js_surface_references(js,js_url))
             evidence.extend(extract_js_literals(js,js_url))
+            evidence.extend(detect_frontend_build_markers(body,origin))
     return evidence
 
 def _artifact_evidence(url, headers, body):
