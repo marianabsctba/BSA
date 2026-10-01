@@ -13,7 +13,7 @@ def _history_db():
     conn.row_factory=sqlite3.Row
     conn.execute("PRAGMA busy_timeout=15000")
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("CREATE TABLE IF NOT EXISTS asset_observations(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
+    conn.execute("CREATE TABLE IF NOT EXISTS asset_observations(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,evidence_refs_json TEXT NOT NULL DEFAULT '[]',PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_obs_tenant_fp ON asset_observations(tenant_id,fingerprint,observed_at)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
@@ -28,6 +28,7 @@ class Observation:
     evidence_count: int
     sources: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
 
 
 _HISTORY: dict[str, list[Observation]] = {}
@@ -44,6 +45,7 @@ def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observat
             asset.evidence_count,
             tuple(asset.sources),
             tuple(asset.tags),
+            tuple(asset.evidence_refs),
         )
         previous = _HISTORY.setdefault(f"{tenant_id}:{asset.fingerprint}", [])
         if not previous or previous[-1] != obs:
@@ -51,7 +53,7 @@ def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observat
         observations.append(obs)
     conn=_history_db()
     for obs in observations:
-        conn.execute("INSERT OR IGNORE INTO asset_observations(tenant_id,fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json) VALUES(?,?,?,?,?,?,?)",(tenant_id,obs.fingerprint,obs.observed_at,obs.confidence,obs.evidence_count,json.dumps(obs.sources),json.dumps(obs.tags)))
+        conn.execute("INSERT OR IGNORE INTO asset_observations(tenant_id,fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json) VALUES(?,?,?,?,?,?,?)",(tenant_id,obs.fingerprint,obs.observed_at,obs.confidence,obs.evidence_count,json.dumps(obs.sources),json.dumps(obs.tags),json.dumps(obs.evidence_refs)))
     conn.commit()
     conn.close()
     return observations
@@ -62,7 +64,7 @@ def history_for(fingerprint: str, tenant_id: str = "tenant-demo") -> list[Observ
     rows=conn.execute("SELECT * FROM asset_observations WHERE tenant_id=? AND fingerprint=? ORDER BY observed_at",(tenant_id,fingerprint)).fetchall()
     conn.close()
     if rows:
-        return [Observation(r["fingerprint"],r["observed_at"],r["confidence"],r["evidence_count"],tuple(json.loads(r["sources_json"])),tuple(json.loads(r["tags_json"]))) for r in rows]
+        return [Observation(r["fingerprint"],r["observed_at"],r["confidence"],r["evidence_count"],tuple(json.loads(r["sources_json"])),tuple(json.loads(r["tags_json"])),tuple(json.loads(r["evidence_refs_json"] or "[]"))) for r in rows]
     return list(_HISTORY.get(f"{tenant_id}:{fingerprint}", []))
 
 
@@ -129,6 +131,7 @@ class LifecycleSnapshot:
     evidence_signature: str
     sources: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
 
 _LIFECYCLE: dict[str, list[LifecycleSnapshot]] = {}
 
@@ -150,12 +153,12 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
     out=[]
     for asset in assets:
         key=asset.fingerprint
-        current=LifecycleSnapshot(key,asset.value,asset.asset_type,now,asset.confidence,asset.evidence_count,signature,tuple(asset.sources),tuple(asset.tags))
+        current=LifecycleSnapshot(key,asset.value,asset.asset_type,now,asset.confidence,asset.evidence_count,signature,tuple(asset.sources),tuple(asset.tags),tuple(asset.evidence_refs))
         conn=_history_db()
-        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json) VALUES(?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,asset.value,str(asset.asset_type),now,asset.confidence,asset.evidence_count,signature,json.dumps(asset.sources),json.dumps(asset.tags)))
+        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,asset.value,str(asset.asset_type),now,asset.confidence,asset.evidence_count,signature,json.dumps(asset.sources),json.dumps(asset.tags),json.dumps(asset.evidence_refs)))
         conn.commit()
         conn.close()
-        history=_LIFECYCLE.setdefault(key,[])
+        history=_LIFECYCLE.setdefault(f"{tenant_id}:{key}",[])
         previous=history[-1] if history else None
         if previous is None or previous.evidence_signature != current.evidence_signature or previous.confidence != current.confidence:
             history.append(current)
@@ -175,7 +178,7 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
             "first_seen":history[0].observed_at if history else now,
             "last_seen":now,"observations":len(history),
             "confidence":asset.confidence,"evidence_count":asset.evidence_count,
-            "changes":changes,"sources":list(asset.sources),"tags":list(asset.tags),
+            "changes":changes,"sources":list(asset.sources),"tags":list(asset.tags),"evidence_refs":list(asset.evidence_refs),
         })
     return out
 
@@ -191,6 +194,6 @@ def lifecycle_for(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
         "timeline":[{
             "observed_at":x.observed_at,"confidence":x.confidence,
             "evidence_count":x.evidence_count,"evidence_signature":x.evidence_signature,
-            "sources":list(x.sources),"tags":list(x.tags)
+            "sources":list(x.sources),"tags":list(x.tags),"evidence_refs":list(x.evidence_refs)
         } for x in history]
     }
