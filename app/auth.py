@@ -142,7 +142,7 @@ def authenticate(email: str, password: str) -> str | None:
 
 def principal_from_token(token: str) -> Principal:
     p = _decode(token)
-    if p.get("role") not in ROLES or not p.get("jti"):
+    if (p.get("role") not in ROLES and not p.get("role","").startswith(CUSTOM_ROLE_PREFIX)) or not p.get("jti"):
         raise ValueError("invalid token claims")
     conn = _db()
     session = conn.execute(
@@ -199,7 +199,8 @@ def list_users(principal: Principal) -> list[dict]:
 
 def update_user(principal: Principal, user_id: str, name: str, role: str | None = None) -> dict:
     if not can(principal, "users:write"): raise PermissionError("users:write required")
-    if role is not None and role not in ROLES: raise ValueError("invalid role")
+    if role is not None and role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX): raise ValueError("invalid role")
+    if role and role.startswith(CUSTOM_ROLE_PREFIX): role_permissions(role, principal.tenant_id)
     if role == "superadmin" and principal.role != "superadmin": raise PermissionError("superadmin role requires superadmin")
     conn=_db()
     row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
@@ -236,7 +237,7 @@ def reset_user_password(principal: Principal, user_id: str, password: str) -> di
     return {"ok":True,"user_id":user_id,"sessions_revoked":True}
 
 def can(principal: Principal, permission: str) -> bool:
-    perms = role_permissions(principal.role)
+    perms = role_permissions(principal.role, principal.tenant_id)
     return "*" in perms or permission in perms
 
 def validate_permissions(permissions: list[str]) -> list[str]:
@@ -245,11 +246,12 @@ def validate_permissions(permissions: list[str]) -> list[str]:
     if invalid: raise ValueError("invalid permission: "+invalid[0])
     return normalized
 
-def role_permissions(role: str) -> list[str]:
+def role_permissions(role: str, tenant_id: str | None = None) -> list[str]:
     if role in PERMISSIONS:
         return sorted(PERMISSIONS[role])
     if role.startswith(CUSTOM_ROLE_PREFIX):
-        conn=_db(); row=conn.execute("SELECT permissions FROM custom_roles WHERE name=?",(role,)).fetchone(); conn.close()
+        if not tenant_id: raise ValueError("tenant required for custom role")
+        conn=_db(); row=conn.execute("SELECT permissions FROM custom_roles WHERE name=? AND tenant_id=?",(role,tenant_id)).fetchone(); conn.close()
         if not row: raise ValueError("invalid role")
         return json.loads(row["permissions"])
     raise ValueError("invalid role")
