@@ -22,7 +22,9 @@ PROFILES = {
 
 DISCOVERY_PROVIDERS = {"subfinder", "amass", "assetfinder", "alterx"}
 FOLLOWUP_PROVIDERS = ("puredns", "dnsx", "httpx", "tlsx", "whatweb")
+VULN_FOLLOWUP_PROVIDERS = ("nuclei", "zap")
 MAX_FOLLOWUP_TARGETS = 32
+MAX_VULN_FOLLOWUP_TARGETS = 8
 
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
@@ -146,9 +148,11 @@ def run_assessment(
         "available": [],
         "errors": [],
         "followup_targets": [],
+        "vulnerability_followup_targets": [],
         "scope_filtered": 0,
     }
     discovered_subjects: list[str] = []
+    validated_web_subjects: list[str] = []
 
     for provider_name in PROFILES[profile]:
         internal["attempted"].append(provider_name)
@@ -203,9 +207,45 @@ def run_assessment(
                             internal["scope_filtered"] += 1
                             continue
                         engine.add_provider_result(provider_name, subject, payload)
+                        if provider_name == "httpx":
+                            evidence = payload.get("evidence") or {}
+                            status = evidence.get("status_code")
+                            url = evidence.get("url") or subject
+                            if status is not None and str(url).startswith(("http://", "https://")):
+                                if url not in validated_web_subjects and len(validated_web_subjects) < MAX_VULN_FOLLOWUP_TARGETS:
+                                    validated_web_subjects.append(str(url))
                 except Exception as exc:
                     internal["errors"].append(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "followup"}
+                    )
+
+    if profile == "balanced":
+        for child in validated_web_subjects[:MAX_VULN_FOLLOWUP_TARGETS]:
+            internal["vulnerability_followup_targets"].append(child)
+            for provider_name in VULN_FOLLOWUP_PROVIDERS:
+                try:
+                    if authorize is not None and not authorize(child):
+                        internal["scope_filtered"] += 1
+                        continue
+                    if not registry.available(provider_name, child):
+                        continue
+                    results = registry.execute(provider_name, target=child)
+                    for result in results:
+                        payload = asdict(result)
+                        evidence = payload.get("evidence") or {}
+                        subject = str(
+                            evidence.get("asset")
+                            or evidence.get("url")
+                            or evidence.get("matched_at")
+                            or child
+                        )
+                        if authorize is not None and not authorize(subject):
+                            internal["scope_filtered"] += 1
+                            continue
+                        engine.add_provider_result(provider_name, subject, payload)
+                except Exception as exc:
+                    internal["errors"].append(
+                        {"provider": provider_name, "error": exc.__class__.__name__, "phase": "vulnerability-followup"}
                     )
 
     public = engine.export_public()
@@ -228,6 +268,7 @@ def run_assessment(
                 "raw_evidence_count": raw_finding_count,
                 "deduplicated_evidence": duplicate_count,
                 "followup_targets": len(internal["followup_targets"]),
+                "vulnerability_followup_targets": len(internal["vulnerability_followup_targets"]),
                 "scope_filtered": internal["scope_filtered"],
             },
         }
