@@ -1506,7 +1506,8 @@ def ctem_audit(item_id: str, request: Request):
     if item is None:
         raise HTTPException(status_code=404,detail="CTEM item not found")
     verifications=ctem_verification_history(item_id,principal.tenant_id)
-    return {"item_id":item_id,"timeline":ctem_audit_timeline(item,verifications)}
+    timeline=ctem_audit_timeline(item,verifications)
+    return {"item_id":item_id,"outcome":ctem_audit_outcome(item,verifications),"timeline":timeline}
 
 @app.get("/api/v1/ctem/{item_id}/audit/export")
 def ctem_audit_export(item_id: str, request: Request):
