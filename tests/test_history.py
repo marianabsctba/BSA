@@ -279,3 +279,18 @@ def test_ctem_audit_diff_reports_measurable_changes_and_evidence():
     assert out["evidence_added"]==["retest:e2"]
     assert out["evidence_removed"]==[]
     assert out["changed_fields"]["priority"]=={"before":85,"after":40}
+
+def test_ctem_audit_outcome_requires_explicit_verified_pass_and_evidence():
+    from app.history import ctem_audit_outcome
+    item={"state":"verified"}
+    verifications=[
+      {"result":"failed","evidence_refs":["retest:1"]},
+      {"result":"passed","evidence_refs":["retest:2"]},
+    ]
+    out=ctem_audit_outcome(item,verifications)
+    assert out["verification_count"]==2
+    assert out["passed_count"]==1
+    assert out["failed_count"]==1
+    assert out["latest_result"]=="passed"
+    assert out["verified"] is True
+    assert out["evidence_complete"] is True
