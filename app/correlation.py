@@ -78,6 +78,14 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
             add(AssetType.IP.value, value, source, confidence, ("dns-resolved",), evidence_ref)
         elif kind in {"cname", "mx", "ns", "srv", "txt", "caa"}:
             add(AssetType.SERVICE.value, value, source, confidence, ("dns-related",), evidence_ref)
+        elif kind == "openapi_endpoint":
+            host = urlparse(str(item.get("subject", ""))).hostname
+            if host:
+                add(AssetType.APPLICATION.value, host, source, confidence, ("api-surface", "openapi-observed"), evidence_ref)
+        elif kind in {"potential_secret_exposure", "source_map_analyzed", "web_artifact:json", "web_artifact:xml", "web_artifact:yaml", "web_artifact:text"}:
+            host = urlparse(str(item.get("subject", ""))).hostname
+            if host:
+                add(AssetType.APPLICATION.value, host, source, confidence, ("web-artifact",), evidence_ref)
 
     # Merge the same hostname observed through different collectors.
     # A web observation upgrades a certificate-only hostname to an application asset
