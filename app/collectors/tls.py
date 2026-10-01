@@ -23,18 +23,44 @@ class TLSCollector:
         ip=ips[0]
         if not _public_ip(ip):
             return []
-        context = ssl.create_default_context()
-        with socket.create_connection((ip, port), timeout=timeout) as sock:
-            with context.wrap_socket(sock, server_hostname=host) as tls:
-                cert = tls.getpeercert()
-                der = tls.getpeercert(binary_form=True)
-                cipher = tls.cipher()
-                protocol = tls.version()
+        evidence = []
+        validation_error = None
+        cert = {}
+        der = b""
+        cipher = None
+        protocol = None
 
-        evidence = [
-            Evidence(self.name, target, "tls_protocol", protocol or "unknown", 98),
-            Evidence(self.name, target, "tls_cipher", cipher[0] if cipher else "unknown", 95),
-        ]
+        context = ssl.create_default_context()
+        try:
+            with socket.create_connection((ip, port), timeout=timeout) as sock:
+                with context.wrap_socket(sock, server_hostname=host) as tls:
+                    cert = tls.getpeercert()
+                    der = tls.getpeercert(binary_form=True)
+                    cipher = tls.cipher()
+                    protocol = tls.version()
+        except ssl.SSLCertVerificationError as exc:
+            validation_error = str(exc)[:500]
+            # Metadata-only fallback: retrieve the peer certificate without trusting it.
+            # No authenticated application data is sent and the result is marked as untrusted.
+            metadata_context = ssl._create_unverified_context()
+            try:
+                with socket.create_connection((ip, port), timeout=timeout) as sock:
+                    with metadata_context.wrap_socket(sock, server_hostname=host) as tls:
+                        cert = tls.getpeercert()
+                        der = tls.getpeercert(binary_form=True)
+                        cipher = tls.cipher()
+                        protocol = tls.version()
+            except (OSError, ssl.SSLError):
+                pass
+        except (OSError, ssl.SSLError) as exc:
+            validation_error = str(exc)[:500]
+
+        if protocol:
+            evidence.append(Evidence(self.name, target, "tls_protocol", protocol, 98))
+        if cipher:
+            evidence.append(Evidence(self.name, target, "tls_cipher", cipher[0], 95))
+        if validation_error:
+            evidence.append(Evidence(self.name,target,"tls_validation_error",validation_error,99,{"certificate_trust_failed":True}))
 
         if cert:
             if der:
