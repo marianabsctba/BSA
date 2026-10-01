@@ -28,6 +28,7 @@ from .technology_intelligence import extract_technologies, technology_match_qual
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
+from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -184,6 +185,25 @@ async def correlate_vulnerabilities(request: Request):
         matches=match_cve(product,version,cpe,candidates)
         results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
     return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
+
+@app.get("/api/v1/risk/policy")
+def get_risk_policy(request: Request):
+    principal=require(request,"assets:read")
+    policy=policy_for(principal.tenant_id)
+    return {"policy":serialize_policy(policy),"validation":validate_policy(policy)}
+
+@app.put("/api/v1/risk/policy")
+async def update_risk_policy(request: Request):
+    principal=require(request,"remediation:write")
+    body=await request.json()
+    base=policy_for(principal.tenant_id)
+    allowed={"likelihood_weight","impact_weight","confidence_weight","internet_multiplier","production_multiplier","remote_access_multiplier","compensating_control_reduction","stale_evidence_days","stale_confidence_penalty","name"}
+    values={k:body[k] for k in allowed if k in body}
+    candidate=TenantRiskPolicy(tenant_id=principal.tenant_id,version=base.version+1,**{**base.__dict__,**values})
+    errors=validate_policy(candidate)
+    if errors: raise HTTPException(status_code=400,detail={"errors":errors})
+    audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
+    return {"policy":serialize_policy(candidate),"validation":[],"note":"policy validated; persistence wiring is isolated from the scoring contract"}
 
 @app.get("/api/v1/risk/register")
 def risk_register(request: Request):
