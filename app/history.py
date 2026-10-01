@@ -364,9 +364,9 @@ def list_ctem_items(tenant_id: str, states: set[str] | None = None) -> list[dict
     return result
 
 
-def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str) -> list[dict]:
+def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str, attack_paths: list[dict] | None = None) -> list[dict]:
     """Turn evidence-backed discovery deltas into tenant-scoped CTEM work items."""
-    from .risk_engine import prioritize_surface_change
+    from .risk_engine import prioritize_surface_change, attack_path_ctem_context
     by_fp={getattr(a,"fingerprint",None):a for a in assets}
     created=[]
     for change in list(diff.get("added",[]))+list(diff.get("changed",[])):
@@ -386,6 +386,9 @@ def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str) -> 
             "drivers": list(priority.get("drivers",[])),
             "evidence_refs": list(change.get("evidence_refs",[])),
         }
+        if attack_paths:
+            item=attack_path_ctem_context(item,attack_paths)
+            item["action"]="immediate" if item["priority"]>=85 else "expedite" if item["priority"]>=70 else "plan" if item["priority"]>=45 else "monitor"
         created.append(upsert_ctem_item(item,tenant_id))
     return created
 
