@@ -717,3 +717,59 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .panel-head{display:block}
  .panel-head span{display:inline-block;margin-top:6px;text-align:left}
 }
+
+
+/* ASSET 360 COMMERCIAL PASS */
+.drawer-backdrop{z-index:120;background:#020305c2;backdrop-filter:blur(7px)}
+.drawer.asset360{width:min(720px,100%);padding:0;background:linear-gradient(180deg,#0d1219,#080b10 70%);border-left-color:#2a3442;box-shadow:-42px 0 120px #000c}
+.asset360-head{position:sticky;top:0;z-index:3;padding:22px 24px 18px;border-bottom:1px solid #ffffff0c;background:#0b0f15e8;backdrop-filter:blur(18px)}
+.asset360-head h2{font-size:24px;letter-spacing:-.035em}
+.asset360-head p{margin-bottom:0}
+.asset360-posture{display:grid;grid-template-columns:170px 1fr;gap:10px;padding:18px 24px 4px}
+.asset360-score{position:relative;overflow:hidden;min-height:122px;padding:16px;border:1px solid #ff2d8445;border-radius:16px;background:linear-gradient(145deg,#1a0d15,#0e131a);box-shadow:inset 0 1px #ffffff08,0 16px 40px #0004}
+.asset360-score:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;right:-55px;bottom:-60px;background:#ff2d8420;filter:blur(12px)}
+.asset360-score span,.asset360-score strong,.asset360-score em{position:relative;z-index:1;display:block}
+.asset360-score span{font:800 7px "DM Mono";letter-spacing:.13em;color:#7d8999}
+.asset360-score strong{margin-top:10px;font:800 46px "DM Mono";line-height:1;color:#ff68a5;letter-spacing:-.06em}
+.asset360-score em{margin-top:6px;font:800 7px "DM Mono";font-style:normal;letter-spacing:.12em;color:#ff77ae}
+.asset360-score.low{border-color:#68e3a244}.asset360-score.low strong,.asset360-score.low em{color:#68e3a2}
+.asset360-score.medium{border-color:#f6c86b44}.asset360-score.medium strong,.asset360-score.medium em{color:#f6c86b}
+.asset360-score.high{border-color:#ff9a6b55}.asset360-score.high strong,.asset360-score.high em{color:#ff9a6b}
+.asset360-severity{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.asset360-severity>div{display:flex;align-items:end;justify-content:space-between;gap:8px;min-height:57px;padding:11px 12px;border:1px solid #252f3c;border-radius:12px;background:linear-gradient(145deg,#111821,#0b1017)}
+.asset360-severity b{font:800 20px "DM Mono";color:#edf1f6}
+.asset360-severity span{font:700 7px "DM Mono";text-transform:uppercase;letter-spacing:.08em;color:#6d7989}
+.asset360 .drawer-grid{padding:0 24px;margin:12px 0 4px}
+.asset360 .drawer-stat{min-height:82px;background:linear-gradient(145deg,#121923,#0c1118);border-color:#283240;box-shadow:inset 0 1px #ffffff05}
+.asset360 .drawer-stat.primary-stat{border-color:#ff2d843d;background:linear-gradient(145deg,#1a0d15,#0e131a)}
+.asset360 .drawer-stat b{font-size:20px}
+.asset360 .drawer-stat small{display:block;margin-top:4px;color:#667384;font:6px "DM Mono";text-transform:uppercase}
+.asset360 .drawer-section{margin:0 24px;padding:20px 0}
+.reason-list{display:grid;gap:7px}
+.asset360 .reason{display:grid;grid-template-columns:30px 1fr;align-items:start;gap:10px;padding:10px 11px;border:1px solid #ffffff08;border-radius:10px;background:#ffffff018}
+.asset360 .reason b{font:800 8px "DM Mono";color:#ff68a5}
+.asset360 .reason span{margin:0;color:#bac2cd;font-size:10px;line-height:1.55}
+.finding-list{display:grid;gap:7px}
+.asset360 .finding-row{margin:0;border-left-width:3px;background:linear-gradient(90deg,#ffffff025,transparent)}
+.asset360 .finding-row.critical{border-left-color:#ff617e}
+.asset360 .finding-row.high{border-left-color:#ff9a6b}
+.asset360 .finding-row.medium{border-left-color:#f6c86b}
+.asset360 .finding-row.low{border-left-color:#68e3a2}
+.asset360 .finding-row:hover{transform:translateX(2px);border-color:#3a4554}
+.asset360 code{padding:12px;border-radius:11px;background:#06090d;border-color:#252e3a}
+.asset360 .evidence-row{margin-top:9px}
+.asset360 .evidence-row span{background:#ffffff025;border-color:#2a3340}
+@media(max-width:700px){
+ .drawer.asset360{width:100%;border-left:0}
+ .asset360-head{padding:17px 16px 14px}
+ .asset360-head h2{font-size:20px;word-break:break-word}
+ .asset360-posture{grid-template-columns:1fr;padding:14px 16px 4px}
+ .asset360-score{min-height:105px}
+ .asset360-score strong{font-size:38px}
+ .asset360-severity{grid-template-columns:repeat(4,1fr)}
+ .asset360-severity>div{display:block;min-height:62px;padding:9px;text-align:center}
+ .asset360-severity b{display:block;font-size:17px}
+ .asset360-severity span{display:block;margin-top:4px;font-size:6px}
+ .asset360 .drawer-grid{grid-template-columns:repeat(2,1fr);padding:0 16px}
+ .asset360 .drawer-section{margin-inline:16px}
+}
