@@ -478,6 +478,30 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_claim_operation(tenant_id: str, operation_key: str, action: str, item_id: str) -> bool:
+    """Atomically claim a CTEM operation key; False means it was already claimed."""
+    conn=_history_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_operations(
+        tenant_id TEXT NOT NULL, operation_key TEXT NOT NULL, action TEXT NOT NULL,
+        item_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        PRIMARY KEY(tenant_id,operation_key))""")
+    now=datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            "INSERT INTO ctem_operations(tenant_id,operation_key,action,item_id,created_at) VALUES(?,?,?,?,?)",
+            (tenant_id,operation_key,action,item_id,now))
+        conn.commit()
+        return True
+    except Exception as exc:
+        if "UNIQUE" in str(exc).upper() or "PRIMARY KEY" in str(exc).upper():
+            conn.rollback()
+            return False
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def ctem_action_idempotency_key(item_id: str, action: str, request_id: str | None) -> str:
     """Build a stable operation key for safe client retries."""
     import hashlib
