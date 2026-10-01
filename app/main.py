@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1439,6 +1439,21 @@ def ctem_queue(request: Request, state: str | None = None):
     principal=require(request,"findings:read")
     states={state} if state else None
     return {"items":list_ctem_items(principal.tenant_id,states)}
+
+@app.post("/api/v1/ctem/{item_id}/verify")
+def ctem_verify(item_id: str, request: Request, payload: dict):
+    principal=require(request,"remediation:write")
+    try:
+        return verify_ctem_item(
+            item_id, principal.tenant_id,
+            str(payload.get("result","")),
+            list(payload.get("evidence_refs") or []),
+            str(payload.get("notes","")),
+        )
+    except KeyError:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
 
 @app.post("/api/v1/ctem/{item_id}/state")
 def ctem_state(item_id: str, request: Request, payload: dict):
