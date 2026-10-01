@@ -46,8 +46,8 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: bsa-web
     restart: unless-stopped
     depends_on:
