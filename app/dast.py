@@ -1,6 +1,6 @@
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import uuid
 import re
 from .collectors.http import _pinned_fetch, security_header_evidence
@@ -41,4 +41,47 @@ def run_safe_web_assessment(target: str) -> dict:
             findings.append(DASTFinding("surface_inventory","info",f"forms observed: {forms}",f"forms={forms}",95))
         if scripts:
             findings.append(DASTFinding("surface_inventory","info",f"scripts observed: {scripts}",f"scripts={scripts}",95))
+    # Bounded same-origin crawl: GET only, no payload mutation and no external hosts.
+    discovered = []
+    if body:
+        html = body.decode("utf-8","ignore")[:262144]
+        for ref in re.findall(r'(?:href|src|action)=["\\']([^"\\']+)["\\']', html, re.I)[:150]:
+            absolute = urljoin(url, ref)
+            rp = urlparse(absolute)
+            if rp.hostname == parsed.hostname and rp.scheme in {"http","https"}:
+                discovered.append(absolute)
+        if parsed.scheme == "https" and re.search(r'(?:src|href)=["\\']http://', html, re.I):
+            findings.append(DASTFinding("mixed_content","medium","HTTPS page references HTTP resources","http:// resource",90))
+        for action in re.findall(r'<form[^>]+action=["\\']([^"\\']+)["\\']', html, re.I)[:50]:
+            ap = urlparse(urljoin(url, action))
+            if parsed.scheme == "https" and ap.scheme == "http" and ap.hostname == parsed.hostname:
+                findings.append(DASTFinding("form_transport","medium","HTTPS page posts a form to HTTP","form action",94))
+    seen={url}
+    queue=list(dict.fromkeys(discovered))[:30]
+    while queue and len(seen)<31:
+        candidate=queue.pop(0)
+        if candidate in seen: continue
+        cp=urlparse(candidate)
+        if cp.hostname != parsed.hostname or cp.scheme not in {"http","https"}: continue
+        seen.add(candidate)
+        try:
+            cstatus, cheaders, cbody, _ = _pinned_fetch(candidate, timeout=3.0, max_bytes=131072, approved_ips=approved_ips)
+        except Exception:
+            continue
+        if cstatus >= 500:
+            findings.append(DASTFinding("http_status","medium","same-origin resource returned 5xx",f"{cstatus} {candidate}",85))
+        if cbody:
+            ctext=cbody.decode("utf-8","ignore")[:131072]
+            for ref in re.findall(r'(?:href|src)=["\\']([^"\\']+)["\\']', ctext, re.I)[:50]:
+                nxt=urljoin(candidate,ref)
+                if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
+                    queue.append(nxt)
+    try:
+        _, options_headers, _, _ = _pinned_fetch(url, timeout=3.0, max_bytes=16384, approved_ips=approved_ips, method="OPTIONS")
+        allow=str(options_headers.get("allow",""))
+        if allow:
+            if any(m.strip().upper() in {"PUT","PATCH","DELETE"} for m in allow.split(",")):
+                findings.append(DASTFinding("method_inventory","low","mutating HTTP methods advertised",allow,82))
+    except Exception:
+        pass
     return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
