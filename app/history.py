@@ -15,6 +15,12 @@ def _history_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("CREATE TABLE IF NOT EXISTS asset_observations(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,evidence_refs_json TEXT NOT NULL DEFAULT '[]',PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_obs_tenant_fp ON asset_observations(tenant_id,fingerprint,observed_at)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS discovery_runs(
+        tenant_id TEXT NOT NULL, run_id TEXT NOT NULL, observed_at TEXT NOT NULL,
+        fingerprint TEXT NOT NULL, value TEXT NOT NULL, asset_type TEXT NOT NULL,
+        confidence INTEGER NOT NULL, evidence_signature TEXT NOT NULL,
+        PRIMARY KEY(tenant_id,run_id,fingerprint))""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_runs_tenant_time ON discovery_runs(tenant_id,observed_at)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
@@ -59,7 +65,7 @@ def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observat
         observations.append(obs)
     conn=_history_db()
     for obs in observations:
-        conn.execute("INSERT OR IGNORE INTO asset_observations(tenant_id,fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json) VALUES(?,?,?,?,?,?,?)",(tenant_id,obs.fingerprint,obs.observed_at,obs.confidence,obs.evidence_count,json.dumps(obs.sources),json.dumps(obs.tags),json.dumps(obs.evidence_refs)))
+        conn.execute("INSERT OR IGNORE INTO asset_observations(tenant_id,fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?)",(tenant_id,obs.fingerprint,obs.observed_at,obs.confidence,obs.evidence_count,json.dumps(obs.sources),json.dumps(obs.tags),json.dumps(obs.evidence_refs)))
     conn.commit()
     conn.close()
     return observations
@@ -202,4 +208,46 @@ def lifecycle_for(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
             "evidence_count":x.evidence_count,"evidence_signature":x.evidence_signature,
             "sources":list(x.sources),"tags":list(x.tags),"evidence_refs":list(x.evidence_refs)
         } for x in history]
+    }
+
+def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: str) -> dict:
+    """Persist a complete observed surface and return an evidence-backed diff."""
+    now = datetime.now(timezone.utc).isoformat()
+    signature = _evidence_signature(evidence)
+    conn = _history_db()
+    previous = conn.execute(
+        "SELECT fingerprint,value,asset_type,confidence,evidence_signature FROM discovery_runs "
+        "WHERE tenant_id=? AND observed_at=(SELECT MAX(observed_at) FROM discovery_runs WHERE tenant_id=?)",
+        (tenant_id, tenant_id),
+    ).fetchall()
+    previous_map = {r["fingerprint"]: dict(r) for r in previous}
+    current_map = {a.fingerprint: a for a in assets if a.fingerprint}
+    for asset in assets:
+        conn.execute(
+            "INSERT OR REPLACE INTO discovery_runs(tenant_id,run_id,observed_at,fingerprint,value,asset_type,confidence,evidence_signature) VALUES(?,?,?,?,?,?,?,?)",
+            (tenant_id, run_id, now, asset.fingerprint, asset.value, str(asset.asset_type), asset.confidence, signature),
+        )
+    conn.commit()
+    conn.close()
+    added = sorted(set(current_map) - set(previous_map))
+    removed = sorted(set(previous_map) - set(current_map))
+    changed = []
+    for fp in sorted(set(current_map) & set(previous_map)):
+        asset = current_map[fp]
+        old = previous_map[fp]
+        reasons = []
+        if old["value"] != asset.value or old["asset_type"] != str(asset.asset_type):
+            reasons.append("identity_changed")
+        if old["confidence"] != asset.confidence:
+            reasons.append("confidence_changed")
+        if old["evidence_signature"] != signature:
+            reasons.append("evidence_changed")
+        if reasons:
+            changed.append({"fingerprint":fp,"value":asset.value,"reasons":reasons})
+    return {
+        "run_id": run_id, "observed_at": now, "previous_run_available": bool(previous),
+        "summary": {"added":len(added),"removed":len(removed),"changed":len(changed),"total":len(current_map)},
+        "added": [{"fingerprint":fp,"value":current_map[fp].value} for fp in added],
+        "removed": [{"fingerprint":fp,"value":previous_map[fp]["value"]} for fp in removed],
+        "changed": changed,
     }
