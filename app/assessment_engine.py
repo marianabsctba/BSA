@@ -45,6 +45,7 @@ class AssessmentEngine:
         "katana": "web_surface",
         "asnmap": "network_intelligence",
         "trufflehog": "credential_exposure",
+        "cloud": "cloud_intelligence",
     }
 
     def __init__(self):
