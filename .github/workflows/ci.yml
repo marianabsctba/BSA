@@ -24,15 +24,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: |
-          for attempt in 1 2 3; do
-            if npm install --no-audit --no-fund; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "npm install failed after 3 attempts"
-              exit 1
-            fi
-            echo "npm registry/install failed on attempt $attempt; retrying..."
-            sleep 5
-          done
+          npm config set registry https://registry.npmjs.org/
+          npm cache verify
+          npm install --no-audit --no-fund --prefer-online
           npm run build
