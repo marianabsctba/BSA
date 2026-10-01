@@ -36,6 +36,7 @@ class AssessmentEngine:
         "httpx": "surface_validation",
         "subfinder": "external_discovery",
         "amass": "external_discovery",
+        "safeweb": "web_assessment",
     }
 
     def __init__(self):
