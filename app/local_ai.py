@@ -39,7 +39,7 @@ def analyze_exposure(question, evidence):
             "Use ONLY the supplied evidence. Never invent assets, vulnerabilities, owners, controls or facts. "
             "If evidence is insufficient, say so. Be concise and operational. Cite asset IDs inline.")
     compact=_evidence_block(evidence)
-    return ask(system, f"Question: {question}\n{compact}")
+    return ask(system, f"Question: {question}\nEvidence JSON: {compact}")
 
 
 def explain_attack_path(path, evidence):
