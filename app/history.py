@@ -122,7 +122,7 @@ def change_summary(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
 
 
 def exposure_snapshot(assets, findings):
-    from .exposure import exposure_breakdown
+    from .exposure import exposure_breakdown, exposure_band
     total = sum(exposure_breakdown(a, findings).score for a in assets)
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
