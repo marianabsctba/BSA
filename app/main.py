@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
@@ -654,6 +654,46 @@ def users_create(request: Request, payload: UserCreateRequest):
     except Exception as exc:
         raise HTTPException(status_code=409, detail="user already exists or invalid data") from exc
 
+
+class UserUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    role: str | None = None
+
+class UserActiveRequest(BaseModel):
+    active: bool
+
+class UserPasswordResetRequest(BaseModel):
+    password: str = Field(min_length=12, max_length=256)
+
+@app.patch("/api/v1/users/{user_id}")
+def users_update(user_id: str, request: Request, payload: UserUpdateRequest):
+    p=current_principal(request)
+    try:
+        result=update_user(p,user_id,payload.name,payload.role)
+        audit(p,"update","user",user_id,{"role":payload.role} if payload.role else {})
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
+
+@app.patch("/api/v1/users/{user_id}/active")
+def users_active(user_id: str, request: Request, payload: UserActiveRequest):
+    p=current_principal(request)
+    try:
+        result=set_user_active(p,user_id,payload.active)
+        audit(p,"activate" if payload.active else "deactivate","user",user_id)
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
+
+@app.post("/api/v1/users/{user_id}/reset-password")
+def users_reset_password(user_id: str, request: Request, payload: UserPasswordResetRequest):
+    p=current_principal(request)
+    try:
+        result=reset_user_password(p,user_id,payload.password)
+        audit(p,"reset_password","user",user_id)
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
 
 class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
