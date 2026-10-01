@@ -1015,6 +1015,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 detected_at=now,
                 source_refs=vuln_ctx["references"],
                 false_positive_confidence=vuln_ctx["false_positive_confidence"],
+                validation_state=vuln_ctx["validation_state"],
+                evidence_quality=vuln_ctx["evidence_quality"],
             )
             if finding.vulnerability_id:
                 finding = enrich_finding(finding)
@@ -1032,6 +1034,9 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.false_positive_confidence or 100,
                 vuln_ctx["false_positive_confidence"],
             )
+            if vuln_ctx["evidence_quality"] >= finding.evidence_quality:
+                finding.validation_state = vuln_ctx["validation_state"]
+                finding.evidence_quality = vuln_ctx["evidence_quality"]
             if vuln_ctx["references"]:
                 finding.source_refs = sorted(set(finding.source_refs + vuln_ctx["references"]))[:20]
             if finding.vulnerability_id:
