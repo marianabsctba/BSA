@@ -151,5 +151,6 @@ def test_ctem_verification_requires_evidence_and_reopens_on_failed_retest(tmp_pa
         raise AssertionError("verification without evidence was accepted")
     failed=history.verify_ctem_item(item["item_id"],"tenant-v","failed",["retest:1"],"condition still present")
     assert failed["state"] == "in_progress"
+    history.update_ctem_state(item["item_id"],"tenant-v","resolved")
     passed=history.verify_ctem_item(item["item_id"],"tenant-v","passed",["retest:2"],"condition removed")
     assert passed["state"] == "verified"
