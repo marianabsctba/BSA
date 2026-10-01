@@ -7,8 +7,11 @@ product/API boundary.
 from dataclasses import dataclass
 from typing import Protocol, Callable
 import json
+import os
 import shutil
 import subprocess
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from .dast import run_safe_web_assessment
 from .exposure_signals import cloud_signals
@@ -442,30 +445,92 @@ class CloudExposureProvider:
         ]
 
 
-class ThreatIntelProvider(CommandProvider):
+class _ConfiguredJsonIntelProvider:
+    endpoint_env = ""
+    token_env = ""
+    timeout = 8
+
+    def available(self) -> bool:
+        endpoint = os.getenv(self.endpoint_env, "").strip()
+        return endpoint.startswith("https://")
+
+    def _post(self, payload: dict) -> dict:
+        endpoint = os.getenv(self.endpoint_env, "").strip()
+        if not endpoint.startswith("https://"):
+            return {}
+        token = os.getenv(self.token_env, "").strip()
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = Request(
+            endpoint,
+            data=json.dumps(payload, separators=(",", ":")).encode(),
+            headers=headers,
+            method="POST",
+        )
+        with urlopen(req, timeout=self.timeout) as response:
+            raw = response.read(262144)
+        data = json.loads(raw.decode("utf-8", "ignore"))
+        return data if isinstance(data, dict) else {}
+
+
+class ThreatIntelProvider(_ConfiguredJsonIntelProvider):
     name = "cti"
-    binary = "grep"
-    timeout = 5
-
-    def available(self) -> bool:
-        # Placeholder adapter remains local-only until a configured CTI source exists.
-        return False
+    endpoint_env = "BSA_CTI_URL"
+    token_env = "BSA_CTI_TOKEN"
 
     def execute(self, target: str) -> list[ProviderResult]:
-        return []
+        data = self._post({"indicator": target})
+        hits = max(0, int(data.get("hits", data.get("match_count", 0)) or 0))
+        if hits == 0:
+            return []
+        score = max(0, min(100, int(data.get("score", data.get("confidence", 70)) or 70)))
+        severity = str(data.get("severity") or ("high" if score >= 80 else "medium")).lower()
+        evidence = {
+            "asset": target,
+            "match_count": hits,
+            "threat_score": score,
+            "first_seen": data.get("first_seen"),
+            "last_seen": data.get("last_seen"),
+            "categories": list(data.get("categories") or [])[:20],
+            "relationship": "threat-intelligence",
+        }
+        return [ProviderResult("Threat intelligence correlation", severity, score, evidence)]
 
 
-class CredentialExposureProvider(CommandProvider):
+class CredentialExposureProvider(_ConfiguredJsonIntelProvider):
     name = "leak"
-    binary = "grep"
-    timeout = 5
+    endpoint_env = "BSA_LEAK_INTEL_URL"
+    token_env = "BSA_LEAK_INTEL_TOKEN"
 
-    def available(self) -> bool:
-        # Deliberately disabled without an authorized leak-intelligence source.
-        return False
+    def supports(self, target: str) -> bool:
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        return bool(parsed.hostname)
 
     def execute(self, target: str) -> list[ProviderResult]:
-        return []
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        domain = (parsed.hostname or "").lower()
+        if not domain:
+            return []
+        data = self._post({"domain": domain, "aggregate_only": True})
+        exposed = max(0, int(data.get("exposed_accounts", data.get("count", 0)) or 0))
+        stealer = max(0, int(data.get("stealer_log_count", 0) or 0))
+        sources = max(0, int(data.get("source_count", 0) or 0))
+        if exposed == 0 and stealer == 0:
+            return []
+        confidence = max(0, min(100, int(data.get("confidence", 85) or 85)))
+        severity = "high" if stealer > 0 or exposed >= 10 else "medium"
+        evidence = {
+            "asset": domain,
+            "exposed_account_count": exposed,
+            "stealer_log_count": stealer,
+            "source_count": sources,
+            "first_seen": data.get("first_seen"),
+            "last_seen": data.get("last_seen"),
+            "redacted": True,
+            "relationship": "credential-exposure",
+        }
+        return [ProviderResult("Credential exposure detected", severity, confidence, evidence)]
 
 
 class OpenVASProvider:
