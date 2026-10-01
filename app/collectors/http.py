@@ -149,7 +149,7 @@ SECRET_PATTERNS = (
     ("aws_access_key_id", re.compile(r"\\bAKIA[0-9A-Z]{16}\\b")),
     ("github_token", re.compile(r"\\bgh[pousr]_[A-Za-z0-9_]{20,255}\\b")),
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
-    ("jwt", re.compile(r"\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b")),
+    ("jwt", re.compile(r"eyJ[A-Za-z0-9_-]{6,}\\.[A-Za-z0-9_-]{6,}\\.[A-Za-z0-9_-]{6,}")),
     ("secret_assignment", re.compile(r"(?i)\\b(?:api[_-]?key|client[_-]?secret|secret|token|password)\\b\\s*[:=]\\s*[A-Za-z0-9_./+=:-]{12,}")),
 )
 
