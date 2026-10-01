@@ -478,6 +478,17 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_verification_history(item_id: str, tenant_id: str) -> list[dict]:
+    conn=_history_db()
+    rows=conn.execute(
+        "SELECT result,evidence_refs_json,notes,verified_at FROM ctem_verifications WHERE tenant_id=? AND item_id=? ORDER BY verified_at",
+        (tenant_id,item_id),
+    ).fetchall()
+    conn.close()
+    return [{"result":r["result"],"evidence_refs":json.loads(r["evidence_refs_json"] or "[]"),
+             "notes":r["notes"],"verified_at":r["verified_at"]} for r in rows]
+
+
 def ctem_audit_timeline(item: dict, verifications: list[dict]) -> list[dict]:
     """Return a chronological, evidence-linked CTEM audit timeline."""
     timeline=[{
