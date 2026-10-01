@@ -810,10 +810,10 @@ def easm_overview(request: Request):
         "candidates":by_state.get("candidate",0),"requires_investigation":by_state.get("requires_investigation",0),
         "dependencies":by_state.get("dependency",0),"monitor_only":by_state.get("monitor_only",0),
         "by_type":by_type,"by_state":by_state},
-        "inventory":inventory,"changes":{"recent":sum(1 for a in ASSETS if a.status=="observed"),
-        "unowned":sum(1 for a in ASSETS if not a.owner),"low_confidence":sum(1 for a in ASSETS if a.confidence<70)},
-        "risk":{"critical_findings":sum(1 for f in FINDINGS if f.status=="open" and f.severity.value=="critical"),
-        "high_findings":sum(1 for f in FINDINGS if f.status=="open" and f.severity.value=="high")}}
+        "inventory":inventory,"changes":{"recent":sum(1 for a in scoped_assets if a.status=="observed"),
+        "unowned":sum(1 for a in scoped_assets if not a.owner),"low_confidence":sum(1 for a in scoped_assets if a.confidence<70)},
+        "risk":{"critical_findings":sum(1 for f in scoped_findings if f.status=="open" and f.severity.value=="critical"),
+        "high_findings":sum(1 for f in scoped_findings if f.status=="open" and f.severity.value=="high")}}
 
 @app.get("/api/v1/exposure")
 def exposure(request: Request):
