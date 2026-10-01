@@ -369,6 +369,9 @@ class SecretExposureProvider(JsonLinesProvider):
     binary = "trufflehog"
     timeout = 150
 
+    def supports(self, target: str) -> bool:
+        return target.startswith(("https://github.com/", "https://gitlab.com/", "http://github.com/", "http://gitlab.com/"))
+
     def available(self) -> bool:
         return bool(shutil.which(self.binary))
 
