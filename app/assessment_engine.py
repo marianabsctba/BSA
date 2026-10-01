@@ -46,6 +46,7 @@ class AssessmentEngine:
         "asnmap": "network_intelligence",
         "trufflehog": "credential_exposure",
         "cloud": "cloud_intelligence",
+        "threatfox": "threat_intelligence",
     }
 
     def __init__(self):
