@@ -85,3 +85,15 @@ def plan_discovery(target, discovery):
         return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"summary":raw,"confirmed_assets":[],"candidate_assets":[],"high_value_targets":[],"technology_hypotheses":[],"evidence_gaps":["structured AI response unavailable"],"next_checks":[],"risk_signals":[],"confidence":0}
+
+def judge_correlation(subject, observations):
+    system=("You are Be Safe ASM Local Evidence Judge. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied observations. Never invent facts. Decide whether observations can safely be correlated into one identity. "
+            "Be conservative: conflicts must lower confidence and may require human validation. "
+            "Return JSON only with keys: decision, confidence, supporting_evidence, conflicting_evidence, rationale, validation_required.")
+    raw=ask(system,"Judge whether these observations belong to the same identity. JSON only.\n"+json.dumps({"subject":subject,"observations":observations},ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"decision":"needs_review","confidence":0,"supporting_evidence":[],"conflicting_evidence":[],"rationale":raw,"validation_required":True}
