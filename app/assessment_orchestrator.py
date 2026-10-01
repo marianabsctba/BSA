@@ -17,7 +17,7 @@ PROFILES = {
     "surface": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
     "rapid": ("httpx", "tlsx", "nuclei"),
     "network": ("dnsx", "httpx", "naabu", "nmap"),
-    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "cti", "threatfox", "leak", "trufflehog"),
+    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "cti", "threatfox", "leak", "trufflehog"),
 }
 
 PROFILE_CAPABILITIES = {
@@ -30,6 +30,8 @@ PROFILE_CAPABILITIES = {
         "network_intelligence",
         "fingerprint",
         "certificate_intelligence",
+        "tls_assessment",
+        "technology_intelligence",
         "historical_surface",
         "web_surface",
         "web_assessment",
