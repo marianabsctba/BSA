@@ -60,3 +60,19 @@ def test_diff_risk_context_adds_exposure_for_new_and_changed_assets():
     out=diff_risk_context(diff,[a],[finding])
     assert out["added"][0]["exposure_score"] > 0
     assert out["added"][0]["exposure_band"] in {"low","medium","high","critical"}
+
+def test_diff_risk_context_adds_risk_delta_for_new_asset():
+    from app.history import diff_risk_context
+    from types import SimpleNamespace
+    from app.models import Severity
+    asset=SimpleNamespace(fingerprint="r",id="asset-r",value="api.example.org",
+        criticality=5,confidence=95,tags=["internet-facing","production"],
+        type=SimpleNamespace(value="application"))
+    finding=SimpleNamespace(asset_id="asset-r",status="open",confidence=95,
+        cvss=9.8,epss=0.95,kev=True,exploit_available=True,cpe="cpe:2.3:a:vendor:app:1:*:*:*:*:*:*:*",
+        vulnerability_id="CVE-TEST",false_positive_confidence=0)
+    finding.severity=Severity.CRITICAL
+    diff={"added":[{"fingerprint":"r","value":"api.example.org"}],"removed":[],"changed":[]}
+    out=diff_risk_context(diff,[asset],[finding])
+    assert out["risk_context"]["new_risk"] > 0
+    assert out["added"][0]["risk_band"] in {"low","medium","high","critical"}
