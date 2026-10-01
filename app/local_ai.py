@@ -97,3 +97,16 @@ def judge_correlation(subject, observations):
         data=json.loads(raw); return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"decision":"needs_review","confidence":0,"supporting_evidence":[],"conflicting_evidence":[],"rationale":raw,"validation_required":True}
+
+def correlate_exposure(target, evidence):
+    system=("You are Be Safe ASM Local Exposure Correlator. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence. Correlate DNS, IP, certificate, technology, cloud and HTTP observations. "
+            "Never infer ownership or maliciousness from a shared provider alone. "
+            "Separate confirmed relationships, hypotheses, conflicts and unknowns. "
+            "Return JSON keys: confirmed_links, hypotheses, conflicts, unknowns, confidence, next_validation.")
+    raw=ask(system,"Correlate this target's evidence. JSON only.\n"+json.dumps({"target":target,"evidence":evidence},ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"confirmed_links":[],"hypotheses":[],"conflicts":[],"unknowns":["Unstructured AI response"],"confidence":0,"next_validation":[]}
