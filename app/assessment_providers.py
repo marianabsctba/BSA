@@ -341,6 +341,79 @@ class WebCrawlProvider(JsonLinesProvider):
         )
 
 
+class AsnIntelligenceProvider(JsonLinesProvider):
+    name = "asnmap"
+    binary = "asnmap"
+    timeout = 75
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "-d", target, "-json", "-silent"]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        asset = item.get("domain") or item.get("ip") or item.get("input")
+        if not asset:
+            return None
+        evidence = {
+            "asset": asset,
+            "asn": item.get("asn"),
+            "org": item.get("org"),
+            "country": item.get("country"),
+            "cidr": item.get("cidr"),
+            "relationship": "network-intelligence",
+        }
+        return ProviderResult("Network ownership intelligence", "info", 90, evidence)
+
+
+class SecretExposureProvider(JsonLinesProvider):
+    name = "trufflehog"
+    binary = "trufflehog"
+    timeout = 150
+
+    def available(self) -> bool:
+        return bool(shutil.which(self.binary))
+
+    def _command(self, target: str) -> list[str]:
+        if not (
+            target.startswith("https://github.com/")
+            or target.startswith("https://gitlab.com/")
+            or target.startswith("http://github.com/")
+            or target.startswith("http://gitlab.com/")
+        ):
+            raise ValueError("repository URL required")
+        return [
+            self.binary,
+            "--json",
+            "--no-update",
+            "--no-verification",
+            "git",
+            target,
+            "--max-depth",
+            "100",
+        ]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        detector = str(item.get("DetectorName") or item.get("DetectorType") or "credential")
+        verified = bool(item.get("Verified"))
+        source = item.get("SourceMetadata") or {}
+        data = source.get("Data") if isinstance(source, dict) else {}
+        git = data.get("Git") if isinstance(data, dict) else {}
+        path = git.get("file") if isinstance(git, dict) else None
+        evidence = {
+            "asset": item.get("SourceName") or "repository",
+            "detector": detector,
+            "verified": verified,
+            "path": path,
+            "redacted": True,
+            "relationship": "secret-exposure",
+        }
+        return ProviderResult(
+            "Potential credential exposure",
+            "high" if verified else "medium",
+            95 if verified else 78,
+            evidence,
+        )
+
+
 class OpenVASProvider:
     name = "openvas"
 
@@ -369,6 +442,8 @@ DEFAULT_PROVIDERS = [
     TlsIntelligenceProvider,
     HistoricalUrlProvider,
     WebCrawlProvider,
+    AsnIntelligenceProvider,
+    SecretExposureProvider,
     OpenVASProvider,
     ZAPProvider,
     ThreatIntelProvider,
