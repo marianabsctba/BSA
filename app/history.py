@@ -478,6 +478,25 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_queue_filter(items: list[dict], *, state: str | None = None,
+                      bucket: str | None = None, min_leverage: int | None = None) -> list[dict]:
+    """Filter CTEM work without changing the canonical queue ordering."""
+    allowed={"new","acknowledged","in_progress","resolved","verified"}
+    if state is not None and state not in allowed:
+        raise ValueError("invalid CTEM state filter")
+    def matches(item):
+        if state is not None and item.get("state") != state:
+            return False
+        p=int(item.get("priority",0) or 0)
+        b="critical" if p>=85 else "high" if p>=70 else "medium" if p>=45 else "low"
+        if bucket is not None and bucket != b:
+            return False
+        if min_leverage is not None and int(item.get("leverage_score",0) or 0) < min_leverage:
+            return False
+        return True
+    return [x for x in ctem_queue_view(items)["ordered_items"] if matches(x)]
+
+
 def ctem_queue_view(items: list[dict]) -> dict:
     """Build a deterministic, tenant-scoped operational CTEM queue view."""
     active=[x for x in items if x.get("state") not in {"verified"}]
