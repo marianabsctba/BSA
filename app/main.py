@@ -41,6 +41,7 @@ from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
 from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
 from .assessment_orchestrator import run_public_assessment
+from .assessment_registry import registry
 
 bootstrap()
 bootstrap_scope()
@@ -1002,6 +1003,17 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         "assets_created": created_assets,
         "findings_created": created_findings,
         "ctem_items": created_ctem,
+    }
+
+
+@app.get("/api/v1/exposure/assessment/capabilities")
+def exposure_assessment_capabilities(request: Request, target: str | None = None):
+    principal = require(request, "assets:read")
+    if target and not asset_in_scope(principal, target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
+    return {
+        "bundle": os.getenv("BSA_ENGINE_BUNDLE", "core"),
+        "capabilities": registry.capability_health(target),
     }
 
 
