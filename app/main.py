@@ -71,6 +71,8 @@ app.add_middleware(
 @app.middleware("http")
 async def csrf_origin_guard(request: Request, call_next):
     if request.method in {"POST","PUT","PATCH","DELETE"} and request.cookies.get("bsa_session"):
+        if request.headers.get("X-Requested-With") != "BeSafeASM":
+            return JSONResponse(status_code=403, content={"detail":"csrf request marker required"})
         origin=request.headers.get("origin")
         if origin:
             allowed=set(ALLOWED_ORIGINS)
