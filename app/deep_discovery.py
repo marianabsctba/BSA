@@ -44,6 +44,8 @@ def derive_network_pivots(pivots: Iterable[DiscoveryPivot]) -> list[DiscoveryPiv
             rows.append(("reverse_dns",p.value,p.source,p.confidence,p.evidence_ref))
         elif p.kind=="asn":
             rows.append(("asn",p.value.upper(),p.source,p.confidence,p.evidence_ref))
+        elif p.kind=="reverse_dns":
+            rows.append(("hostname",p.value,p.source,p.confidence,p.evidence_ref))
     return build_discovery_pivots(rows)
 
 def derive_certificate_pivots(pivots: Iterable[DiscoveryPivot], names: Iterable[str]) -> list[DiscoveryPivot]:
