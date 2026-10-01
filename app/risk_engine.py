@@ -149,6 +149,13 @@ def attack_path_ctem_context(ctem_item: dict, paths: list[dict]) -> dict:
             relevant.append(path)
     max_score=max((int(p.get("score",0) or 0) for p in relevant),default=0)
     path_count=len(relevant)
+    max_confidence=max((int(p.get("confidence",0) or 0) for p in relevant),default=0)
+    blast_radius=set()
+    choke_point_score=0
+    for path in relevant:
+        blast_radius.update(str(n) for n in path.get("nodes",[]) if n)
+        for cp in path.get("choke_points",[]) or []:
+            choke_point_score=max(choke_point_score,int(cp.get("score",0) or 0))
     multiplier=15 if max_score>=85 else 10 if max_score>=70 else 5 if max_score>=45 else 0
     base=int(ctem_item.get("priority",0) or 0)
     priority=min(100,base+multiplier)
@@ -158,5 +165,7 @@ def attack_path_ctem_context(ctem_item: dict, paths: list[dict]) -> dict:
     if max_score:
         drivers.append(f"highest attack-path score: {max_score}")
     return {**ctem_item,"priority":priority,"attack_path_count":path_count,
-            "attack_path_score":max_score,"drivers":drivers,
+            "attack_path_score":max_score,"attack_path_confidence":max_confidence,
+            "blast_radius_nodes":len(blast_radius),"choke_point_score":choke_point_score,
+            "drivers":drivers,
             "attack_path_context":"present" if path_count else "none"}
