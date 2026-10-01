@@ -27,9 +27,10 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .discovery_orchestrator import plan_candidate_collection
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
+from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, analyze_attack_paths, enabled as local_ai_enabled, OLLAMA_MODEL
-from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding, enrich_finding
+from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
@@ -939,20 +940,21 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             continue
 
         confidence = max(0, min(100, int(row.get("confidence", 50) or 50)))
-        asset = by_value.get(value.lower())
+        if "://" in value:
+            kind = AssetType.APPLICATION
+        elif value.count(":") == 1 and value.rsplit(":", 1)[1].isdigit():
+            kind = AssetType.SERVICE
+        else:
+            kind = AssetType.SUBDOMAIN if value.count(".") >= 2 else AssetType.DOMAIN
+        canonical_value = normalize_asset_value(kind.value, value) or value.lower()
+        asset = by_value.get(canonical_value)
 
         if asset is None:
-            digest = sha256(f"{principal.tenant_id}|{value}".encode()).hexdigest()[:16]
-            if "://" in value:
-                kind = AssetType.APPLICATION
-            elif value.count(":") == 1 and value.rsplit(":", 1)[1].isdigit():
-                kind = AssetType.SERVICE
-            else:
-                kind = AssetType.SUBDOMAIN if value.count(".") >= 2 else AssetType.DOMAIN
+            digest = sha256(f"{principal.tenant_id}|{kind.value}|{canonical_value}".encode()).hexdigest()[:16]
             asset = Asset(
                 tenant_id=principal.tenant_id,
                 id=f"ast-{digest}",
-                value=value,
+                value=canonical_value,
                 type=kind,
                 status="observed",
                 confidence=confidence,
@@ -966,7 +968,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 sources=["assessment-intelligence"],
             )
             STORE_ASSETS.append(asset)
-            by_value[value.lower()] = asset
+            by_value[canonical_value] = asset
             created_assets += 1
         else:
             asset.last_seen = now
