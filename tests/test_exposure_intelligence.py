@@ -281,3 +281,14 @@ def test_cpe_normalization_is_conservative():
     for item in r.json()["items"]:
         if item["cpe"]:
             assert item["cpe"].startswith("cpe:2.3:") or item["cpe"].startswith("cpe:/")
+
+
+def test_cve_correlation_requires_confirmed_version():
+    from app.cve_correlation import CVERange, match_cve
+    candidates=[CVERange("CVE-TEST","vendor","nginx","1.2.0","1.2.9",source="test")]
+    potential=match_cve("nginx",None,"cpe:2.3:a:vendor:nginx:*:*:*:*:*:*:*:*",candidates)
+    assert potential[0].state=="potential"
+    confirmed=match_cve("nginx","1.2.5","cpe:2.3:a:vendor:nginx:1.2.5:*:*:*:*:*:*:*",candidates)
+    assert confirmed[0].state=="confirmed_affected"
+    safe=match_cve("nginx","1.3.0",None,candidates)
+    assert safe[0].state=="not_affected"
