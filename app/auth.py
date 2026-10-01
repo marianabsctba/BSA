@@ -92,7 +92,7 @@ def bootstrap():
     conn = _db()
     conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)", ("tenant-demo", "Be Safe Demo"))
     email = os.getenv("BSA_ADMIN_EMAIL", "admin@besafe.local").lower()
-    password = os.getenv("BSA_ADMIN_PASSWORD", "")
+    password = os.getenv("BSA_ADMIN_PASSWORD", "ChangeMe!123" if ENVIRONMENT in {"development","dev","test"} else "")
     if ENVIRONMENT in {"production","prod"}:
         if not password: raise RuntimeError("BSA_ADMIN_PASSWORD must be set in production")
         _validate_password(password)
