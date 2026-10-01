@@ -31,7 +31,7 @@ from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, analyze_attack_paths, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding
-from .vulnerability_evidence import normalize_vulnerability_evidence
+from .vulnerability_evidence import normalize_vulnerability_evidence, vulnerability_identity_key
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
@@ -1000,11 +1000,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         cpe = vuln_ctx["cpe"]
 
         title = str(row.get("title") or "Exposure evidence")
-        component_key = str(vuln_ctx.get("affected_component") or canonical_value).strip().lower().rstrip(".")
-        if vulnerability_id:
-            finding_identity = f"{principal.tenant_id}|{asset.id}|{vulnerability_id}|{component_key}"
-        else:
-            finding_identity = f"{principal.tenant_id}|{asset.id}|{title}"
+        finding_key = vulnerability_identity_key(row, canonical_value)
+        finding_identity = f"{principal.tenant_id}|{asset.id}|{repr(finding_key)}"
         finding_digest = sha256(finding_identity.encode()).hexdigest()[:16]
         finding_id = f"fdg-{finding_digest}"
         finding = next((x for x in STORE_FINDINGS if x.tenant_id == principal.tenant_id and x.id == finding_id), None)
@@ -1036,6 +1033,15 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             created_findings += 1
         else:
             finding.confidence = max(finding.confidence, confidence)
+            severity_rank = {
+                Severity.INFO: 0,
+                Severity.LOW: 1,
+                Severity.MEDIUM: 2,
+                Severity.HIGH: 3,
+                Severity.CRITICAL: 4,
+            }
+            if severity_rank.get(severity, 0) > severity_rank.get(finding.severity, 0):
+                finding.severity = severity
             if vulnerability_id and not finding.vulnerability_id:
                 finding.vulnerability_id = vulnerability_id
             if cpe and not finding.cpe:
