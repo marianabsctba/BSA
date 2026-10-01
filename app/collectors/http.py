@@ -3,6 +3,7 @@ from urllib.error import URLError, HTTPError
 from hashlib import sha256
 
 from .base import Evidence
+from ..security import validate_external_target, validate_redirect
 
 
 SECURITY_HEADERS = (
@@ -35,6 +36,7 @@ class HTTPCollector:
     name = "http"
 
     def collect(self, url: str, timeout: float = 4.0) -> list[Evidence]:
+        validate_external_target(url)
         req = Request(
             url,
             method="GET",
@@ -47,6 +49,7 @@ class HTTPCollector:
                 headers=resp.headers
                 status=resp.status
                 final_url=resp.geturl()
+                validate_redirect(final_url)
                 body=resp.read(131072)
                 if final_url != url:
                     redirect_chain.append(final_url)
