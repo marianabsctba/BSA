@@ -185,3 +185,18 @@ def analyze_attack_paths(graph: dict) -> dict | None:
     except json.JSONDecodeError:
         return {"path_signals":[],"choke_points":[],"control_gaps":[],"evidence_weaknesses":[],"validation":[],"unknowns":["Unstructured local AI response"],"confidence":0}
 
+
+def prioritize_surface_candidates(candidates: list[dict], evidence: list[dict]) -> dict | None:
+    system=("You are Be Safe ASM Surface Discovery Prioritizer. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied candidates and evidence. Prioritize candidates classified interesting/protected/unknown. "
+            "Never promote negative-known responses. Do not invent URLs, vulnerabilities or assets. "
+            "Return JSON keys: priorities, discarded, rationale, unknowns, confidence.")
+    payload={"candidates":candidates[:300],"evidence":evidence[-500:]}
+    raw=ask(system,"Prioritize surface candidates for deeper defensive collection. JSON only.\n"+
+            json.dumps(payload,ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"priorities":[],"discarded":[],"rationale":"Unstructured AI response","unknowns":[],"confidence":0}
+
