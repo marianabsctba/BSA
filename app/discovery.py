@@ -10,6 +10,7 @@ from .collectors.ports import PortCollector
 from .collectors.rdap import RDAPCollector
 from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
+from .security import validate_external_target
 
 
 COLLECTORS = {
@@ -39,6 +40,7 @@ def normalize_target(target: str) -> tuple[str, str]:
 def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
+    validate_external_target(target)
     selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap", "ip_intel"]
     evidence = []
 
@@ -86,6 +88,7 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
     never recursively scanned.
     """
     hostname, _ = normalize_target(seed)
+    validate_external_target(seed)
     base = hostname.split(".")[-2:] if hostname.count(".") >= 1 else [hostname]
     registrable = ".".join(base)
     queue = deque([(hostname, 0, "seed")])
