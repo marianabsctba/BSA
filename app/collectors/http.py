@@ -662,11 +662,11 @@ def security_header_evidence(url: str, headers) -> list[Evidence]:
 class HTTPCollector:
     name = "http"
 
-    def collect(self, url: str, timeout: float = 4.0) -> list[Evidence]:
+    def collect(self, url: str, timeout: float = 4.0, approved_ips: list[str] | None = None) -> list[Evidence]:
         body=b""
         redirect_chain=[]
         try:
-            status,headers,body,final_url=_pinned_fetch(url,timeout=timeout,max_bytes=131072)
+            status,headers,body,final_url=_pinned_fetch(url,timeout=timeout,max_bytes=131072,approved_ips=approved_ips)
             if 300 <= status < 400:
                 location=headers.get("Location")
                 if location:
