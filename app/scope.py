@@ -62,7 +62,7 @@ def list_scopes(principal: Principal):
     conn.close(); return [dict(r) for r in rows]
 
 def assign_scope(principal: Principal,user_id:str,scope_id:str):
-    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
+    if not __import__("app.auth",fromlist=["can"]).can(principal,"users:write"): raise PermissionError("users:write required")
     ensure_scope_schema(); conn=_db()
     user=conn.execute("SELECT id,tenant_id FROM users WHERE id=?",(user_id,)).fetchone()
     scope=conn.execute("SELECT id,tenant_id FROM scopes WHERE id=?",(scope_id,)).fetchone()
