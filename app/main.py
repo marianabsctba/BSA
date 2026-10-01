@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
@@ -545,6 +545,29 @@ def require(request: Request, permission: str):
     return principal
 
 
+@app.get("/api/v1/auth/mfa")
+def auth_mfa_status(request: Request):
+    p=current_principal(request)
+    return mfa_status(p)
+
+@app.post("/api/v1/auth/mfa/enroll")
+def auth_mfa_enroll(request: Request):
+    p=current_principal(request)
+    try: return mfa_enroll(p)
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    
+class MFAEnableRequest(BaseModel):
+    code: str = Field(min_length=6,max_length=6)
+
+@app.post("/api/v1/auth/mfa/enable")
+def auth_mfa_enable(request: Request, payload: MFAEnableRequest):
+    p=current_principal(request)
+    try:
+        if not mfa_enable(p,payload.code): raise HTTPException(status_code=400,detail="invalid MFA code")
+        audit(p,"enable","mfa")
+        return {"enabled":True}
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    
 @app.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
     token = authenticate(payload.email, payload.password, request.client.host if request.client else "")
