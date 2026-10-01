@@ -15,6 +15,7 @@ from .assessment_providers import (
     CloudExposureProvider,
     DnsValidationProvider,
     HistoricalUrlProvider,
+    HIBPProvider,
     HttpProbeProvider,
     NmapProvider,
     NucleiProvider,
@@ -77,9 +78,8 @@ class AssessmentRegistry:
             SecretExposureProvider,
             OpenVASProvider,
             ZAPProvider,
-            ThreatIntelProvider,
             ThreatFoxProvider,
-            CredentialExposureProvider,
+            HIBPProvider,
         ):
             self.register(provider.name, provider)
 
