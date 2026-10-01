@@ -36,58 +36,7 @@ def run_safe_web_assessment(target: str) -> dict:
     if 500 <= status <= 599: findings.append(DASTFinding("http_status","medium","server returned 5xx",str(status),85))
     if body:
         html=body.decode("utf-8","ignore")[:262144]
-        forms=len(re.findall(r"<form\b",html,re.I))
-        scripts=len(re.findall(r"<script\b",html,re.I))
-        if forms:
-            findings.append(DASTFinding("surface_inventory","info",f"forms observed: {forms}",f"forms={forms}",95))
-        if scripts:
-            findings.append(DASTFinding("surface_inventory","info",f"scripts observed: {scripts}",f"scripts={scripts}",95))
-    api_inventory=[]
-    content_type=lower_headers.get("content-type","").lower()
-    if "json" in content_type and body:
-        try:
-            spec=json.loads(body.decode("utf-8","ignore"))
-            if isinstance(spec,dict) and (spec.get("openapi") or spec.get("swagger")):
-                for path,item in list(spec.get("paths",{}).items())[:500]:
-                    if isinstance(path,str) and isinstance(item,dict):
-                        for method,op in item.items():
-                            if method.lower() in {"get","post","put","patch","delete","head","options","trace"}:
-                                api_inventory.append({"path":path,"method":method.upper(),"operation_id":op.get("operationId") if isinstance(op,dict) else None,"auth_declared":bool(op.get("security",spec.get("security"))) if isinstance(op,dict) else bool(spec.get("security"))})
-        except (ValueError,TypeError):
-            pass
-
-    api_validation=[]
-    for item in api_inventory[:500]:
-        path=item["path"]
-        if "{" in path:
-            api_validation.append({"path":path,"method":item["method"],"status":"template","reason":"path parameter requires an explicit test value"})
-            continue
-        if item["method"] != "GET":
-            continue
-        candidate=urljoin(url,path)
-        cp=urlparse(candidate)
-        if cp.hostname != parsed.hostname:
-            continue
-        try:
-            vstatus, vheaders, _, vfinal=_pinned_fetch(candidate,timeout=3.0,max_bytes=65536,approved_ips=approved_ips)
-            api_validation.append({"path":path,"method":item["method"],"status":vstatus,"final_url":vfinal,"auth_declared":item["auth_declared"]})
-            if item["method"]=="GET" and vstatus>=500:
-                findings.append(DASTFinding("api_validation","medium","documented GET endpoint returned 5xx",f"{item['method']} {path} -> {vstatus}",86))
-        except Exception:
-            api_validation.append({"path":path,"method":item["method"],"status":"unreachable","auth_declared":item["auth_declared"]})
-
-    # Bounded same-origin crawl: GET only, no payload mutation and no external hosts.
-    discovered = []
-    if body:
-        html = body.decode("utf-8","ignore")[:262144]
-        for ref in re.findall(r"(?:href|src|action)=['\"]([^'\"]+)['\"]", html, re.I)[:150]:
-            absolute = urljoin(url, ref)
-            rp = urlparse(absolute)
-            if rp.hostname == parsed.hostname and rp.scheme in {"http","https"}:
-                discovered.append(absolute)
-        if parsed.scheme == "https" and re.search(r"(?:src|href)=['\"]http://", html, re.I):
-            findings.append(DASTFinding("mixed_content","medium","HTTPS page references HTTP resources","http:// resource",90))
-        forms=len(re.findall(r"<form\b",html,re.I))
+        for action in re.findall(r"<form[^>]+action=['\"]([^'\"]+)['\"]", html, re.I)[:50]:
             ap = urlparse(urljoin(url, action))
             if parsed.scheme == "https" and ap.scheme == "http" and ap.hostname == parsed.hostname:
                 findings.append(DASTFinding("form_transport","medium","HTTPS page posts a form to HTTP","form action",94))
