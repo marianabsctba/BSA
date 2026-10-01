@@ -983,3 +983,22 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .chart{height:230px}
  .radar-canvas{min-height:320px}
 }
+
+
+/* INFRA GRAPH RELATIONSHIPS */
+.infra-graph-canvas{overflow:hidden}
+.infra-lines{position:absolute;inset:0;width:100%;height:100%;z-index:1;overflow:visible}
+.infra-lines line{vector-effect:non-scaling-stroke;fill:none;stroke-linecap:round}
+.infra-lines line.soft{stroke:#76829638;stroke-width:.75;stroke-dasharray:2.4 3.6}
+.infra-lines line.strong{stroke:#ff2d847d;stroke-width:1.15;filter:drop-shadow(0 0 2px #ff2d8444)}
+.infra-lines circle{fill:#0d1218;stroke:#ff2d8466;stroke-width:.45;vector-effect:non-scaling-stroke}
+.infra-lines text{fill:#8d98a8;font-size:3px;font-family:"DM Mono";paint-order:stroke;stroke:#080c12;stroke-width:.8px;stroke-linejoin:round}
+.infra-node{z-index:2;backdrop-filter:blur(9px);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.infra-node:hover{transform:translate(-50%,-50%) scale(1.05);border-color:#ff2d8458;box-shadow:0 12px 32px #000b,0 0 18px #ff2d8418}
+.infra-node.root{z-index:3;background:linear-gradient(145deg,#1a0e17,#0d1218);border-color:#ff2d8477;box-shadow:0 0 30px #ff2d8425,inset 0 1px #ffffff08}
+.infra-node.root:after{content:"";position:absolute;inset:-7px;border:1px solid #ff2d8424;border-radius:13px;pointer-events:none}
+@media(max-width:700px){
+ .infra-graph-canvas{height:300px}
+ .infra-node{min-width:68px;max-width:96px;padding:6px}
+ .infra-lines text{display:none}
+}
