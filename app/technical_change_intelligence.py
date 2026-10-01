@@ -51,3 +51,24 @@ def classify_technical_change(event: TechnicalChange, context: dict | None = Non
     c=context or {}; severity=event.severity
     if event.change_type=="added" and c.get("internet_exposed"): severity="warning"
     return TechnicalChange(event.asset_key,event.change_type,event.before,event.after,event.evidence_refs,event.confidence,severity,event.category)
+
+def technical_change_impact(event: TechnicalChange, context: dict | None = None) -> dict:
+    c=context or {}; impact=0; drivers=[]
+    if event.change_type=="added":
+        impact=25; drivers.append("novo elemento técnico observado")
+        if event.category=="service": impact+=20; drivers.append("novo serviço/porta")
+        elif event.category=="tls": impact+=10; drivers.append("novo elemento TLS")
+        elif event.category=="technology": impact+=15; drivers.append("nova tecnologia detectada")
+        elif event.category=="endpoint": impact+=20; drivers.append("novo endpoint")
+        elif event.category=="network": impact+=15; drivers.append("nova exposição de rede")
+        elif event.category=="dns": impact+=10; drivers.append("nova evidência DNS")
+    elif event.change_type=="removed":
+        impact=-10; drivers.append("elemento técnico removido")
+    elif event.change_type=="evidence_changed":
+        impact=5 if event.confidence>=90 else 0
+        if event.category=="tls": drivers.append("evidência TLS alterada")
+        elif event.category=="technology": drivers.append("fingerprint tecnológico alterado")
+        elif event.category=="dns": drivers.append("evidência DNS alterada")
+    if c.get("internet_exposed") and event.change_type=="added":
+        impact+=15; drivers.append("mudança em ativo exposto à Internet")
+    return {"impact":max(-100,min(100,impact)),"drivers":drivers,"category":event.category}
