@@ -167,7 +167,7 @@ def mfa_secret_for_user(user_id: str) -> str | None:
     conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
     return row["secret"] if row else None
 
-def authenticate(email: str, password: str, client_ip: str = "") -> str | None:
+def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     now=time.time()
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
@@ -189,6 +189,9 @@ def authenticate(email: str, password: str, client_ip: str = "") -> str | None:
         return None
     _LOGIN_ATTEMPTS.pop(key,None)
     _IP_LOGIN_ATTEMPTS.pop(ipkey,None)
+    mfa_secret=mfa_secret_for_user(row["id"])
+    if mfa_secret and not verify_totp(mfa_secret,mfa_code or ""):
+        return None
     now = int(time.time())
     jti=secrets.token_urlsafe(24)
     exp=now + TOKEN_TTL
