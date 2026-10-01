@@ -8,6 +8,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any
 import uuid
+import re
 
 
 @dataclass
@@ -100,8 +101,8 @@ class AssessmentEngine:
         # Backwards-compatible default is the safe product boundary.
         return self.export_public()
 
-    @staticmethod
-    def _sanitize_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def _sanitize_evidence(cls, evidence: dict[str, Any]) -> dict[str, Any]:
         blocked = {
             "engine",
             "provider",
@@ -113,4 +114,61 @@ class AssessmentEngine:
             "tool",
             "tool_name",
         }
-        return {k: v for k, v in (evidence or {}).items() if str(k).lower() not in blocked}
+        return {
+            k: cls._mask_value(k, v)
+            for k, v in (evidence or {}).items()
+            if str(k).lower() not in blocked
+        }
+
+    @classmethod
+    def _mask_value(cls, key: str, value: Any) -> Any:
+        sensitive_keys = {
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "secret_value",
+            "token",
+            "access_token",
+            "refresh_token",
+            "api_key",
+            "apikey",
+            "private_key",
+            "client_secret",
+            "credential",
+            "credentials",
+        }
+        key_l = str(key).lower().replace("_", "-")
+        normalized = key_l.replace("-", "_")
+        if normalized in {x.replace("-", "_") for x in sensitive_keys}:
+            return "[REDACTED]"
+
+        if isinstance(value, dict):
+            return {k: cls._mask_value(k, v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [cls._mask_value(key, item) for item in value]
+        if isinstance(value, tuple):
+            return [cls._mask_value(key, item) for item in value]
+        if not isinstance(value, str):
+            return value
+
+        text = value
+        text = re.sub(
+            r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}",
+            lambda m: m.group(1) + " [REDACTED]",
+            text,
+        )
+        text = re.sub(
+            r"(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|client[_-]?secret)\s*[:=]\s*[^\s,;]+",
+            lambda m: m.group(1) + "=[REDACTED]",
+            text,
+        )
+        text = re.sub(
+            r"\b([A-Za-z0-9._%+-]{1,3})[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b",
+            r"\1***@\2",
+            text,
+        )
+        return text
