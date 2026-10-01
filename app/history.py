@@ -402,6 +402,20 @@ def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str, att
         created.append(upsert_ctem_item(item,tenant_id))
     return created
 
+def ctem_leverage_summary(items: list[dict]) -> dict:
+    """Summarize remediation leverage for an operational CTEM queue."""
+    active=[x for x in items if x.get("state") not in {"verified"}]
+    return {
+        "active_items":len(active),
+        "high_leverage_items":sum(1 for x in active if int(x.get("leverage_score",0) or 0)>=80),
+        "paths_affected":sum(int(x.get("paths_affected",0) or 0) for x in active),
+        "weighted_risk_reduction":round(sum(
+            int(x.get("risk_reduction_percent",0) or 0)*max(1,int(x.get("paths_affected",0) or 0))
+            for x in active
+        ) / max(1,sum(max(1,int(x.get("paths_affected",0) or 0)) for x in active))),
+    }
+
+
 def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: list[str], notes: str = "") -> dict:
     """Close a CTEM item only with explicit verification evidence."""
     import uuid
