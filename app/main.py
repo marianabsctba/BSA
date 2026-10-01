@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, list_user_scopes, set_user_scope, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
@@ -664,6 +664,27 @@ def auth_permissions(request: Request):
 def rbac_permissions():
     from .auth import PERMISSION_CATALOG
     return {"permissions": PERMISSION_CATALOG}
+
+class UserScopeRequest(BaseModel):
+    scope_type: str
+    scope_value: str = Field(min_length=1, max_length=240)
+    active: bool = True
+
+@app.get("/api/v1/users/{user_id}/scopes")
+def users_scopes_list(user_id: str, request: Request):
+    p=current_principal(request)
+    try: return list_user_scopes(p,user_id)
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+
+@app.post("/api/v1/users/{user_id}/scopes")
+def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
+    p=current_principal(request)
+    try:
+        result=set_user_scope(p,user_id,payload.scope_type,payload.scope_value,payload.active)
+        audit(p,"scope_change","user",user_id,result)
+        return result
+    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
 
 class CustomRoleRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
