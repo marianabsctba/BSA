@@ -478,6 +478,19 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_audit_integrity(item: dict, verifications: list[dict]) -> dict:
+    """Return stable integrity metadata for an audit timeline."""
+    import hashlib, json
+    timeline=ctem_audit_timeline(item,verifications)
+    canonical=json.dumps(timeline,ensure_ascii=False,sort_keys=True,separators=(",",":"))
+    return {
+        "algorithm":"sha256",
+        "hash":hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "event_count":len(timeline),
+        "evidence_ref_count":sum(len(x.get("evidence_refs",[]) or []) for x in timeline),
+    }
+
+
 def ctem_verification_history(item_id: str, tenant_id: str) -> list[dict]:
     conn=_history_db()
     rows=conn.execute(
