@@ -97,7 +97,22 @@ class NucleiProvider(JsonLinesProvider):
     timeout = 120
 
     def _command(self, target: str) -> list[str]:
-        return [self.binary, "-u", target, "-jsonl", "-silent", "-timeout", "8", "-retries", "1"]
+        return [
+            self.binary,
+            "-u",
+            target,
+            "-jsonl",
+            "-silent",
+            "-no-interactsh",
+            "-timeout",
+            "8",
+            "-retries",
+            "1",
+            "-rate-limit",
+            "25",
+            "-severity",
+            "low,medium,high,critical",
+        ]
 
     def normalize(self, item: dict) -> ProviderResult | None:
         info = item.get("info") or {}
@@ -114,14 +129,17 @@ class NucleiProvider(JsonLinesProvider):
         if isinstance(cpe, list):
             cpe = cpe[0] if cpe else None
         evidence = {
-            "matched_at": item.get("matched-at") or item.get("host"),
+            "matched_at": item.get("matched-at") or item.get("matchedAt") or item.get("host"),
+            "url": item.get("url"),
             "type": item.get("type"),
             "severity": severity,
-            "reference": info.get("reference") or [],
+            "matcher": item.get("matcher-name") or item.get("matcher_name"),
+            "reference": info.get("reference") or info.get("references") or [],
             "classification": classification,
             "vulnerability_id": cve,
             "cvss": cvss,
             "cpe": cpe,
+            "validation_state": "confirmed_evidence",
             "relationship": "vulnerability-validation",
         }
         return ProviderResult(title=title, severity=severity, confidence=92, evidence=evidence)
