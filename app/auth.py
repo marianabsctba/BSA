@@ -171,6 +171,23 @@ def mfa_secret_for_user(user_id: str) -> str | None:
     conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
     return row["secret"] if row else None
 
+def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
+    now = time.time()
+    key = f"{bucket}:{identity}"
+    state = _LOGIN_ATTEMPTS.get(key, {"count": 0, "until": 0})
+    if state["until"] > now:
+        return False
+    if state["until"] and state["until"] <= now:
+        state = {"count": 0, "until": 0}
+    state["count"] += 1
+    if state["count"] > limit:
+        state["until"] = now + window_seconds
+        _LOGIN_ATTEMPTS[key] = state
+        return False
+    _LOGIN_ATTEMPTS[key] = state
+    return True
+
+
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     now=time.time()
     key=email.strip().lower()
