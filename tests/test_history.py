@@ -171,3 +171,20 @@ def test_materialize_ctem_applies_relevant_attack_path_context(tmp_path, monkeyp
     assert out[0]["priority"]==85
     assert out[0]["attack_path_count"]==1
     assert out[0]["action"]=="immediate"
+
+def test_materialize_ctem_carries_remediation_leverage(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "ctem-leverage.db"))
+    asset=SimpleNamespace(id="asset-1",fingerprint="fp-1",criticality=4,confidence=95,
+        tags=["internet-facing"],type=SimpleNamespace(value="application"))
+    change={"fingerprint":"fp-1","evidence_refs":["asset:e1"],"reasons":["surface"],
+            "exposure_score":70,"risk_score":70}
+    out=history.materialize_ctem_from_diff(
+        {"added":[change],"changed":[]},[asset],[],"tenant-leverage",
+        remediation_leverage={"asset-1":{"leverage_score":88,"paths_affected":3,
+            "reduction_percent":62,"path_coverage_percent":75}},
+    )
+    assert out[0]["leverage_score"] == 88
+    assert out[0]["paths_affected"] == 3
+    assert out[0]["risk_reduction_percent"] == 62
+    assert "alto potencial de redução de risco" in out[0]["drivers"]
