@@ -33,12 +33,12 @@ class Asset(BaseModel):
     business_unit: str | None = None
     environment: str = "unknown"
     cloud_provider: str | None = None
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     first_seen: str
     last_seen: str
     fingerprint: str | None = None
     evidence_count: int = 0
-    sources: list[str] = []
+    sources: list[str] = Field(default_factory=list)
 
 
 class Finding(BaseModel):
