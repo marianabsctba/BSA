@@ -1,6 +1,6 @@
 FROM ghcr.io/zaproxy/zaproxy:stable AS zap
 
-FROM golang:1.24-bookworm AS engines
+FROM golang:1.26-bookworm AS engines
 
 RUN GOBIN=/out go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
  && CGO_ENABLED=0 GOBIN=/out go install github.com/owasp-amass/amass/v5/cmd/amass@main \
