@@ -1218,7 +1218,9 @@ def dast_nuclei(payload: DASTRequest, request: Request):
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     try:
-        scan = run_nuclei(payload.target, profile=payload.profile)\n        scan["bsa_findings"] = normalize_findings(scan, asset_id=f"unresolved:{urlparse(payload.target).hostname}")\n        return scan
+        scan = run_nuclei(payload.target, profile=payload.profile)
+        scan["bsa_findings"] = normalize_findings(scan, asset_id=f"unresolved:{urlparse(payload.target).hostname}")
+        return scan
     except NucleiEngineError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
