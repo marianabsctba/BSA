@@ -39,7 +39,7 @@ function App(){
     {active==="overview"&&<Overview dash={dash} exposure={exposure} assets={assets} ctem={ctem} impact={impact} trend={trend} onAsset={setSelected} graph={graph} mssp={mssp} msspTrend={msspTrend} controls={controls} drp={drp} target={target} setTarget={setTarget} infra={infra} setInfra={setInfra} infraGraph={infraGraph} setInfraGraph={setInfraGraph} role={me?.role} locale={locale}/>}
     {active==="easm"&&<EASM easm={easm} onAsset={setSelected} locale={locale}/>}
     {active==="vuln"&&<VulnerabilityIntel locale={locale} onNavigate={setActive}/>} 
-    {active==="risk"&&<RiskIntel locale={locale}/>}
+    {active==="risk"&&<RiskIntel locale={locale} onNavigate={setActive}/>} 
     {active==="ctem"&&<CtemIntel locale={locale}/>}
     {active==="policy"&&<RiskPolicyStudio locale={locale}/>}
     {active==="tech"&&<TechnologyIntel locale={locale}/>}
