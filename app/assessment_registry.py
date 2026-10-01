@@ -114,6 +114,35 @@ class AssessmentRegistry:
             for item in self.capabilities.values()
         ]
 
+    def capability_health(self, target: str | None = None) -> list[dict]:
+        mapping = {
+            "discovery": ("subfinder", "amass", "dnsx"),
+            "fingerprint": ("httpx", "whatweb"),
+            "vulnerability": ("nuclei", "openvas"),
+            "service_exposure": ("naabu", "nmap"),
+            "web_assessment": ("safeweb", "zap", "katana"),
+            "intelligence": ("cti", "threatfox"),
+            "credential_exposure": ("leak", "trufflehog"),
+            "cloud_intelligence": ("cloud",),
+            "network_intelligence": ("asnmap",),
+        }
+        rows = []
+        for capability, providers in mapping.items():
+            states = []
+            for provider in providers:
+                try:
+                    states.append(self.available(provider, target))
+                except Exception:
+                    states.append(False)
+            available = sum(1 for state in states if state)
+            rows.append({
+                "name": capability,
+                "status": "ready" if available == len(states) else "partial" if available else "unavailable",
+                "available_backends": available,
+                "backend_count": len(states),
+            })
+        return rows
+
     def list_engines(self):
         # Backwards compatibility. Deliberately returns product capabilities,
         # never private provider/tool names.
