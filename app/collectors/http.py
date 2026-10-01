@@ -173,6 +173,21 @@ def compare_response_to_baseline(response: dict, baseline: dict) -> dict:
             "status":response.get("status"),
             "length":response.get("length")}
 
+
+def classify_surface_candidate(response: dict, baseline: dict) -> str:
+    if not response or response.get("status") is None: return "unknown"
+    cmp=compare_response_to_baseline(response,baseline)
+    if cmp["is_known_negative"]:
+        return "negative-known"
+    if response.get("redirect"):
+        return "redirect"
+    status=response.get("status")
+    if 200 <= status < 300:
+        return "interesting"
+    if status in {401,403}:
+        return "protected"
+    return "unknown"
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
