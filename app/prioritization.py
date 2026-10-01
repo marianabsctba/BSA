@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from .models import Asset, Finding, Severity
 from .intelligence import blast_radius, ownership_confidence
+from .local_ai import enabled as local_ai_enabled, ask
 
 
 @dataclass(frozen=True)
@@ -54,3 +55,26 @@ def prioritize_finding(finding: Finding, asset: Asset | None, path_score: int = 
         priority, action = "P3", "corrigir conforme janela e risco contextual"
 
     return ActionPriority(priority, score, impact, urgency, finding.confidence, reasons, action)
+
+def ai_context_signal(finding: Finding, asset: Asset | None, path_score: int = 0) -> dict:
+    """Optional advisory AI context. Deterministic score remains authoritative."""
+    if not local_ai_enabled() or asset is None:
+        return {"enabled":False,"confidence":0,"signals":[],"unknowns":["AI unavailable or asset missing"]}
+    evidence={
+        "finding":{"severity":finding.severity.value,"confidence":finding.confidence,"title":finding.title},
+        "asset":{"type":asset.type.value,"criticality":asset.criticality,"confidence":asset.confidence,"tags":list(asset.tags)},
+        "path_score":path_score,
+    }
+    system=("You are Be Safe ASM Risk Context Analyst. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence. Never change or assign the final risk score. "
+            "Identify contextual signals, conflicts and unknowns that a deterministic engine should consider. "
+            "Return JSON keys: signals, conflicts, unknowns, confidence.")
+    raw=ask(system,"Analyze contextual risk signals. JSON only.\n"+__import__("json").dumps(evidence,ensure_ascii=False,separators=(",",":")))
+    if not raw:return {"enabled":True,"confidence":0,"signals":[],"unknowns":["AI unavailable"]}
+    try:
+        data=__import__("json").loads(raw)
+        return {"enabled":True,"confidence":int(data.get("confidence",0) or 0),
+                "signals":data.get("signals",[]),"conflicts":data.get("conflicts",[]),"unknowns":data.get("unknowns",[])}
+    except Exception:
+        return {"enabled":True,"confidence":0,"signals":[],"unknowns":["Unstructured AI response"]}
+
