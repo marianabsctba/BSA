@@ -356,7 +356,7 @@ def test_ctem_action_transition_requires_canonical_sequence():
 def test_tenant_scope_never_leaks_cross_tenant_assets_or_findings():
     from app.main import tenant_scope
     from types import SimpleNamespace
-    principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user")
+    principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user",role="user")
     assets=[
       SimpleNamespace(id="a1",tenant_id="tenant-a",value="a.example"),
       SimpleNamespace(id="b1",tenant_id="tenant-b",value="b.example"),
