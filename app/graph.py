@@ -62,7 +62,7 @@ def _path_score(nodes, edges, path):
         edge = edge_by_key.get((left, right))
         if edge:
             confidences.append(edge.confidence)
-    node_scores = [nodes[n].risk_score for n in path if nodes[n].risk_score]
+    node_scores = [score for n in path if (node := nodes.get(n)) is not None if (score := getattr(node, "risk_score", 0))]
     risk = max(node_scores, default=0)
     evidence_confidence = min(confidences, default=0)
     impact = max((next((e.impact for e in edges if e.source_id==left and e.target_id==right), 0) for left,right in zip(path,path[1:])), default=0)
@@ -77,14 +77,14 @@ def _path_explanation(nodes, edges, path):
         edge = edge_by_key.get((left, right))
         if not edge:
             continue
-        item = {"from": nodes[left].label, "to": nodes[right].label, "relationship": edge.kind, "confidence": edge.confidence, "impact": edge.impact, "source": edge.evidence}
+        left_node = nodes.get(left)\n        right_node = nodes.get(right)\n        item = {"from": getattr(left_node, "label", left), "to": getattr(right_node, "label", right), "relationship": edge.kind, "confidence": edge.confidence, "impact": edge.impact, "source": edge.evidence}
         evidence.append(item)
         if weakest is None or edge.confidence < weakest["confidence"]:
             weakest = item
     reasons = ["cadeia de exposição alcançável pela superfície observada"]
-    if any(nodes[n].risk_band == "critical" for n in path):
+    if any(getattr(nodes.get(n), "risk_band", None) == "critical" for n in path):
         reasons.append("há ativo crítico na cadeia")
-    if any(nodes[n].kind == "threat" for n in path):
+    if any(getattr(nodes.get(n), "kind", None) == "threat" for n in path):
         reasons.append("há evidência de inteligência de ameaça associada")
     return {"reasons": reasons, "evidence": evidence, "weakest_link": weakest}
 
