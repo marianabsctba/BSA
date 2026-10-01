@@ -357,3 +357,29 @@ def list_ctem_items(tenant_id: str, states: set[str] | None = None) -> list[dict
         x["evidence_refs"]=json.loads(x.pop("evidence_refs_json") or "[]")
         result.append(x)
     return result
+
+
+def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str) -> list[dict]:
+    """Turn evidence-backed discovery deltas into tenant-scoped CTEM work items."""
+    from .risk_engine import prioritize_surface_change
+    by_fp={getattr(a,"fingerprint",None):a for a in assets}
+    created=[]
+    for change in list(diff.get("added",[]))+list(diff.get("changed",[])):
+        asset=by_fp.get(change.get("fingerprint"))
+        if asset is None:
+            continue
+        priority=prioritize_surface_change(change,asset,findings)
+        if priority.get("state") != "prioritized":
+            continue
+        item={
+            "item_id": f"surface:{tenant_id}:{change.get('fingerprint')}",
+            "asset_id": str(getattr(asset,"id",change.get("fingerprint",""))),
+            "finding_id": None,
+            "priority": int(priority.get("priority",0)),
+            "action": str(priority.get("action","validate")),
+            "title": "Surface change requiring CTEM attention",
+            "drivers": list(priority.get("drivers",[])),
+            "evidence_refs": list(change.get("evidence_refs",[])),
+        }
+        created.append(upsert_ctem_item(item,tenant_id))
+    return created
