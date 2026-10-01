@@ -16,6 +16,7 @@ class TLSCollector:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with context.wrap_socket(sock, server_hostname=host) as tls:
                 cert = tls.getpeercert()
+                der = tls.getpeercert(binary_form=True)
                 cipher = tls.cipher()
                 protocol = tls.version()
 
@@ -25,7 +26,6 @@ class TLSCollector:
         ]
 
         if cert:
-            der = tls.getpeercert(binary_form=True)
             if der:
                 evidence.append(Evidence(self.name,target,"certificate_sha256",hashlib.sha256(der).hexdigest(),99))
             san = []
