@@ -61,3 +61,17 @@ def test_attack_path_context_does_not_invent_priority():
     out=attack_path_ctem_context({"asset_id":"asset-2","priority":70},[{"nodes":["internet","asset-1"],"score":99}])
     assert out["priority"] == 70
     assert out["attack_path_count"] == 0
+
+
+def test_attack_path_context_reports_blast_radius_and_choke_point():
+    from app.risk_engine import attack_path_ctem_context
+    item={"asset_id":"asset-1","priority":70,"drivers":[]}
+    paths=[{"nodes":["internet","asset-1","finding-1"],"score":90,"confidence":85,
+            "choke_points":[{"node_id":"asset-1","score":60}]},
+           {"nodes":["internet","asset-1","asset-2"],"score":75,"confidence":80,
+            "choke_points":[{"node_id":"asset-1","score":80}]}]
+    out=attack_path_ctem_context(item,paths)
+    assert out["attack_path_count"] == 2
+    assert out["blast_radius_nodes"] == 4
+    assert out["attack_path_confidence"] == 85
+    assert out["choke_point_score"] == 80
