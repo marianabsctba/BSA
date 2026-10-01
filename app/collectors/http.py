@@ -140,6 +140,22 @@ SECURITY_HEADERS = (
 )
 
 
+
+def _versioned_technology_evidence(url: str, source: str, value: str) -> list[Evidence]:
+    value=value.strip()[:240]
+    if not value: return []
+    out=[Evidence("http",url,"technology:fingerprint",value,84,{"source":source})]
+    patterns=[
+        (r"(?i)([a-z][a-z0-9._-]{1,40})[ /-](v?\d+(?:\.\d+){0,3})","technology_version"),
+        (r"(?i)(php|nginx|apache|iis|tomcat|gunicorn|uvicorn|express|wordpress|drupal|joomla|next\.js|react)[ /_-](v?\d+(?:\.\d+){0,3})","technology_version"),
+    ]
+    for pattern,kind in patterns:
+        for m in re.finditer(pattern,value):
+            product=m.group(1).strip()
+            version=m.group(2).lstrip("v")
+            out.append(Evidence("http",url,kind,f"{product}:{version}",90,{"source":source,"product":product,"version":version}))
+    return out
+
 def security_header_evidence(url: str, headers) -> list[Evidence]:
     evidence = []
     for header in SECURITY_HEADERS:
@@ -213,8 +229,10 @@ class HTTPCollector:
                         evidence.append(Evidence(self.name,url,kind,value,82))
         if headers.get("server"):
             evidence.append(Evidence(self.name,url,"technology:server",headers.get("server"),78))
+            evidence.extend(_versioned_technology_evidence(url,"server_header",headers.get("server","")))
         if headers.get("x-powered-by"):
             evidence.append(Evidence(self.name,url,"technology:x-powered-by",headers.get("x-powered-by"),78))
+            evidence.extend(_versioned_technology_evidence(url,"x_powered_by",headers.get("x-powered-by","")))
 
         for header in ("server", "content-type", "strict-transport-security", "x-powered-by"):
             value = headers.get(header)
