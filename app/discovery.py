@@ -102,7 +102,7 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
         _DISCOVERY_GATE.release()
 
 
-def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dict:
+def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40, scope_validator=None) -> dict:
     """Bounded passive EASM expansion from an explicit in-scope seed.
 
     Only certificate-derived names inside the seed's registrable domain are
@@ -165,6 +165,8 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
 
         candidates.update(artifact_candidates)
         for candidate in sorted(candidates):
+            if scope_validator is not None and not scope_validator(candidate):
+                continue
             if candidate == current or candidate in visited:
                 continue
             if len(visited) + len(queue) >= max_assets:
