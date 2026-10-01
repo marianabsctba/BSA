@@ -26,6 +26,7 @@ from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_conte
 from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
+from .cve_correlation import CVERange, match_cve
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -166,6 +167,22 @@ def technology_intelligence_api(target: str, request: Request):
                        "product_only":sum(not x["version_confirmed"] for x in items),
                        "fingerprint_candidates":len(fingerprints),
                        "cve_matching":sum(x["matching"]["matching_allowed"] for x in items)}}
+
+@app.post("/api/v1/vulnerabilities/correlate")
+async def correlate_vulnerabilities(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    body=await request.json()
+    candidates=[]
+    for x in body.get("candidates",[]):
+        try: candidates.append(CVERange(vulnerability_id=str(x["vulnerability_id"]),vendor=str(x.get("vendor","")),product=str(x["product"]),version_start=x.get("version_start"),version_end=x.get("version_end"),exact_versions=tuple(x.get("exact_versions",[])),source=str(x.get("source","catalog"))))
+        except (KeyError,TypeError): continue
+    results=[]
+    for x in body.get("observations",[]):
+        product=str(x.get("product","")); version=x.get("version"); cpe=normalize_cpe(x.get("cpe"))
+        matches=match_cve(product,version,cpe,candidates)
+        results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
+    return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
 
 @app.get("/api/v1/risk/overview")
 def risk_overview(request: Request):
