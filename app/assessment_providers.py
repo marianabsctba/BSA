@@ -11,6 +11,7 @@ import shutil
 import subprocess
 
 from .dast import run_safe_web_assessment
+from .exposure_signals import cloud_signals
 
 
 @dataclass
@@ -417,20 +418,62 @@ class SecretExposureProvider(JsonLinesProvider):
         )
 
 
+class CloudExposureProvider:
+    name = "cloud"
+
+    def available(self) -> bool:
+        return True
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        signals = cloud_signals([target])
+        return [
+            ProviderResult(
+                "Cloud exposure signal",
+                "info",
+                signal.confidence,
+                {
+                    "asset": target,
+                    "cloud_provider": signal.value,
+                    "relationship": "cloud-attribution",
+                    "validation_required": signal.validation_required,
+                },
+            )
+            for signal in signals
+        ]
+
+
+class ThreatIntelProvider(CommandProvider):
+    name = "cti"
+    binary = "grep"
+    timeout = 5
+
+    def available(self) -> bool:
+        # Placeholder adapter remains local-only until a configured CTI source exists.
+        return False
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        return []
+
+
+class CredentialExposureProvider(CommandProvider):
+    name = "leak"
+    binary = "grep"
+    timeout = 5
+
+    def available(self) -> bool:
+        # Deliberately disabled without an authorized leak-intelligence source.
+        return False
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        return []
+
+
 class OpenVASProvider:
     name = "openvas"
 
 
 class ZAPProvider:
     name = "zap"
-
-
-class ThreatIntelProvider:
-    name = "cti"
-
-
-class CredentialExposureProvider:
-    name = "leak"
 
 
 DEFAULT_PROVIDERS = [
