@@ -254,7 +254,7 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     low=text_body.lower()
     markers=[]
     signatures=[
-        ("nextjs",("__next_data__","/_next/")),
+        ("nextjs",("__next_data__","__next_data__","/_next/")),
         ("vite",("/@vite/client","vite/")),
         ("webpack",("webpackjsonp","webpack-runtime")),
         ("angular",("ng-version",)),
