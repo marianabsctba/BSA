@@ -68,3 +68,20 @@ def analyze_infrastructure_cluster(indicator, links):
         data=json.loads(raw); return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"summary":raw,"observed_links":[],"hypotheses":[],"unknowns":["Unstructured response"],"confidence":0,"validation":[]}
+
+def plan_discovery(target, discovery):
+    system=("You are Be Safe ASM Local Discovery Planner. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied discovery evidence. Never invent assets, DNS records, technologies, vulnerabilities or ownership. "
+            "Your job is to maximize defensive discovery coverage while minimizing unnecessary probes. "
+            "Prioritize passive evidence first, then safe bounded checks already supported by BSA. "
+            "Return JSON only with keys: summary, confirmed_assets, candidate_assets, high_value_targets, technology_hypotheses, evidence_gaps, next_checks, risk_signals, confidence. "
+            "Every recommendation must explain which supplied evidence triggered it.")
+    compact=json.dumps({"target":target,"discovery":discovery},ensure_ascii=False,separators=(",",":"))
+    raw=ask(system,"Plan the next discovery steps from this evidence. JSON only.\n"+compact)
+    if not raw:
+        return None
+    try:
+        data=json.loads(raw)
+        return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"summary":raw,"confirmed_assets":[],"candidate_assets":[],"high_value_targets":[],"technology_hypotheses":[],"evidence_gaps":["structured AI response unavailable"],"next_checks":[],"risk_signals":[],"confidence":0}
