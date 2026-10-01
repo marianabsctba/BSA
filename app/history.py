@@ -21,6 +21,13 @@ def _history_db():
         confidence INTEGER NOT NULL, evidence_signature TEXT NOT NULL,
         PRIMARY KEY(tenant_id,run_id,fingerprint))""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_runs_tenant_time ON discovery_runs(tenant_id,observed_at)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_items(
+        tenant_id TEXT NOT NULL, item_id TEXT PRIMARY KEY, asset_id TEXT NOT NULL,
+        finding_id TEXT, state TEXT NOT NULL, priority INTEGER NOT NULL,
+        action TEXT NOT NULL, title TEXT NOT NULL, drivers_json TEXT NOT NULL,
+        evidence_refs_json TEXT NOT NULL, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, resolved_at TEXT, verified_at TEXT)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
@@ -284,4 +291,63 @@ def diff_risk_context(diff: dict, assets: list, findings: list) -> dict:
                             "new_risk":sum(x.get("risk_score",0) for x in added),
                             "changed_risk":sum(x.get("risk_score",0) for x in changed),
                             "removed_count":len(removed)}
+    return result
+
+def upsert_ctem_item(item: dict, tenant_id: str) -> dict:
+    """Persist a CTEM work item without silently changing its workflow state."""
+    import uuid
+    now=datetime.now(timezone.utc).isoformat()
+    item_id=str(item.get("item_id") or uuid.uuid4())
+    conn=_history_db()
+    row=conn.execute("SELECT * FROM ctem_items WHERE item_id=? AND tenant_id=?",(item_id,tenant_id)).fetchone()
+    if row:
+        state=row["state"]
+        resolved_at=row["resolved_at"]
+        verified_at=row["verified_at"]
+    else:
+        state="new"; resolved_at=None; verified_at=None
+    conn.execute("""INSERT OR REPLACE INTO ctem_items
+        (tenant_id,item_id,asset_id,finding_id,state,priority,action,title,drivers_json,evidence_refs_json,created_at,updated_at,resolved_at,verified_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (tenant_id,item_id,str(item.get("asset_id","")),item.get("finding_id"),state,int(item.get("priority",0)),
+         str(item.get("action","validate")),str(item.get("title","CTEM item")),
+         json.dumps(item.get("drivers",[]),ensure_ascii=False),
+         json.dumps(item.get("evidence_refs",[]),ensure_ascii=False),
+         row["created_at"] if row else now,now,resolved_at,verified_at))
+    conn.commit()
+    out=dict(item); out.update({"item_id":item_id,"tenant_id":tenant_id,"state":state,"created_at":row["created_at"] if row else now,"updated_at":now})
+    conn.close()
+    return out
+
+def update_ctem_state(item_id: str, tenant_id: str, new_state: str) -> dict:
+    allowed={"new","acknowledged","in_progress","resolved","verified"}
+    transitions={"new":{"acknowledged"}, "acknowledged":{"in_progress","resolved"},
+                 "in_progress":{"resolved"}, "resolved":{"verified"}, "verified":set()}
+    if new_state not in allowed: raise ValueError("invalid CTEM state")
+    conn=_history_db()
+    row=conn.execute("SELECT * FROM ctem_items WHERE item_id=? AND tenant_id=?",(item_id,tenant_id)).fetchone()
+    if not row: raise KeyError("CTEM item not found")
+    if new_state not in transitions.get(row["state"],set()):
+        raise ValueError("invalid CTEM state transition")
+    now=datetime.now(timezone.utc).isoformat()
+    resolved_at=now if new_state=="resolved" else row["resolved_at"]
+    verified_at=now if new_state=="verified" else row["verified_at"]
+    conn.execute("UPDATE ctem_items SET state=?,updated_at=?,resolved_at=?,verified_at=? WHERE item_id=? AND tenant_id=?",
+                 (new_state,now,resolved_at,verified_at,item_id,tenant_id))
+    conn.commit()
+    result=dict(row); result.update({"state":new_state,"updated_at":now,"resolved_at":resolved_at,"verified_at":verified_at})
+    conn.close()
+    return result
+
+def list_ctem_items(tenant_id: str, states: set[str] | None = None) -> list[dict]:
+    conn=_history_db()
+    rows=conn.execute("SELECT * FROM ctem_items WHERE tenant_id=? ORDER BY priority DESC,updated_at DESC",(tenant_id,)).fetchall()
+    conn.close()
+    result=[]
+    for row in rows:
+        if states and row["state"] not in states: continue
+        x=dict(row)
+        x["drivers"]=json.loads(x.pop("drivers_json") or "[]")
+        x["evidence_refs"]=json.loads(x.pop("evidence_refs_json") or "[]")
+        result.append(x)
     return result
