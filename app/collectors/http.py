@@ -146,11 +146,11 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
 
 
 SECRET_PATTERNS = (
-    ("aws_access_key_id", re.compile(r"\\bAKIA[0-9A-Z]{16}\\b")),
-    ("github_token", re.compile(r"\\bgh[pousr]_[A-Za-z0-9_]{20,255}\\b")),
+    ("aws_access_key_id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,255}\b")),
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
-    ("jwt", re.compile(r"eyJ[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}")),
-    ("secret_assignment", re.compile(r"(?i)\\b(?:api[_-]?key|client[_-]?secret|secret|token|password)\\b\\s*[:=]\\s*[A-Za-z0-9_./+=:-]{8,}")),
+    ("jwt", re.compile(r"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")),
+    ("secret_assignment", re.compile(r"(?i)\b(?:api[_-]?key|client[_-]?secret|secret|token|password)\b\s*[:=]\s*[A-Za-z0-9_./+=:-]{8,}")),
 )
 
 def detect_potential_secrets(text: str, source: str, max_items: int = 100) -> list[Evidence]:
