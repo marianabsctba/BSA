@@ -78,3 +78,12 @@ def test_login_rate_limit_is_bound_to_ip():
     assert _IP_LOGIN_ATTEMPTS[ip]["until"] > 0
     _IP_LOGIN_ATTEMPTS.clear()
     _LOGIN_ATTEMPTS.clear()
+
+
+def test_totp_helpers_validate_codes():
+    from app.auth import generate_mfa_secret, _totp, verify_totp
+    import time
+    secret=generate_mfa_secret()
+    code=_totp(secret,int(time.time())//30)
+    assert verify_totp(secret,code)
+    assert not verify_totp(secret,"000000" if code!="000000" else "999999")
