@@ -13,6 +13,7 @@ from .collectors.rdap import RDAPCollector
 from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
 from .security import validate_external_target
+from .local_ai import prioritize_collection
 
 
 MAX_DISCOVERY_CONCURRENCY = max(1, min(int(os.getenv("BSA_MAX_DISCOVERY_CONCURRENCY", "4")), 32))
@@ -169,3 +170,31 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
             "max_depth_reached": max([n["depth"] for n in nodes], default=0),
         },
     }
+
+def adaptive_discovery(seed: str, max_rounds: int = 3, max_assets: int = 40) -> dict:
+    """Evidence-driven bounded discovery. AI may prioritize only supported checks."""
+    hostname, _ = normalize_target(seed)
+    validate_external_target(seed)
+    rounds=[]
+    accumulated=[]
+    selected=["dns","http","tls","ct"]
+    for round_no in range(1,max(1,min(max_rounds,5))+1):
+        data=collect_target(hostname,selected)
+        accumulated.extend(data["evidence"])
+        signals=[{"kind":e.get("kind"),"value":e.get("value"),"confidence":e.get("confidence")}
+                 for e in data["evidence"] if e.get("kind") in {"http_status","certificate_name","a_record","aaaa","openapi_endpoint"}]
+        ai=prioritize_collection(hostname,data["evidence"],signals,
+                                 ["dns","http","tls","ct","ports","rdap","ip_intel"])
+        rounds.append({"round":round_no,"checks":selected,"evidence_count":len(data["evidence"]),
+                       "ai_prioritization":ai})
+        if not ai or not ai.get("priorities"): break
+        proposed=[]
+        for item in ai.get("priorities",[]):
+            check=item.get("check") if isinstance(item,dict) else None
+            if check in {"dns","http","tls","ct","ports","rdap","ip_intel"} and check not in proposed:
+                proposed.append(check)
+        if not proposed or proposed==selected: break
+        selected=proposed
+    return {"seed":hostname,"rounds":rounds,"evidence_count":len(accumulated),
+            "max_rounds":max_rounds,"max_assets":max_assets}
+
