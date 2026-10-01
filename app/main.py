@@ -41,6 +41,7 @@ from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
 from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
 from .assessment_orchestrator import run_public_assessment
+from .engine_health import public_engine_health
 from .assessment_registry import registry
 
 bootstrap()
@@ -109,6 +110,12 @@ def auth_logout(request: Request):
 @app.get("/health")
 def health():
     return {"status": "ok", "product": "BSA", "version": "0.3.0", "powered_by": "Mariana BS"}
+
+
+@app.get("/api/v1/exposure/engines/health")
+def exposure_engines_health(request: Request):
+    require(request, "assets:read")
+    return public_engine_health()
 
 
 @app.get("/api/v1/mssp/command-center/trend")
