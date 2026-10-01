@@ -225,6 +225,122 @@ class SafeWebProvider:
         return out
 
 
+class DnsValidationProvider(JsonLinesProvider):
+    name = "dnsx"
+    binary = "dnsx"
+    timeout = 75
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "-d", target, "-json", "-silent", "-a", "-aaaa", "-cname"]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        host = item.get("host") or item.get("input")
+        if not host:
+            return None
+        evidence = {
+            "asset": host,
+            "a": item.get("a") or [],
+            "aaaa": item.get("aaaa") or [],
+            "cname": item.get("cname") or [],
+            "relationship": "dns-validated",
+        }
+        return ProviderResult("DNS asset validated", "info", 94, evidence)
+
+
+class PortExposureProvider(JsonLinesProvider):
+    name = "naabu"
+    binary = "naabu"
+    timeout = 90
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "-host", target, "-top-ports", "100", "-json", "-silent", "-rate", "300"]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        host = item.get("host") or item.get("ip")
+        port = item.get("port")
+        if not host or not port:
+            return None
+        service = f"{host}:{port}"
+        return ProviderResult(
+            "Externally reachable service",
+            "info",
+            92,
+            {"asset": service, "host": host, "port": port, "relationship": "reachable-service"},
+        )
+
+
+class TlsIntelligenceProvider(JsonLinesProvider):
+    name = "tlsx"
+    binary = "tlsx"
+    timeout = 75
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "-u", target, "-json", "-silent"]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        host = item.get("host") or item.get("input") or item.get("url")
+        if not host:
+            return None
+        evidence = {
+            "asset": host,
+            "subject_cn": item.get("subject_cn"),
+            "issuer_cn": item.get("issuer_cn"),
+            "not_before": item.get("not_before"),
+            "not_after": item.get("not_after"),
+            "san": item.get("san") or [],
+            "tls_version": item.get("version") or item.get("tls_version"),
+            "relationship": "tls-observed",
+        }
+        return ProviderResult("TLS exposure intelligence", "info", 95, evidence)
+
+
+class HistoricalUrlProvider(CommandProvider):
+    name = "gau"
+    binary = "gau"
+    timeout = 90
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "--subs", target]
+
+    def parse(self, stdout: str, stderr: str, returncode: int) -> list[ProviderResult]:
+        seen = set()
+        out = []
+        for value in stdout.splitlines():
+            value = value.strip()
+            if value and value not in seen and len(seen) < 500:
+                seen.add(value)
+                out.append(
+                    ProviderResult(
+                        "Historical web surface discovered",
+                        "info",
+                        72,
+                        {"url": value, "relationship": "historical-url"},
+                    )
+                )
+        return out
+
+
+class WebCrawlProvider(JsonLinesProvider):
+    name = "katana"
+    binary = "katana"
+    timeout = 90
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "-u", target, "-jsonl", "-silent", "-d", "2", "-jc"]
+
+    def normalize(self, item: dict) -> ProviderResult | None:
+        request = item.get("request") or {}
+        endpoint = request.get("endpoint") or item.get("url")
+        if not endpoint:
+            return None
+        return ProviderResult(
+            "Web surface discovered",
+            "info",
+            80,
+            {"url": endpoint, "relationship": "web-surface"},
+        )
+
+
 class OpenVASProvider:
     name = "openvas"
 
@@ -248,6 +364,11 @@ DEFAULT_PROVIDERS = [
     NucleiProvider,
     NmapProvider,
     SafeWebProvider,
+    DnsValidationProvider,
+    PortExposureProvider,
+    TlsIntelligenceProvider,
+    HistoricalUrlProvider,
+    WebCrawlProvider,
     OpenVASProvider,
     ZAPProvider,
     ThreatIntelProvider,
