@@ -358,7 +358,7 @@ def test_tenant_scope_never_leaks_cross_tenant_assets_or_findings():
     from types import SimpleNamespace
     principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user",role="user")
     assets=[
-      SimpleNamespace(id="a1",tenant_id="tenant-a",value="a.example"),
+      SimpleNamespace(id="a1",tenant_id="tenant-a",value="public.example"),
       SimpleNamespace(id="b1",tenant_id="tenant-b",value="b.example"),
     ]
     findings=[
