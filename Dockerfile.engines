@@ -11,7 +11,10 @@ RUN GOBIN=/out go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@lates
  && GOBIN=/out go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest \
  && GOBIN=/out go install github.com/projectdiscovery/katana/cmd/katana@latest \
  && GOBIN=/out go install github.com/lc/gau/v2/cmd/gau@latest \
- && GOBIN=/out go install github.com/trufflesecurity/trufflehog/v3@latest
+ && GOBIN=/out go install github.com/trufflesecurity/trufflehog/v3@latest \
+ && GOBIN=/out go install github.com/tomnomnom/assetfinder@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/alterx/cmd/alterx@latest \
+ && GOBIN=/out go install github.com/d3mondev/puredns/v2@latest
 
 FROM python:3.12-slim
 
@@ -19,7 +22,7 @@ WORKDIR /app
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl git nmap whatweb amass default-jre-headless \
+      ca-certificates curl git nmap whatweb amass massdns default-jre-headless \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=engines /out/ /usr/local/bin/
