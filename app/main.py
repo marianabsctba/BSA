@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, change_summary
+from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, create_user, list_users, principal_from_token, create_tenant, list_tenants, audit, list_audit
@@ -796,6 +796,30 @@ def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets:
         raise HTTPException(status_code=400,detail="invalid discovery bounds")
     result=discover_surface(target,max_depth=max_depth,max_assets=max_assets)
     return result
+
+@app.get("/api/v1/easm/lifecycle/{target}")
+def easm_lifecycle(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct"])
+    assets=correlate_evidence(data["target"],data["evidence"])
+    lifecycle=record_lifecycle(assets,data["evidence"])
+    changed=[x for x in lifecycle if x["state"]=="changed"]
+    new=[x for x in lifecycle if x["state"]=="new"]
+    return {
+        "target":data["target"],"observed_at":datetime.now(timezone.utc).isoformat(),
+        "summary":{"assets":len(lifecycle),"new":len(new),"changed":len(changed),"stable":len(lifecycle)-len(new)-len(changed),
+                   "evidence":data["evidence_count"],"confidence":data["confidence"]},
+        "assets":lifecycle,
+    }
+
+@app.get("/api/v1/easm/lifecycle/{target}/{fingerprint}")
+def easm_asset_lifecycle(target: str, fingerprint: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return lifecycle_for(fingerprint)
 
 @app.get("/api/v1/easm/overview")
 def easm_overview(request: Request):
