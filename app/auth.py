@@ -17,6 +17,7 @@ _LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
 ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
+PERMISSION_CATALOG = ["assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write","audit:read","tenant:manage"]
 PERMISSIONS = {
     "superadmin": {"*"},
     "admin": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write"},
@@ -230,6 +231,11 @@ def reset_user_password(principal: Principal, user_id: str, password: str) -> di
 def can(principal: Principal, permission: str) -> bool:
     perms = PERMISSIONS[principal.role]
     return "*" in perms or permission in perms
+
+def role_permissions(role: str) -> list[str]:
+    if role not in ROLES:
+        raise ValueError("invalid role")
+    return sorted(PERMISSIONS[role])
 
 
 def create_tenant(principal: Principal, tenant_id: str, name: str) -> dict:
