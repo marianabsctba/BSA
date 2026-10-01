@@ -8,6 +8,7 @@ from .collectors.tls import TLSCollector
 from .collectors.certificate_transparency import CertificateTransparencyCollector
 from .collectors.ports import PortCollector
 from .collectors.rdap import RDAPCollector
+from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
 
 
@@ -18,6 +19,7 @@ COLLECTORS = {
     "ct": CertificateTransparencyCollector(),
     "ports": PortCollector(),
     "rdap": RDAPCollector(),
+    "ip_intel": IPIntelCollector(),
 }
 
 
@@ -37,7 +39,7 @@ def normalize_target(target: str) -> tuple[str, str]:
 def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
-    selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap"]
+    selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap", "ip_intel"]
     evidence = []
 
     if "dns" in selected:
@@ -60,6 +62,11 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
 
     if "rdap" in selected:
         evidence.extend(COLLECTORS["rdap"].collect(hostname))
+
+    if "ip_intel" in selected:
+        for e in list(evidence):
+            if e.get("kind") in {"a_record","aaaa"}:
+                evidence.extend(COLLECTORS["ip_intel"].collect(str(e.get("value"))))
 
     return {
         "target": hostname,
