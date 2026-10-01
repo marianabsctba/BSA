@@ -26,6 +26,7 @@ jobs:
           docker run --rm --entrypoint sh bsa-engines-ci -lc '
             set -eu
             command -v nuclei
+            command -v amass
             command -v httpx
             command -v subfinder
             command -v dnsx
@@ -44,6 +45,25 @@ jobs:
             command -v testssl.sh
             command -v zap-baseline.py
             command -v gvm-cli
+          '
+      - name: Smoke engine executables
+        run: |
+          docker run --rm --entrypoint sh bsa-engines-ci -lc '
+            set -eu
+            smoke() {
+              bin="$1"
+              set +e
+              timeout 20s "$bin" --help >/tmp/"$bin".help 2>&1
+              code=$?
+              set -e
+              case "$code" in
+                0|1|2) ;;
+                *) echo "$bin failed to start safely (exit $code)"; cat /tmp/"$bin".help || true; exit 1 ;;
+              esac
+            }
+            for bin in nuclei amass httpx subfinder dnsx naabu tlsx asnmap katana gau trufflehog assetfinder alterx puredns massdns nmap whatweb testssl.sh zap-baseline.py gvm-cli; do
+              smoke "$bin"
+            done
           '
       - name: Import assessment stack
         run: |
