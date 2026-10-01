@@ -118,3 +118,19 @@ def test_ctem_queue_has_controlled_state_transitions_and_tenant_isolation(tmp_pa
         pass
     else:
         raise AssertionError("invalid backward CTEM transition was accepted")
+
+def test_materialize_ctem_from_evidence_backed_surface_diff(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "ctem-materialize.db"))
+    asset=SimpleNamespace(id="asset-1",fingerprint="fp-1",criticality=5,confidence=95,
+        tags=["internet-facing","production"],type=SimpleNamespace(value="application"))
+    finding=SimpleNamespace(asset_id="asset-1",status="open",confidence=95,cvss=9.8,epss=0.95,
+        kev=True,exploit_available=True,cpe="cpe:2.3:a:v:p:1:*:*:*:*:*:*:*",
+        vulnerability_id="CVE-TEST",false_positive_confidence=0)
+    change={"fingerprint":"fp-1","evidence_refs":["ct:1"],"reasons":["certificate_name"],
+            "exposure_score":90,"risk_score":0}
+    out=history.materialize_ctem_from_diff({"added":[change],"changed":[]},[asset],[finding],"tenant-a")
+    assert len(out) == 1
+    assert out[0]["state"] == "new"
+    assert out[0]["priority"] >= 90
+    assert history.list_ctem_items("tenant-b") == []
