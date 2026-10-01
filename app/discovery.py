@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 from collections import deque
 import os
 import threading
+import tldextract
 
 from .collectors.dns import DNSCollector
 from .collectors.http import HTTPCollector
@@ -15,6 +16,14 @@ from .correlation import correlate_evidence
 from .security import validate_external_target
 from .local_ai import prioritize_collection
 from .collectors.http import discover_web_surface, contextual_surface_paths
+
+_PSL_EXTRACTOR=tldextract.TLDExtract(suffix_list_urls=())
+
+def registrable_domain(hostname: str) -> str:
+    ext=_PSL_EXTRACTOR(hostname.rstrip(".").lower())
+    if not ext.domain or not ext.suffix:
+        return hostname.rstrip(".").lower()
+    return ext.top_domain_under_public_suffix.lower()
 
 
 MAX_DISCOVERY_CONCURRENCY = max(1, min(int(os.getenv("BSA_MAX_DISCOVERY_CONCURRENCY", "4")), 32))
@@ -102,8 +111,7 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
     """
     hostname, _ = normalize_target(seed)
     validate_external_target(seed)
-    base = hostname.split(".")[-2:] if hostname.count(".") >= 1 else [hostname]
-    registrable = ".".join(base)
+    registrable = registrable_domain(hostname)
     queue = deque([(hostname, 0, "seed")])
     visited = set()
     nodes = []
