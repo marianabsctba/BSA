@@ -24,9 +24,10 @@ def test_security_headers_are_present():
     assert response.headers["referrer-policy"]=="no-referrer"
 
 
-def test_cookie_mutation_requires_csrf_marker():
+def test_cookie_mutation_requires_csrf_marker(monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import app
+    monkeypatch.setenv("BSA_ENV","production")
     client=TestClient(app)
     blocked=client.post("/api/v1/auth/logout",cookies={"bsa_session":"invalid-session"})
     assert blocked.status_code==403
