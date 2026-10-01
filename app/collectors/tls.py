@@ -1,6 +1,7 @@
 import socket
 import ssl
 from datetime import datetime, timezone
+import hashlib
 
 from .base import Evidence
 from ..security import validate_external_target
@@ -24,6 +25,14 @@ class TLSCollector:
         ]
 
         if cert:
+            der = tls.getpeercert(binary_form=True)
+            if der:
+                evidence.append(Evidence(self.name,target,"certificate_sha256",hashlib.sha256(der).hexdigest(),99))
+            san = []
+            for item in cert.get("subjectAltName", []):
+                if len(item) == 2 and item[0] == "DNS": san.append(item[1].lower())
+            if san:
+                evidence.append(Evidence(self.name,target,"certificate_san", ",".join(sorted(set(san)))[:2000],98,{"count":len(set(san))}))
             not_after = cert.get("notAfter")
             subject = dict(x[0] for x in cert.get("subject", []))
             issuer = dict(x[0] for x in cert.get("issuer", []))
