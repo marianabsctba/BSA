@@ -1365,6 +1365,62 @@ def exposure(request: Request):
     return sorted(items, key=lambda x: x["score"], reverse=True)
 
 
+@app.get("/api/v1/reports/summary")
+def report_summary(request: Request):
+    """Return only the curated fields required by the tenant report UI."""
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    open_findings=[f for f in findings if f.status=="open"]
+    ownership=[ownership_confidence(a) for a in assets]
+    score=exposure_score(findings,assets)
+
+    def state(a):
+        if a.status in {"approved","owned","managed"}: return "approved"
+        if a.status in {"dependency","third_party"}: return "dependency"
+        if a.status in {"monitor","monitor_only"}: return "monitor_only"
+        if a.status in {"requires_investigation","investigate"}: return "requires_investigation"
+        return "candidate"
+
+    exposure_rows=[{
+        "id":a.id,"value":a.value,"type":a.type.value,"state":state(a),
+        "confidence":a.confidence,"evidence_count":a.evidence_count
+    } for a in assets[:40]]
+
+    amap={a.id:a for a in assets}
+    vuln_rows=[]
+    for f in open_findings:
+        intel=vulnerability_intelligence(f,amap.get(f.asset_id))
+        vuln_rows.append({
+            "id":f.id,
+            "vulnerability":f.vulnerability_id or f.title,
+            "asset":amap.get(f.asset_id).value if amap.get(f.asset_id) else None,
+            "priority":intel.priority_score,
+            "exploitability":intel.exploitability,
+            "impact":intel.business_impact,
+            "confidence":intel.confidence,
+            "band":intel.band,
+            "data_quality_gap":bool(intel.data_quality),
+        })
+    vuln_rows.sort(key=lambda x:x["priority"],reverse=True)
+
+    states=[state(a) for a in assets]
+    return {
+        "executive":{
+            "total_assets":len(assets),
+            "exposed_services":sum(1 for a in assets if a.type.value=="service"),
+            "open_findings":len(open_findings),
+            "critical_findings":sum(1 for f in open_findings if f.severity.value=="critical"),
+            "exposure_score":score.score,
+            "approved":sum(x=="approved" for x in states),
+            "candidates":sum(x=="candidate" for x in states),
+            "unowned":sum(1 for a in assets if not a.owner),
+            "low_confidence":sum(1 for a in assets if a.confidence<70),
+            "confirmed_assets":sum(1 for o in ownership if o.state=="confirmed"),
+        },
+        "exposure":{"summary":{"total_assets":len(assets),"exposed_assets":sum(1 for a in assets if a.type.value in {"service","application","ip","domain","subdomain"}),"approved":sum(x=="approved" for x in states),"candidates":sum(x=="candidate" for x in states)},"items":exposure_rows},
+        "vulnerabilities":{"summary":{"findings":len(vuln_rows),"critical":sum(x["band"]=="critical" for x in vuln_rows),"high":sum(x["band"]=="high" for x in vuln_rows),"data_quality_gaps":sum(x["data_quality_gap"] for x in vuln_rows)},"items":vuln_rows[:40]},
+    }
+
 @app.get("/api/v1/dashboard", response_model=Dashboard)
 def dashboard(request: Request):
     principal = require(request, "assets:read")
