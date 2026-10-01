@@ -327,6 +327,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
     origin=url.rstrip("/")
     paths=list(COMMON_SURFACE_PATHS[:max(1,min(max_paths,len(COMMON_SURFACE_PATHS)))])
     script_urls=[]
+    manifest_urls=[]
     for path in paths:
         status,headers,body,final_url=_safe_surface_fetch(origin,path)
         if status is None:
@@ -340,6 +341,8 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
                 html=body.decode("utf-8","ignore")
                 evidence.extend(detect_frontend_build_markers(body,origin))
                 evidence.extend(extract_frontend_manifest_candidates(body,origin))
+                for m in re.finditer(r"""<script[^>]+src=[\'"]([^\'"]+(?:manifest|build-manifest|asset-manifest)[^\'"]*)[\'"]""",html,re.I):
+                    manifest_urls.append(urljoin(origin,m.group(1)))
                 for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
                     src=urljoin(origin,m.group(1))
                     if urlparse(src).hostname == urlparse(origin).hostname:
@@ -354,6 +357,21 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
                 src=urljoin(origin,m.group(1))
                 if urlparse(src).hostname == urlparse(origin).hostname:
                     script_urls.append(src)
+    # Fetch explicitly referenced frontend manifests with the same bounded transport.
+    for manifest_url in list(dict.fromkeys(manifest_urls))[:max_js]:
+        parsed=urlparse(manifest_url)
+        if parsed.hostname != urlparse(origin).hostname: continue
+        manifest_path=parsed.path or "/"
+        if parsed.query: manifest_path += "?" + parsed.query
+        status,headers,body,final_url=_safe_surface_fetch(origin,manifest_path,timeout=3.0)
+        if not (status and 200 <= status < 300 and body): continue
+        evidence.append(Evidence("http",manifest_url,"frontend_manifest_analyzed",manifest_url,88,{"bytes":len(body)}))
+        for asset in extract_manifest_asset_references(body,manifest_url)[:100]:
+            asset_url=urljoin(origin,asset.value)
+            if urlparse(asset_url).hostname == urlparse(origin).hostname:
+                manifest_assets.append(asset_url)
+                evidence.append(Evidence("http",manifest_url,"manifest_discovered_asset",asset_url,86,{"source":manifest_url}))
+
     seen=set()
     manifest_assets=[]
     for js_url in script_urls[:max_js]:
