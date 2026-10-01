@@ -20,9 +20,9 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, list_user_scopes, set_user_scope, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
-from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
+from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, enabled as local_ai_enabled, OLLAMA_MODEL
@@ -680,7 +680,7 @@ def users_scopes_list(user_id: str, request: Request):
 def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
     p=current_principal(request)
     try:
-        result=set_user_scope(p,user_id,payload.scope_type,payload.scope_value,payload.active)
+        result=assign_scope_to_user(p,user_id,payload.scope_value)
         audit(p,"scope_change","user",user_id,result)
         return result
     except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
