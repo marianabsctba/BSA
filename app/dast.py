@@ -56,6 +56,24 @@ def run_safe_web_assessment(target: str) -> dict:
         except (ValueError,TypeError):
             pass
 
+    api_validation=[]
+    for item in api_inventory[:500]:
+        path=item["path"]
+        if "{" in path:
+            api_validation.append({"path":path,"method":item["method"],"status":"template","reason":"path parameter requires an explicit test value"})
+            continue
+        candidate=urljoin(url,path)
+        cp=urlparse(candidate)
+        if cp.hostname != parsed.hostname:
+            continue
+        try:
+            vstatus, vheaders, _, vfinal=_pinned_fetch(candidate,timeout=3.0,max_bytes=65536,approved_ips=approved_ips)
+            api_validation.append({"path":path,"method":item["method"],"status":vstatus,"final_url":vfinal,"auth_declared":item["auth_declared"]})
+            if item["method"]=="GET" and vstatus>=500:
+                findings.append(DASTFinding("api_validation","medium","documented GET endpoint returned 5xx",f"{item['method']} {path} -> {vstatus}",86))
+        except Exception:
+            api_validation.append({"path":path,"method":item["method"],"status":"unreachable","auth_declared":item["auth_declared"]})
+
     # Bounded same-origin crawl: GET only, no payload mutation and no external hosts.
     discovered = []
     if body:
@@ -91,4 +109,4 @@ def run_safe_web_assessment(target: str) -> dict:
                 nxt=urljoin(candidate,ref)
                 if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
                     queue.append(nxt)
-    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"api_inventory":api_inventory,"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
+    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"api_inventory":api_inventory,"api_validation":api_validation,"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
