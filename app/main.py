@@ -70,12 +70,18 @@ app.add_middleware(
 
 @app.middleware("http")
 async def csrf_origin_guard(request: Request, call_next):
-    if request.method in {"POST","PUT","PATCH","DELETE"} and request.cookies.get("bsa_session"):
+    cookie_auth = bool(request.cookies.get("bsa_session")) and not request.headers.get("Authorization")
+    mutating = request.method in {"POST","PUT","PATCH","DELETE"}
+    login_path = request.url.path == "/api/v1/auth/login"
+    if mutating and cookie_auth and not login_path:
         origin=request.headers.get("origin")
         if origin:
             allowed=set(ALLOWED_ORIGINS)
             if origin not in allowed:
                 return JSONResponse(status_code=403, content={"detail":"origin not allowed"})
+        if os.getenv("BSA_ENV","development").lower() in {"production","prod"}:
+            if request.headers.get("X-Requested-With") != "BeSafeASM":
+                return JSONResponse(status_code=403, content={"detail":"csrf request marker required"})
     return await call_next(request)
 
 @app.middleware("http")
