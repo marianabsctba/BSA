@@ -1,0 +1,60 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bsa-ollama
+    restart: unless-stopped
+    volumes:
+      - bsa_ollama:/root/.ollama
+    networks: [bsa_internal]
+
+  api:
+    build: .
+    container_name: bsa-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BSA_ENV: production
+      BSA_AUTH_DB: /data/bsa_auth.db
+      BSA_AI_ENABLED: "1"
+      BSA_OLLAMA_URL: http://ollama:11434
+    volumes:
+      - bsa_data:/data
+    expose:
+      - "8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      - ollama
+    networks: [bsa_internal]
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: bsa-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [bsa_internal]
+
+volumes:
+  bsa_ollama:
+  bsa_data:
+
+networks:
+  bsa_internal:
+    driver: bridge
+    internal: true
