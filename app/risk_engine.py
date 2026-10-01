@@ -91,13 +91,15 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     identity_bonus=10 if finding.cpe else 0
     vuln_bonus=15 if finding.vulnerability_id else 0
     exploit=min(100,round(max(cvss,epss*0.8)+(25 if finding.kev else 0)+(15 if finding.exploit_available else 0)))
+    validation_state = str(getattr(finding, "validation_state", "observed") or "observed").lower()
+    evidence_quality = int(getattr(finding, "evidence_quality", 50) or 50)
     validation_factor = {
         "confirmed": 1.0,
         "confirmed_evidence": 1.0,
         "observed": 0.9,
         "needs_validation": 0.7,
-    }.get(str(finding.validation_state or "").lower(), 0.85)
-    quality_factor = 0.75 + (max(0, min(100, finding.evidence_quality)) / 400)
+    }.get(validation_state, 0.85)
+    quality_factor = 0.75 + (max(0, min(100, evidence_quality)) / 400)
     exploit = round(exploit * validation_factor * quality_factor)
     exposure=15
     drivers=[]
@@ -118,9 +120,9 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     score=min(100,round(likelihood*.40+impact*.35+confidence*.10+intelligence*.15))
     if finding.kev: drivers.append("KEV / exploração conhecida")
     if finding.exploit_available: drivers.append("exploit disponível")
-    if finding.validation_state == "needs_validation": drivers.append("evidência requer validação adicional")
-    if finding.validation_state in {"confirmed", "confirmed_evidence"}: drivers.append("vulnerabilidade confirmada por evidência")
-    if finding.evidence_quality >= 80: drivers.append("alta qualidade de evidência")
+    if validation_state == "needs_validation": drivers.append("evidência requer validação adicional")
+    if validation_state in {"confirmed", "confirmed_evidence"}: drivers.append("vulnerabilidade confirmada por evidência")
+    if evidence_quality >= 80: drivers.append("alta qualidade de evidência")
     if finding.epss is not None: drivers.append(f"EPSS {finding.epss:.1%}")
     if finding.cvss is not None: drivers.append(f"CVSS {finding.cvss:.1f}")
     if finding.cpe: drivers.append("identificação técnica/CPE disponível")
