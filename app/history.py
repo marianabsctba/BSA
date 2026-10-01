@@ -15,6 +15,8 @@ def _history_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("CREATE TABLE IF NOT EXISTS asset_observations(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_obs_tenant_fp ON asset_observations(tenant_id,fingerprint,observed_at)")
+    conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     conn.commit()
     return conn
 
@@ -149,6 +151,10 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
     for asset in assets:
         key=asset.fingerprint
         current=LifecycleSnapshot(key,asset.value,asset.asset_type,now,asset.confidence,asset.evidence_count,signature,tuple(asset.sources),tuple(asset.tags))
+        conn=_history_db()
+        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json) VALUES(?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,asset.value,str(asset.asset_type),now,asset.confidence,asset.evidence_count,signature,json.dumps(asset.sources),json.dumps(asset.tags)))
+        conn.commit()
+        conn.close()
         history=_LIFECYCLE.setdefault(key,[])
         previous=history[-1] if history else None
         if previous is None or previous.evidence_signature != current.evidence_signature or previous.confidence != current.confidence:
