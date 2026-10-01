@@ -230,7 +230,7 @@ def asset_detail_view(asset_id: str, request: Request):
     if not asset:
         raise HTTPException(status_code=404, detail="asset not found")
     audit(principal, "read", "asset", asset.id)
-    return asset_detail(asset, findings, assets)
+    return asset_detail(asset, findings, assets, principal.tenant_id)
 
 
 @app.get("/api/v1/discovery/adaptive/{target}")
