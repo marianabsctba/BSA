@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from dataclasses import asdict
+from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
