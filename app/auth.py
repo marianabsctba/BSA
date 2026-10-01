@@ -236,7 +236,7 @@ def reset_user_password(principal: Principal, user_id: str, password: str) -> di
     return {"ok":True,"user_id":user_id,"sessions_revoked":True}
 
 def can(principal: Principal, permission: str) -> bool:
-    perms = PERMISSIONS[principal.role]
+    perms = role_permissions(principal.role)
     return "*" in perms or permission in perms
 
 def validate_permissions(permissions: list[str]) -> list[str]:
@@ -246,7 +246,6 @@ def validate_permissions(permissions: list[str]) -> list[str]:
     return normalized
 
 def role_permissions(role: str) -> list[str]:
-
     if role in PERMISSIONS:
         return sorted(PERMISSIONS[role])
     if role.startswith(CUSTOM_ROLE_PREFIX):
@@ -255,6 +254,25 @@ def role_permissions(role: str) -> list[str]:
         return json.loads(row["permissions"])
     raise ValueError("invalid role")
 
+
+def list_custom_roles(principal: Principal) -> list[dict]:
+    if not can(principal, "users:read"):
+        raise PermissionError("users:read required")
+    conn=_db()
+    rows=conn.execute("SELECT name,permissions,created_at FROM custom_roles WHERE tenant_id=? ORDER BY name",(principal.tenant_id,)).fetchall()
+    conn.close()
+    return [{"name":r["name"],"permissions":json.loads(r["permissions"]),"created_at":r["created_at"]} for r in rows]
+
+def create_custom_role(principal: Principal, name: str, permissions: list[str]) -> dict:
+    if not can(principal, "users:write"):
+        raise PermissionError("users:write required")
+    if not name.strip() or len(name)>80: raise ValueError("invalid role name")
+    role_name=CUSTOM_ROLE_PREFIX+name.strip().lower().replace(" ","-")
+    perms=validate_permissions(permissions)
+    conn=_db()
+    conn.execute("INSERT INTO custom_roles(name,tenant_id,permissions,created_at) VALUES(?,?,?,?)",(role_name,principal.tenant_id,json.dumps(perms),int(time.time())))
+    conn.commit(); conn.close()
+    return {"name":role_name,"permissions":perms}
 
 def create_tenant(principal: Principal, tenant_id: str, name: str) -> dict:
     if principal.role != "superadmin":
