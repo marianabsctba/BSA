@@ -150,10 +150,8 @@ def run_assessment(
         "followup_targets": [],
         "vulnerability_followup_targets": [],
         "scope_filtered": 0,
-        "vulnerability_targets": [],
     }
     discovered_subjects: list[str] = []
-    validated_web_subjects: list[str] = []
     validated_web_subjects: list[str] = []
 
     for provider_name in PROFILES[profile]:
@@ -210,12 +208,6 @@ def run_assessment(
                             continue
                         engine.add_provider_result(provider_name, subject, payload)
                         if provider_name == "httpx":
-                            status_code = evidence.get("status_code")
-                            url = evidence.get("url") or subject
-                            if status_code and url and url not in validated_web_subjects:
-                                validated_web_subjects.append(str(url))
-                        if provider_name == "httpx":
-                            evidence = payload.get("evidence") or {}
                             status = evidence.get("status_code")
                             url = evidence.get("url") or subject
                             if status is not None and str(url).startswith(("http://", "https://")):
@@ -255,34 +247,6 @@ def run_assessment(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "vulnerability-followup"}
                     )
 
-    if profile == "balanced":
-        for web_target in validated_web_subjects[:MAX_VULNERABILITY_TARGETS]:
-            if authorize is not None and not authorize(web_target):
-                internal["scope_filtered"] += 1
-                continue
-            internal["vulnerability_targets"].append(web_target)
-            for provider_name in VULNERABILITY_FOLLOWUP_PROVIDERS:
-                try:
-                    if not registry.available(provider_name, web_target):
-                        continue
-                    results = registry.execute(provider_name, target=web_target)
-                    for result in results:
-                        payload = asdict(result)
-                        evidence = payload.get("evidence") or {}
-                        subject = str(
-                            evidence.get("asset")
-                            or evidence.get("url")
-                            or evidence.get("matched_at")
-                            or web_target
-                        )
-                        if authorize is not None and not authorize(subject):
-                            internal["scope_filtered"] += 1
-                            continue
-                        engine.add_provider_result(provider_name, subject, payload)
-                except Exception as exc:
-                    internal["errors"].append(
-                        {"provider": provider_name, "error": exc.__class__.__name__, "phase": "vulnerability-followup"}
-                    )
 
     public = engine.export_public()
     raw_finding_count = public["finding_count"]
