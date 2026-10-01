@@ -2,6 +2,7 @@ from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
 import re
+import json
 from hashlib import sha256
 
 from .base import Evidence
@@ -34,6 +35,11 @@ ARTIFACT_PATHS = (
     "/.well-known/apple-app-site-association",
     "/swagger.json",
     "/openapi.json",
+    "/api/openapi.json",
+    "/swagger/v1/swagger.json",
+    "/package.json",
+    "/composer.json",
+    "/manifest.json",
 )
 
 def _artifact_evidence(url, headers, body):
@@ -50,6 +56,28 @@ def _artifact_evidence(url, headers, body):
             ref=match.group(0).strip()
             if ref:
                 evidence.append(Evidence("http",url,"artifact_reference",ref[:500],78,{"artifact_kind":kind}))
+    return evidence
+
+
+def _structured_artifact_evidence(url: str, kind: str, body: bytes) -> list[Evidence]:
+    if kind != "json" or not body:
+        return []
+    try:
+        data=json.loads(body.decode("utf-8","ignore"))
+    except Exception:
+        return []
+    evidence=[]
+    if isinstance(data,dict):
+        for key in ("openapi","swagger","version","name","title","description"):
+            value=data.get(key)
+            if isinstance(value,(str,int,float)) and str(value).strip():
+                evidence.append(Evidence("http",url,f"json_field:{key}",str(value)[:500],86,{"artifact_kind":kind}))
+        for key in ("servers","paths","components","security","dependencies","scripts"):
+            value=data.get(key)
+            if isinstance(value,dict):
+                evidence.append(Evidence("http",url,f"json_section:{key}",str(len(value)),82,{"artifact_kind":kind,"count":len(value)}))
+            elif isinstance(value,list):
+                evidence.append(Evidence("http",url,f"json_section:{key}",str(len(value)),82,{"artifact_kind":kind,"count":len(value)}))
     return evidence
 
 SECURITY_HEADERS = (
@@ -143,5 +171,10 @@ class HTTPCollector:
                 evidence.append(Evidence(self.name, url, f"http_header:{header}", value, 85))
 
         evidence.extend(_artifact_evidence(url, headers, body))
+        if body:
+            ctype=(headers.get("content-type") or "").split(";",1)[0].strip().lower()
+            kind=ARTIFACT_CONTENT_TYPES.get(ctype)
+            if kind:
+                evidence.extend(_structured_artifact_evidence(url,kind,body))
         evidence.extend(security_header_evidence(url, headers))
         return evidence
