@@ -643,7 +643,7 @@ def users(request: Request):
 @app.post("/api/v1/users")
 def users_create(request: Request, payload: UserCreateRequest):
     p = current_principal(request)
-    if p.role != "admin":
+    if p.role not in {"admin", "superadmin"}:
         raise HTTPException(status_code=403, detail="admin required")
     try:
         result = create_user(p, payload.email, payload.name, payload.password, payload.role)
