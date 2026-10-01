@@ -5,7 +5,7 @@ client = TestClient(app)
 
 
 def test_login_and_me():
-    response = client.post("/api/v1/auth/login", json={"email": "admin@besafe.local", "password": "ChangeMe!123"})
+    response = client.post("/api/v1/auth/login", json={"email": "admin@besafe.local", "password": "Bsa-Test-Only-2026!"})
     assert response.status_code == 200
     token = response.json()["access_token"]
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -20,7 +20,7 @@ def test_api_requires_authentication():
 
 
 def test_admin_audit_is_tenant_scoped():
-    response = client.post("/api/v1/auth/login", json={"email": "admin@besafe.local", "password": "ChangeMe!123"})
+    response = client.post("/api/v1/auth/login", json={"email": "admin@besafe.local", "password": "Bsa-Test-Only-2026!"})
     token = response.json()["access_token"]
     audit = client.get("/api/v1/audit", headers={"Authorization": f"Bearer {token}"})
     assert audit.status_code == 200
