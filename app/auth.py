@@ -6,6 +6,8 @@ import os
 import secrets
 import sqlite3
 import time
+import struct
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +64,9 @@ def _db():
     conn.execute("""CREATE TABLE IF NOT EXISTS custom_roles(
         name TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL)
     """)
+    conn.execute("""CREATE TABLE IF NOT EXISTS users_mfa(
+        user_id TEXT PRIMARY KEY, secret TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)
+    """)
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -116,6 +121,51 @@ def bootstrap():
         )
     conn.commit()
     conn.close()
+
+def _totp(secret: str, counter: int) -> str:
+    key=base64.b32decode(secret.upper()+"="*((8-len(secret)%8)%8))
+    msg=struct.pack(">Q",counter)
+    digest=hmac.new(key,msg,hashlib.sha1).digest()
+    offset=digest[-1]&15
+    code=(struct.unpack(">I",digest[offset:offset+4])[0]&0x7fffffff)%1000000
+    return f"{code:06d}"
+
+def generate_mfa_secret() -> str:
+    return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+
+def verify_totp(secret: str, code: str, window: int=1) -> bool:
+    if not code or not code.isdigit() or len(code)!=6: return False
+    counter=int(time.time())//30
+    return any(hmac.compare_digest(_totp(secret,counter+i),code) for i in range(-window,window+1))
+
+def mfa_status(principal: Principal) -> dict:
+    conn=_db()
+    row=conn.execute("SELECT enabled FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
+    conn.close()
+    return {"enabled":bool(row and row["enabled"])}
+
+def mfa_enroll(principal: Principal) -> dict:
+    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
+    secret=generate_mfa_secret()
+    conn=_db()
+    conn.execute("INSERT INTO users_mfa(user_id,secret,enabled,created_at) VALUES(?,?,0,?) ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret,enabled=0",(principal.user_id,secret,int(time.time())))
+    conn.commit(); conn.close()
+    label=urllib.parse.quote(f"Be Safe ASM:{principal.email}")
+    uri=f"otpauth://totp/{label}?secret={secret}&issuer=Be%20Safe%20ASM"
+    return {"secret":secret,"otpauth_uri":uri}
+
+def mfa_enable(principal: Principal, code: str) -> bool:
+    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
+    conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
+    if not row: conn.close(); raise ValueError("MFA enrollment required")
+    ok=verify_totp(row["secret"],code)
+    if ok: conn.execute("UPDATE users_mfa SET enabled=1 WHERE user_id=?",(principal.user_id,)); conn.commit()
+    conn.close()
+    return ok
+
+def mfa_secret_for_user(user_id: str) -> str | None:
+    conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
+    return row["secret"] if row else None
 
 def authenticate(email: str, password: str, client_ip: str = "") -> str | None:
     now=time.time()
