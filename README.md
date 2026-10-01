@@ -205,3 +205,26 @@ A camada também mantém um ciclo de takedown rastreável:
 `detected → queued → submitted → provider_action → removed/rejected → retest`.
 
 O desenho segue padrões observados nas plataformas atuais de DRP: correlação de EASM com CTI, brand protection, leak monitoring, threat hunting, VIP protection e resposta/takedown automatizada. A implementação do BSA é vendor-neutral e exige evidência antes de classificar ou executar uma ação.
+
+
+## Piloto distribuído — 31 empresas
+
+Para distribuição externa, não use o perfil de desenvolvimento. O piloto deve ser iniciado com BSA_ENV=production, segredo JWT próprio, credenciais administrativas próprias e escopo explícito por tenant.
+
+### Checklist obrigatório antes de entregar
+
+1. Copie .env.example para .env e substitua todos os valores de exemplo.
+2. Gere um BSA_JWT_SECRET aleatório com pelo menos 32 caracteres.
+3. Use uma senha administrativa longa e exclusiva; nunca reutilize a senha de demonstração.
+4. Configure BSA_ALLOWED_ORIGINS e BSA_ALLOWED_HOSTS somente para os domínios usados pelo piloto.
+5. Cadastre os domínios/hosts autorizados no Scope do tenant. Em produção, o BSA não libera descoberta arbitrária por padrão.
+6. Prefira docker-compose.production.yml, que mantém API e Ollama na rede interna e não publica a porta da API diretamente.
+7. Faça backup do volume bsa_data antes de atualizar o piloto.
+8. Instale o modelo local do Ollama antes de isolar a rede interna.
+9. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
+
+### Segurança de discovery
+
+O Discovery possui validação contra destinos não públicos e redirecionamentos para endereços privados, reduzindo risco de SSRF. Probes de portas e TLS também passam pelo gate de alvo externo. A expansão recursiva permanece limitada por profundidade e quantidade de ativos.
+
+**Importante:** autorização do cliente continua sendo requisito operacional. O software não deve ser usado para testar ativos fora do escopo autorizado.
