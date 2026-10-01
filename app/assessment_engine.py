@@ -47,6 +47,7 @@ class AssessmentEngine:
         "trufflehog": "credential_exposure",
         "cloud": "cloud_intelligence",
         "threatfox": "threat_intelligence",
+        "hibp": "credential_exposure",
         "whatweb": "technology_intelligence",
         "testssl": "tls_assessment",
     }
