@@ -254,7 +254,8 @@ def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: s
 
 def diff_risk_context(diff: dict, assets: list, findings: list) -> dict:
     """Attach deterministic exposure/risk deltas to a discovery diff."""
-    from .exposure import exposure_breakdown
+    from .exposure import exposure_breakdown, exposure_band
+    from .risk_engine import assess_risk
     by_fp={getattr(a,"fingerprint",None):a for a in assets}
     by_id={getattr(a,"id",None):a for a in assets}
     result=dict(diff)
