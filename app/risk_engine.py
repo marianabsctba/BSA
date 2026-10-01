@@ -64,7 +64,14 @@ def assess_ctem_priority(finding: Finding, asset: Asset | None) -> dict:
     business=risk.business_criticality
     confidence=risk.confidence
     priority=min(100,round(exploitability*0.35+exposure*0.25+business*0.25+confidence*0.15))
-    action="immediate" if priority>=85 else "expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
+    validation_state = getattr(finding, "validation_state", "observed")
+    if validation_state == "needs_validation":
+        priority = min(priority, 69)
+        action = "validate"
+    elif validation_state == "confirmed":
+        action="immediate" if priority>=85 else "expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
+    else:
+        action="expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
     return {
         "priority":priority,
         "action":action,
@@ -73,6 +80,8 @@ def assess_ctem_priority(finding: Finding, asset: Asset | None) -> dict:
         "exposure":exposure,
         "business_criticality":business,
         "confidence":confidence,
+        "validation_state": validation_state,
+        "evidence_quality": int(getattr(finding, "evidence_quality", 50) or 50),
     }
 
 def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
@@ -96,7 +105,8 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     impact=round(business*.65+min(100,asset.confidence if asset else 70)*.15+(30 if asset and asset.type.value in {"application","service"} else 10))
     likelihood=round(exploit*.65+exposure*.35)
     confidence=min(finding.confidence,asset.confidence if asset else finding.confidence)
-    intelligence=min(100, round(evidence_strength*.55 + identity_bonus + vuln_bonus))
+    evidence_quality = int(getattr(finding, "evidence_quality", 50) or 50)
+    intelligence=min(100, round(evidence_strength*.35 + evidence_quality*.30 + identity_bonus + vuln_bonus))
     score=min(100,round(likelihood*.40+impact*.35+confidence*.10+intelligence*.15))
     if finding.kev: drivers.append("KEV / exploração conhecida")
     if finding.exploit_available: drivers.append("exploit disponível")
