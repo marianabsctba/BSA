@@ -1185,3 +1185,75 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .global-load-error{align-items:flex-start;flex-wrap:wrap}
  .global-load-error .secondary{width:100%;justify-content:center}
 }
+
+
+/* FINAL RESPONSIVE PASS */
+@media(max-width:1050px){
+ .sidebar{position:fixed;left:0;top:0;bottom:0;height:100dvh;z-index:60;width:min(320px,86vw)!important;transform:translateX(0);transition:transform .2s ease}
+ .sidebar.collapsed{transform:translateX(-105%)}
+ .sidebar .side-brand div:not(.panther),.sidebar .nav-item span,.sidebar .nav-item em,.side-bottom .tenant-card{display:block}
+ .sidebar .nav-item{justify-content:flex-start}
+ .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:55;border:0;background:#0009;backdrop-filter:blur(3px)}
+ .workspace{width:100%}
+ .content{padding:24px}
+}
+@media(min-width:1051px){
+ .sidebar-backdrop{display:none!important}
+}
+@media(max-width:900px){
+ .topbar{gap:8px}
+ .crumb span{display:none}
+ .command-trigger span,.command-trigger kbd{display:none}
+ .command-trigger{min-width:36px;padding-inline:9px}
+ .top-actions{gap:6px}
+ .locale-select{min-width:52px}
+ .grid-main,.grid-main.lower{grid-template-columns:1fr!important}
+ .report-sheet{max-width:100%}
+ .report-sheet table,.table-panel table{min-width:720px}
+ .table-panel{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .governance-users>div{min-width:680px}
+ .governance-users{overflow-x:auto}
+ .mssp-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ .content{padding:16px}
+ .topbar{height:62px;padding:0 10px}
+ .top-actions .avatar{width:32px;height:32px}
+ .page-title{padding-bottom:16px;margin-bottom:18px}
+ .page-title h1{font-size:28px}
+ .page-title p{font-size:11px}
+ .kpis{grid-template-columns:1fr 1fr}
+ .panel{border-radius:15px}
+ .panel-head{align-items:flex-start;gap:8px}
+ .panel-head span{text-align:right}
+ .filter-pills{max-width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+ .filter-pills button{white-space:nowrap}
+ .intel-toolbar,.report-toolbar,.asset-toolbar-row,.governance-user-toolbar{align-items:stretch}
+ .intel-toolbar>span{width:100%}
+ .ctem-context-main,.queue-context{align-items:flex-start}
+ .drawer,.investigation-drawer{width:100%;max-width:none;border-left:0}
+ .investigation-actions{padding-bottom:max(16px,env(safe-area-inset-bottom))}
+ .report-sheet{padding:18px}
+ .report-sheet table{font-size:8px}
+ .tech-observed-grid{padding-inline:12px}
+ .policy-block,.policy-status-row,.policy-actions{margin-left:12px;margin-right:12px;padding-left:0;padding-right:0}
+}
+@media(max-width:520px){
+ .kpis{grid-template-columns:1fr}
+ .governance-kpis,.easm-kpis,.vuln-kpis,.surface-pulse,.report-kpis,.report-summary-grid{grid-template-columns:1fr 1fr!important}
+ .top-actions .status{display:none}
+ .crumb b{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .locale-select{min-width:46px;padding-inline:6px}
+ .chart{height:215px}
+ .radar-canvas,.infra-graph-canvas{min-height:300px}
+ .story-event{grid-template-columns:54px 12px minmax(0,1fr);gap:8px}
+ .story-time{text-align:left;word-break:break-word}
+ .report-executive-hero{padding:14px}
+ .ct-operational{grid-template-columns:1fr!important}
+}
+@media(max-width:380px){
+ .governance-kpis,.easm-kpis,.vuln-kpis,.surface-pulse,.report-kpis,.report-summary-grid{grid-template-columns:1fr!important}
+ .page-title h1{font-size:25px}
+ .top-actions{gap:4px}
+ .top-actions .avatar{display:none}
+}
