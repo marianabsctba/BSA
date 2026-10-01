@@ -29,7 +29,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, analyze_attack_paths, enabled as local_ai_enabled, OLLAMA_MODEL
-from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding
+from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding, enrich_finding
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
@@ -981,6 +981,9 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             severity = Severity.INFO
 
         evidence = row.get("evidence") or {}
+        validation_required = bool(evidence.get("validation_required")) if isinstance(evidence, dict) else False
+        if validation_required or str(row.get("category") or "") == "candidate_discovery":
+            continue
         classification = evidence.get("classification") if isinstance(evidence, dict) else {}
         classification = classification if isinstance(classification, dict) else {}
 
