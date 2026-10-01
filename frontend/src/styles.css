@@ -252,3 +252,15 @@ tbody tr:hover{background:#ffffff07}
 .governance-role-list>div{border:1px solid #ffffff08;border-radius:10px;padding:10px 11px;background:#ffffff02}
 @media(max-width:950px){.governance-kpis{grid-template-columns:repeat(2,1fr)}.governance-edit-form{grid-template-columns:1fr 1fr}.governance-edit-form .primary{justify-content:center}}
 @media(max-width:600px){.governance-kpis{grid-template-columns:1fr 1fr}.governance-edit-form{grid-template-columns:1fr}.governance-edit-form button{width:100%}.scope-assign{display:block}}
+
+
+/* INTELLIGENCE FILTERS */
+.intel-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:9px 11px;border:1px solid #222b37;border-radius:12px;background:linear-gradient(145deg,#0f151e,#0a0f15)}
+.intel-search{display:flex;align-items:center;gap:8px;min-width:250px;flex:1;border:1px solid #293341;background:#080c12;border-radius:9px;padding:0 10px;color:#687486}
+.intel-search input{width:100%;min-width:0;border:0;background:transparent;outline:0;color:#eef2f7;padding:9px 0;font-size:10px}
+.filter-pills{display:flex;gap:5px;flex-wrap:wrap}
+.filter-pills button{border:1px solid #2a3442;background:#0c1118;border-radius:999px;padding:7px 9px;color:#778394;font:700 7px "DM Mono";letter-spacing:.06em}
+.filter-pills button:hover{color:#d5dbe4;border-color:#3a4657}
+.filter-pills button.on{color:#ff6ca8;border-color:#ff2d844e;background:#ff2d840d;box-shadow:0 0 0 1px #ff2d840a inset}
+.intel-toolbar>span{margin-left:auto;color:#6c7787;font:7px "DM Mono";white-space:nowrap}
+@media(max-width:800px){.intel-search{min-width:100%}.intel-toolbar>span{margin-left:0}}
