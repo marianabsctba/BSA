@@ -13,17 +13,17 @@ from .assessment_registry import registry
 
 
 PROFILES = {
-    "surface": ("subfinder", "httpx"),
+    "surface": ("subfinder", "amass", "httpx"),
     "rapid": ("httpx", "nuclei"),
     "network": ("httpx", "nmap"),
-    "balanced": ("subfinder", "httpx", "nuclei", "nmap"),
+    "balanced": ("subfinder", "amass", "httpx", "safeweb", "nuclei", "nmap"),
 }
 
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "fingerprint"),
     "rapid": ("fingerprint", "vulnerability"),
     "network": ("fingerprint", "service_exposure"),
-    "balanced": ("discovery", "fingerprint", "vulnerability", "service_exposure"),
+    "balanced": ("discovery", "fingerprint", "web_assessment", "vulnerability", "service_exposure"),
 }
 
 
@@ -55,7 +55,14 @@ def run_assessment(
             results = registry.execute(provider_name, target=target)
             for result in results:
                 payload = asdict(result)
-                engine.add_provider_result(provider_name, target, payload)
+                evidence = payload.get("evidence") or {}
+                subject = (
+                    evidence.get("asset")
+                    or evidence.get("url")
+                    or evidence.get("matched_at")
+                    or target
+                )
+                engine.add_provider_result(provider_name, str(subject), payload)
         except Exception as exc:
             internal["errors"].append(
                 {
