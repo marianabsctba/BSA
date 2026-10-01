@@ -33,3 +33,18 @@ def test_lifecycle_is_tenant_scoped_and_persists_evidence_refs(tmp_path, monkeyp
     assert history.lifecycle_for("shared-fp","tenant-a")["observations"] == 1
     assert history.lifecycle_for("shared-fp","tenant-b")["observations"] == 1
     assert first[0]["evidence_refs"] == ["dns:a:example.org"]
+
+def test_discovery_run_diff_tracks_added_removed_and_changed(tmp_path, monkeypatch):
+    from app import history
+    from types import SimpleNamespace
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "diff.db"))
+    a=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=90)
+    b=SimpleNamespace(fingerprint="b",value="b.example.org",asset_type="subdomain",confidence=80)
+    first=history.record_discovery_run([a,b],[], "tenant-diff","run-1")
+    assert first["summary"]["added"] == 2
+    c_asset=SimpleNamespace(fingerprint="c",value="c.example.org",asset_type="subdomain",confidence=95)
+    a_changed=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=70)
+    second=history.record_discovery_run([a_changed,c_asset],[], "tenant-diff","run-2")
+    assert second["summary"]["added"] == 1
+    assert second["summary"]["removed"] == 1
+    assert second["summary"]["changed"] == 1
