@@ -352,3 +352,20 @@ def test_ctem_action_transition_requires_canonical_sequence():
     assert ctem_action_transition({"state":"acknowledged"},"start_remediation")=="in_progress"
     assert ctem_action_transition({"state":"in_progress"},"submit_for_verification")=="resolved"
     assert ctem_action_transition({"state":"resolved"},"verify")=="verified"
+
+def test_tenant_scope_never_leaks_cross_tenant_assets_or_findings():
+    from app.main import tenant_scope
+    from types import SimpleNamespace
+    principal=SimpleNamespace(tenant_id="tenant-a")
+    assets=[
+      SimpleNamespace(id="a1",tenant_id="tenant-a",value="a.example"),
+      SimpleNamespace(id="b1",tenant_id="tenant-b",value="b.example"),
+    ]
+    findings=[
+      SimpleNamespace(id="fa",tenant_id="tenant-a",asset_id="a1"),
+      SimpleNamespace(id="fb",tenant_id="tenant-b",asset_id="b1"),
+      SimpleNamespace(id="cross",tenant_id="tenant-a",asset_id="b1"),
+    ]
+    scoped_assets, scoped_findings=tenant_scope(principal,assets,findings)
+    assert [a.id for a in scoped_assets]==["a1"]
+    assert [x.id for x in scoped_findings]==["fa"]
