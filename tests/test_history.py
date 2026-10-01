@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from app.history import change_summary, record_observations
 from types import SimpleNamespace
 
