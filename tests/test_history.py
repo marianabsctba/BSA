@@ -201,3 +201,15 @@ def test_ctem_leverage_summary_ignores_verified_and_aggregates_active_items():
     assert out["high_leverage_items"] == 1
     assert out["paths_affected"] == 4
     assert out["weighted_risk_reduction"] == 50
+
+def test_ctem_operations_summary_uses_tenant_scoped_queue(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "ops.db"))
+    history.upsert_ctem_item({"asset_id":"a","priority":90,"action":"immediate",
+        "title":"high leverage","drivers":[],"evidence_refs":[],"leverage_score":90,
+        "paths_affected":3,"risk_reduction_percent":60},"tenant-ops")
+    items=history.list_ctem_items("tenant-ops")
+    summary=history.ctem_leverage_summary(items)
+    assert summary["active_items"] == 1
+    assert summary["high_leverage_items"] == 1
+    assert history.list_ctem_items("other-tenant") == []
