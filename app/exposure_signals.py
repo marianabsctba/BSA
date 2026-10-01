@@ -29,15 +29,11 @@ TAKEOVER_PATTERNS={
 def cloud_signals(values):
     out=[]
     seen=set()
-    seen=set()
     for value in values:
         v=str(value).lower()
         for provider,patterns in CLOUD_PATTERNS.items():
             if any(p in v for p in patterns):
                 key=(provider, str(value).lower())
-                if key not in seen:
-                    seen.add(key)
-                    key=(provider, str(value).lower())
                 if key not in seen:
                     seen.add(key)
                     out.append(ExposureSignal("cloud_provider",provider,88,f"hostname/DNS value matches {provider} infrastructure"))
