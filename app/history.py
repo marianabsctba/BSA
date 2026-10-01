@@ -27,7 +27,8 @@ def _history_db():
         action TEXT NOT NULL, title TEXT NOT NULL, drivers_json TEXT NOT NULL,
         evidence_refs_json TEXT NOT NULL, created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL, resolved_at TEXT, verified_at TEXT)""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")\n    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_verifications(
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_verifications(
         verification_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
         result TEXT NOT NULL, evidence_refs_json TEXT NOT NULL, notes TEXT NOT NULL,
         verified_at TEXT NOT NULL)""")
