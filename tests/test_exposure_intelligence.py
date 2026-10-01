@@ -233,3 +233,19 @@ def test_easm_overview_contract():
     assert "summary" in data and "inventory" in data and "changes" in data and "risk" in data
     assert data["summary"]["total_assets"]>=0
     assert 0 <= data["changes"]["low_confidence"] <= data["summary"]["total_assets"]
+
+
+def test_bounded_easm_discovery_contract():
+    h=auth()
+    r=client.get("/api/v1/easm/discover/example.com?max_depth=0&max_assets=5",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert data["summary"]["discovered_targets"]<=5
+        assert data["summary"]["max_depth_reached"]<=0
+        assert "nodes" in data and "edges" in data and "assets" in data
+
+def test_easm_discovery_rejects_unbounded_parameters():
+    h=auth()
+    assert client.get("/api/v1/easm/discover/example.com?max_depth=4",headers=h).status_code==400
+    assert client.get("/api/v1/easm/discover/example.com?max_assets=101",headers=h).status_code==400
