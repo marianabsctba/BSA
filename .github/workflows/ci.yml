@@ -23,4 +23,16 @@ jobs:
           node-version: "22"
       - name: Build frontend
         working-directory: frontend
-        run: npm install && npm run build
+        run: |
+          for attempt in 1 2 3; do
+            if npm install --no-audit --no-fund; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "npm install failed after 3 attempts"
+              exit 1
+            fi
+            echo "npm registry/install failed on attempt $attempt; retrying..."
+            sleep 5
+          done
+          npm run build
