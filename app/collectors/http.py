@@ -90,6 +90,25 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
     return out
 
 
+
+def extract_source_map_metadata(body: bytes, source_map_url: str) -> list[Evidence]:
+    try:
+        obj=json.loads(body[:2097152].decode("utf-8","ignore"))
+    except Exception:
+        return []
+    if not isinstance(obj,dict) or obj.get("version") != 3: return []
+    out=[]
+    sources=obj.get("sources") if isinstance(obj.get("sources"),list) else []
+    names=obj.get("names") if isinstance(obj.get("names"),list) else []
+    out.append(Evidence("http",source_map_url,"sourcemap_metadata",source_map_url,90,{
+        "source_count":len(sources),"name_count":len(names),
+        "has_sources_content":isinstance(obj.get("sourcesContent"),list),
+    }))
+    for src in sources[:500]:
+        if isinstance(src,str) and src:
+            out.append(Evidence("http",source_map_url,"sourcemap_source",src,82,{"source_map":source_map_url}))
+    return out
+
 def analyze_public_artifact_references(url: str, body: bytes, content_type: str = "") -> list[Evidence]:
     """Parse public structured artifacts without executing their contents."""
     if not body: return []
