@@ -95,12 +95,29 @@ def _finding_key(row: dict) -> tuple:
         or classification.get("cve-id")
         or classification.get("cve_id")
     )
+    if isinstance(vulnerability_id, list):
+        vulnerability_id = next(
+            (str(x).upper() for x in vulnerability_id if str(x).upper().startswith("CVE-")),
+            "",
+        )
+    else:
+        vulnerability_id = str(vulnerability_id or "").upper()
+    asset = str(row.get("asset") or "").strip().lower().rstrip(".")
+    if vulnerability_id:
+        component = str(
+            evidence.get("matched_at")
+            or evidence.get("url")
+            or evidence.get("asset")
+            or evidence.get("host")
+            or asset
+        ).strip().lower().rstrip(".")
+        return ("vulnerability", asset, vulnerability_id, component)
     relationship = evidence.get("relationship") if isinstance(evidence, dict) else None
     return (
-        str(row.get("asset") or "").strip().lower().rstrip("."),
+        "generic",
+        asset,
         str(row.get("category") or ""),
         str(row.get("title") or ""),
-        str(vulnerability_id or ""),
         str(relationship or ""),
     )
 
@@ -119,14 +136,39 @@ def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
         duplicates += 1
         current = merged[key]
         evidence = current.get("evidence") or {}
+        incoming = row.get("evidence") or {}
         count = int(evidence.get("corroboration_count", 1)) + 1
         evidence["corroboration_count"] = count
         evidence["corroborated"] = True
+
+        refs = evidence.get("reference") or evidence.get("references") or []
+        incoming_refs = incoming.get("reference") or incoming.get("references") or []
+        if isinstance(refs, str):
+            refs = [refs]
+        if isinstance(incoming_refs, str):
+            incoming_refs = [incoming_refs]
+        merged_refs = sorted({str(x) for x in [*refs, *incoming_refs] if x})
+        if merged_refs:
+            evidence["references"] = merged_refs[:20]
+
+        state_rank = {"needs_validation": 1, "observed": 2, "confirmed_evidence": 3, "confirmed": 4}
+        current_state = str(evidence.get("validation_state") or "")
+        incoming_state = str(incoming.get("validation_state") or "")
+        if state_rank.get(incoming_state, 0) > state_rank.get(current_state, 0):
+            evidence["validation_state"] = incoming_state
+
+        for field in ("cvss", "cpe", "vulnerability_id"):
+            if not evidence.get(field) and incoming.get(field):
+                evidence[field] = incoming.get(field)
+
         current["evidence"] = evidence
         current["confidence"] = min(
             100,
             max(int(current.get("confidence", 0)), int(row.get("confidence", 0))) + min(10, (count - 1) * 3),
         )
+        severity_rank = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+        if severity_rank.get(str(row.get("severity") or "info"), 0) > severity_rank.get(str(current.get("severity") or "info"), 0):
+            current["severity"] = row.get("severity")
     return list(merged.values()), duplicates
 
 
