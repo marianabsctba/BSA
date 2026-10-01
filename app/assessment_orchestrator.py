@@ -13,17 +13,27 @@ from .assessment_registry import registry
 
 
 PROFILES = {
-    "surface": ("subfinder", "amass", "httpx"),
-    "rapid": ("httpx", "nuclei"),
-    "network": ("httpx", "nmap"),
-    "balanced": ("subfinder", "amass", "httpx", "safeweb", "nuclei", "nmap"),
+    "surface": ("subfinder", "amass", "dnsx", "httpx", "tlsx", "gau"),
+    "rapid": ("httpx", "tlsx", "nuclei"),
+    "network": ("dnsx", "httpx", "naabu", "nmap"),
+    "balanced": ("subfinder", "amass", "dnsx", "httpx", "tlsx", "gau", "katana", "safeweb", "nuclei", "naabu", "nmap"),
 }
 
 PROFILE_CAPABILITIES = {
-    "surface": ("discovery", "fingerprint"),
-    "rapid": ("fingerprint", "vulnerability"),
-    "network": ("fingerprint", "service_exposure"),
-    "balanced": ("discovery", "fingerprint", "web_assessment", "vulnerability", "service_exposure"),
+    "surface": ("discovery", "dns_intelligence", "fingerprint", "certificate_intelligence", "historical_surface"),
+    "rapid": ("fingerprint", "certificate_intelligence", "vulnerability"),
+    "network": ("dns_intelligence", "fingerprint", "service_exposure"),
+    "balanced": (
+        "discovery",
+        "dns_intelligence",
+        "fingerprint",
+        "certificate_intelligence",
+        "historical_surface",
+        "web_surface",
+        "web_assessment",
+        "vulnerability",
+        "service_exposure",
+    ),
 }
 
 
