@@ -154,3 +154,20 @@ def test_ctem_verification_requires_evidence_and_reopens_on_failed_retest(tmp_pa
     history.update_ctem_state(item["item_id"],"tenant-v","resolved")
     passed=history.verify_ctem_item(item["item_id"],"tenant-v","passed",["retest:2"],"condition removed")
     assert passed["state"] == "verified"
+
+
+def test_materialize_ctem_applies_relevant_attack_path_context(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "ctem-path.db"))
+    asset=SimpleNamespace(id="asset-1",fingerprint="fp-1",criticality=4,confidence=95,
+        tags=["internet-facing"],type=SimpleNamespace(value="application"))
+    change={"fingerprint":"fp-1","evidence_refs":["asset:e1"],"reasons":["surface"],
+            "exposure_score":70,"risk_score":70}
+    out=history.materialize_ctem_from_diff(
+        {"added":[change],"changed":[]},[asset],[],"tenant-path",
+        [{"nodes":["internet","asset-1","finding-1"],"score":90}],
+    )
+    assert len(out)==1
+    assert out[0]["priority"]==85
+    assert out[0]["attack_path_count"]==1
+    assert out[0]["action"]=="immediate"
