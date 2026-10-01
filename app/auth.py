@@ -183,7 +183,7 @@ def create_user(principal: Principal, email: str, name: str, password: str, role
     return {"id": uid, "tenant_id": principal.tenant_id, "email": email.lower(), "name": name, "role": role, "active": True}
 
 def list_users(principal: Principal) -> list[dict]:
-    if principal.role != "admin":
+    if principal.role not in {"admin", "superadmin"}:
         raise PermissionError("admin required")
     conn = _db()
     rows = conn.execute("SELECT id,email,name,role,active,created_at FROM users WHERE tenant_id=? ORDER BY name", (principal.tenant_id,)).fetchall()
