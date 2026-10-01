@@ -15,6 +15,42 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+
+ARTIFACT_CONTENT_TYPES = {
+    "application/json": "json",
+    "application/manifest+json": "json",
+    "application/xml": "xml",
+    "text/xml": "xml",
+    "text/yaml": "yaml",
+    "application/yaml": "yaml",
+    "text/plain": "text",
+}
+
+ARTIFACT_PATHS = (
+    "/robots.txt",
+    "/sitemap.xml",
+    "/.well-known/security.txt",
+    "/.well-known/assetlinks.json",
+    "/.well-known/apple-app-site-association",
+    "/swagger.json",
+    "/openapi.json",
+)
+
+def _artifact_evidence(url, headers, body):
+    evidence=[]
+    content_type=(headers.get("content-type") or "").split(";",1)[0].strip().lower()
+    kind=ARTIFACT_CONTENT_TYPES.get(content_type)
+    if kind and body:
+        digest=sha256(body).hexdigest()
+        evidence.append(Evidence("http",url,f"web_artifact:{kind}",f"content-type:{content_type}",91,{"sha256":digest,"bytes":len(body)}))
+        text_body=body.decode("utf-8","ignore")[:65536]
+        # Extract only public references; no execution and no recursive fetching here.
+        for match in re.finditer(r"https?://[^\\s<>'\"\\]+|(?:^|[\\s\"'(/])/[A-Za-z0-9._~:/?#[\\]-]{2,}", text_body):
+            ref=match.group(0).strip(" \\"'()[]{}<>")
+            if ref:
+                evidence.append(Evidence("http",url,"artifact_reference",ref[:500],78,{"artifact_kind":kind}))
+    return evidence
+
 SECURITY_HEADERS = (
     "strict-transport-security",
     "content-security-policy",
@@ -105,5 +141,6 @@ class HTTPCollector:
             if value:
                 evidence.append(Evidence(self.name, url, f"http_header:{header}", value, 85))
 
+        evidence.extend(_artifact_evidence(url, headers, body))
         evidence.extend(security_header_evidence(url, headers))
         return evidence
