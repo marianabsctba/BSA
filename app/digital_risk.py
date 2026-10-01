@@ -3,7 +3,7 @@
 Vendor-neutral primitives inspired by current DRP/EASM market patterns:
 brand abuse, phishing, leaks, VIP exposure, dark web, supply chain and takedown.
 """
-import os, sqlite3, json, time, uuid
+import os, sqlite3, json, time, uuid, hashlib
 from pathlib import Path
 from pydantic import BaseModel, Field
 
@@ -107,6 +107,11 @@ class InfrastructureIndicator(BaseModel):
     source: str="manual"
     confidence: int=70
 
+def infrastructure_fingerprint(item: InfrastructureIndicator) -> str:
+    parts=[item.ip,item.asn,item.registrar,item.certificate_sha256,item.favicon_sha256,item.screenshot_hash,*item.nameservers,*item.related_domains,*item.redirect_chain]
+    normalized="|".join(sorted(str(x).strip().lower() for x in parts if x))
+    return hashlib.sha256(normalized.encode()).hexdigest()[:20] if normalized else ""
+
 def build_infrastructure_links(item: InfrastructureIndicator):
     links=[]
     for value,kind in [(item.ip,"ip"),(item.asn,"asn"),(item.registrar,"registrar"),(item.certificate_sha256,"certificate"),(item.favicon_sha256,"favicon"),(item.screenshot_hash,"screenshot")]:
@@ -114,7 +119,7 @@ def build_infrastructure_links(item: InfrastructureIndicator):
     for ns in item.nameservers: links.append({"type":"nameserver","value":ns,"confidence":item.confidence})
     for domain in item.related_domains: links.append({"type":"related_domain","value":domain,"confidence":item.confidence})
     for target in item.redirect_chain: links.append({"type":"redirect","value":target,"confidence":item.confidence})
-    return {"indicator":item.indicator,"indicator_type":item.indicator_type,"links":links,"link_count":len(links),
+    return {"indicator":item.indicator,"indicator_type":item.indicator_type,"infrastructure_fingerprint":infrastructure_fingerprint(item),"links":links,"link_count":len(links),
             "cluster_strength":min(100, round(sum(x["confidence"] for x in links)/max(1,len(links)))),
             "evidence_required":not bool(links)}
 
