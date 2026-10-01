@@ -51,9 +51,9 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
                     host2=urlparse(hop).hostname
                     if host2:
                         add(AssetType.DOMAIN.value, host2, source, confidence, ("redirect-derived",))
-        elif kind in {"a", "aaaa"}:
+        elif kind in {"a", "aaaa", "a_record", "aaaa_record"}:
             add(AssetType.IP.value, value, source, confidence, ("dns-resolved",))
-        elif kind in {"cname", "mx", "ns"}:
+        elif kind in {"cname", "mx", "ns", "srv", "txt", "caa"}:
             add(AssetType.SERVICE.value, value, source, confidence, ("dns-related",))
 
     # Merge the same hostname observed through different collectors.
