@@ -305,6 +305,22 @@ def explain_attack_path_api(payload: dict, request: Request):
     result["ai"]={"enabled":True,"provider":"ollama-local","model":OLLAMA_MODEL,"grounded":True}
     return result
 
+@app.get("/api/v1/risk/attack-paths")
+def risk_attack_paths(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    graph=build_risk_graph(f"tenant:{principal.tenant_id}",assets,[],source_assets=assets,findings=findings)
+    paths=graph.get("top_risk_paths",[])
+    for p in paths:
+        p["risk_model"]="contextual-residual"
+        p["decision_factors"]={
+            "highest_node_risk":max((graph_node.get("risk_score",0) for graph_node in graph["nodes"] if graph_node["id"] in p.get("nodes",[])),default=0),
+            "weakest_link_confidence":p.get("explanation",{}).get("weakest_link",{}).get("confidence",0),
+            "choke_points":len(p.get("choke_points",[])),
+            "control_unknowns":p.get("control_summary",{}).get("unknown",0)
+        }
+    return {"summary":graph["risk_summary"],"paths":paths}
+
 @app.get("/api/v1/graph/control-coverage")
 def graph_control_coverage(request: Request):
     principal=require(request,"assets:read")
