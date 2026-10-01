@@ -13,7 +13,7 @@ from .collectors.ports import PortCollector
 from .collectors.rdap import RDAPCollector
 from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
-from .security import validate_external_target
+from .security import validate_external_target, resolve_public
 from .local_ai import prioritize_collection
 from .collectors.http import discover_web_surface, contextual_surface_paths
 
@@ -58,6 +58,7 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
     validate_external_target(target)
+    approved_ips=resolve_public(hostname)
     if not _DISCOVERY_GATE.acquire(timeout=10):
         raise RuntimeError("discovery capacity temporarily exhausted")
     try:
@@ -68,7 +69,7 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
             evidence.extend(COLLECTORS["dns"].collect(hostname))
 
         if "http" in selected:
-            evidence.extend(COLLECTORS["http"].collect(url))
+            evidence.extend(COLLECTORS["http"].collect(url,approved_ips=approved_ips))
 
         if "tls" in selected:
             try:
@@ -80,7 +81,7 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
             evidence.extend(COLLECTORS["ct"].collect(hostname))
 
         if "ports" in selected:
-            evidence.extend(COLLECTORS["ports"].collect(hostname))
+            evidence.extend(COLLECTORS["ports"].collect(hostname,approved_ips=approved_ips))
 
         if "rdap" in selected:
             evidence.extend(COLLECTORS["rdap"].collect(hostname))
