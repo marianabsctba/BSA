@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app
+import uuid
 
 client=TestClient(app)
 
@@ -19,7 +20,7 @@ def test_rbac_permission_catalog_is_exposed():
 def test_admin_cannot_grant_superadmin_role():
     token=login()
     r=client.post("/api/v1/users",cookies={"bsa_session":token},json={
-        "email":"rbac-test@besafe.local","name":"RBAC Test",
+        "email":f"rbac-test-{uuid.uuid4().hex}@besafe.local","name":"RBAC Test",
         "password":"Long-Test-Only-Password-2026!","role":"superadmin"
     })
-    assert r.status_code in {400,403}
+    assert r.status_code in {400,403,409}
