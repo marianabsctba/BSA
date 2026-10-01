@@ -390,6 +390,15 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,js_url))
         evidence.extend(extract_js_literals(js,js_url))
+        map_match=re.search(r"""sourceMappingURL\s*=\s*([^\s"'<>]+)""",js[-32768:],re.I)
+        if map_match:
+            map_url=urljoin(js_url,map_match.group(1).strip())
+            if urlparse(map_url).hostname == urlparse(origin).hostname:
+                evidence.append(Evidence("http",js_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
+        for sm in re.finditer(r"""["']([^"']+\.js\.map(?:\?[^"']*)?)["']""",js,re.I):
+            map_url=urljoin(js_url,sm.group(1))
+            if urlparse(map_url).hostname == urlparse(origin).hostname:
+                evidence.append(Evidence("http",js_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
         if any(x in js_url.lower() for x in ("manifest", "build-manifest", "asset-manifest", "_buildmanifest", "_ssgmanifest")):
             for asset in extract_manifest_asset_references(body,js_url)[:100]:
                 asset_url=urljoin(origin,asset.value)
