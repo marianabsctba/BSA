@@ -108,23 +108,32 @@ def source_map_context_evidence(source_map_url: str, sources: list[str]) -> list
                             src,82,{"classification":classify_source_reference(src)}))
     return out
 
-def extract_source_map_metadata(body: bytes, source_map_url: str) -> list[Evidence]:
+
+def extract_source_map_metadata(body: bytes, url: str) -> list[Evidence]:
+    """Extract bounded source-map metadata and safe source references."""
     try:
-        obj=json.loads(body[:2097152].decode("utf-8","ignore"))
+        obj=json.loads(body[:4194304].decode("utf-8","ignore"))
     except Exception:
         return []
-    if not isinstance(obj,dict) or obj.get("version") != 3: return []
+    if not isinstance(obj,dict) or obj.get("version") != 3:
+        return []
     out=[]
-    sources=obj.get("sources") if isinstance(obj.get("sources"),list) else []
-    names=obj.get("names") if isinstance(obj.get("names"),list) else []
-    out.append(Evidence("http",source_map_url,"sourcemap_metadata",source_map_url,90,{
-        "source_count":len(sources),"name_count":len(names),
-        "has_sources_content":isinstance(obj.get("sourcesContent"),list),
-    }))
-    for src in sources[:500]:
-        if isinstance(src,str) and src:
-            out.append(Evidence("http",source_map_url,"sourcemap_source",src,82,{"source_map":source_map_url}))
-    return out
+    sources=obj.get("sources") or []
+    source_root=obj.get("sourceRoot") or ""
+    contents=obj.get("sourcesContent") or []
+    for idx,src in enumerate(sources[:500]):
+        if not isinstance(src,str) or not src: continue
+        resolved=urljoin(url, source_root + src)
+        out.append(Evidence("http",url,"source_map_source",resolved,86,{"index":idx,"has_source_content":idx < len(contents) and isinstance(contents[idx],str)}))
+        if idx < len(contents) and isinstance(contents[idx],str):
+            text_body=contents[idx][:262144]
+            for m in re.finditer(r"""(?:https?://|/)(?:[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{2,300})""",text_body):
+                value=m.group(0)
+                if value.startswith("/") or urlparse(value).hostname == urlparse(url).hostname:
+                    out.append(Evidence("http",url,"source_map_embedded_reference",value,82,{"source_index":idx}))
+                    if len(out)>=1000: return out
+    return out[:1000]
+
 
 def analyze_public_artifact_references(url: str, body: bytes, content_type: str = "") -> list[Evidence]:
     """Parse public structured artifacts without executing their contents."""
