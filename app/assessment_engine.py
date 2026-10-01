@@ -51,6 +51,7 @@ class AssessmentEngine:
         "cloud": "cloud_intelligence",
         "threatfox": "threat_intelligence",
         "hibp": "credential_exposure",
+        "hudsonrock": "credential_exposure",
         "whatweb": "technology_intelligence",
         "testssl": "tls_assessment",
     }
