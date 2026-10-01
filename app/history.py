@@ -63,7 +63,7 @@ class Observation:
 _HISTORY: dict[str, list[Observation]] = {}
 
 
-def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observation]:
+def record_observations(assets, tenant_id: str) -> list[Observation]:
     now = datetime.now(timezone.utc).isoformat()
     observations = []
     for asset in assets:
@@ -88,7 +88,7 @@ def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observat
     return observations
 
 
-def history_for(fingerprint: str, tenant_id: str = "tenant-demo") -> list[Observation]:
+def history_for(fingerprint: str, tenant_id: str) -> list[Observation]:
     conn=_history_db()
     rows=conn.execute("SELECT * FROM asset_observations WHERE tenant_id=? AND fingerprint=? ORDER BY observed_at",(tenant_id,fingerprint)).fetchall()
     conn.close()
@@ -97,7 +97,7 @@ def history_for(fingerprint: str, tenant_id: str = "tenant-demo") -> list[Observ
     return list(_HISTORY.get(f"{tenant_id}:{fingerprint}", []))
 
 
-def change_summary(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
+def change_summary(fingerprint: str, tenant_id: str) -> dict:
     history = history_for(fingerprint, tenant_id)
     if not history:
         return {"state": "new", "observations": 0, "changes": []}
@@ -176,7 +176,7 @@ def _evidence_signature(evidence: list[dict]) -> str:
     ], key=lambda x:(x["kind"],x["subject"],x["value"]))
     return sha256(json.dumps(stable,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()[:20]
 
-def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo") -> list[dict]:
+def record_lifecycle(assets, evidence: list[dict], tenant_id: str) -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
     signature = _evidence_signature(evidence)
     out=[]
@@ -217,7 +217,7 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
         })
     return out
 
-def lifecycle_for(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
+def lifecycle_for(fingerprint: str, tenant_id: str) -> dict:
     history=_LIFECYCLE.get(f"{tenant_id}:{fingerprint}",[])
     if not history:
         return {"state":"unknown","observations":0,"timeline":[]}
