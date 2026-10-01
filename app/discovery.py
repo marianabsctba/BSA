@@ -7,6 +7,7 @@ from .collectors.http import HTTPCollector
 from .collectors.tls import TLSCollector
 from .collectors.certificate_transparency import CertificateTransparencyCollector
 from .collectors.ports import PortCollector
+from .collectors.rdap import RDAPCollector
 from .correlation import correlate_evidence
 
 
@@ -16,6 +17,7 @@ COLLECTORS = {
     "tls": TLSCollector(),
     "ct": CertificateTransparencyCollector(),
     "ports": PortCollector(),
+    "rdap": RDAPCollector(),
 }
 
 
@@ -35,7 +37,7 @@ def normalize_target(target: str) -> tuple[str, str]:
 def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
-    selected = checks or ["dns", "http", "tls", "ct", "ports"]
+    selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap"]
     evidence = []
 
     if "dns" in selected:
@@ -55,6 +57,9 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
 
     if "ports" in selected:
         evidence.extend(COLLECTORS["ports"].collect(hostname))
+
+    if "rdap" in selected:
+        evidence.extend(COLLECTORS["rdap"].collect(hostname))
 
     return {
         "target": hostname,
