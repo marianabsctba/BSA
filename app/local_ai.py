@@ -110,3 +110,14 @@ def correlate_exposure(target, evidence):
         data=json.loads(raw); return data if isinstance(data,dict) else None
     except json.JSONDecodeError:
         return {"confirmed_links":[],"hypotheses":[],"conflicts":[],"unknowns":["Unstructured AI response"],"confidence":0,"next_validation":[]}
+
+def prioritize_discovery(target, evidence, signals):
+    system=("You are Be Safe ASM Local Discovery Prioritizer. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence and deterministic signals. Do not invent infrastructure. "
+            "Rank next defensive discovery checks by expected information gain, evidence quality and safety. "
+            "Return JSON keys: priorities, rationale, evidence_gaps, confidence. Each priority must cite its triggering evidence.")
+    raw=ask(system,"Prioritize next discovery checks. JSON only.\n"+json.dumps({"target":target,"evidence":evidence,"signals":signals},ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:return {"priorities":[],"rationale":raw,"evidence_gaps":["unstructured AI response"],"confidence":0}
