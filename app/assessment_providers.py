@@ -583,12 +583,86 @@ class ThreatFoxProvider(_ConfiguredJsonIntelProvider):
         )]
 
 
-class OpenVASProvider:
+class OpenVASProvider(_ConfiguredJsonIntelProvider):
     name = "openvas"
+    endpoint_env = "BSA_OPENVAS_URL"
+    token_env = "BSA_OPENVAS_TOKEN"
+    timeout = 120
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        data = self._post({
+            "target": target,
+            "profile": "safe",
+            "max_findings": 250,
+        })
+        rows = data.get("findings") or data.get("results") or []
+        out = []
+        for row in rows[:250] if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            severity = str(row.get("severity") or "info").lower()
+            confidence = max(0, min(100, int(row.get("confidence", 85) or 85)))
+            evidence = {
+                "asset": row.get("asset") or target,
+                "vulnerability_id": row.get("cve") or row.get("vulnerability_id"),
+                "cvss": row.get("cvss"),
+                "port": row.get("port"),
+                "protocol": row.get("protocol"),
+                "summary": row.get("summary") or row.get("description"),
+                "relationship": "vulnerability-assessment",
+            }
+            out.append(
+                ProviderResult(
+                    str(row.get("title") or "Vulnerability assessment finding"),
+                    severity,
+                    confidence,
+                    evidence,
+                )
+            )
+        return out
 
 
-class ZAPProvider:
+class ZAPProvider(_ConfiguredJsonIntelProvider):
     name = "zap"
+    endpoint_env = "BSA_ZAP_URL"
+    token_env = "BSA_ZAP_TOKEN"
+    timeout = 120
+
+    def supports(self, target: str) -> bool:
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        data = self._post({
+            "target": target,
+            "mode": "baseline",
+            "active_scan": False,
+            "max_findings": 250,
+        })
+        rows = data.get("findings") or data.get("alerts") or []
+        out = []
+        for row in rows[:250] if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            severity = str(row.get("severity") or row.get("risk") or "info").lower()
+            confidence = max(0, min(100, int(row.get("confidence", 80) or 80)))
+            evidence = {
+                "url": row.get("url") or target,
+                "parameter": row.get("parameter"),
+                "evidence": row.get("evidence"),
+                "cwe": row.get("cwe"),
+                "wasc": row.get("wasc"),
+                "relationship": "web-assessment",
+            }
+            out.append(
+                ProviderResult(
+                    str(row.get("title") or row.get("alert") or "Web assessment finding"),
+                    severity,
+                    confidence,
+                    evidence,
+                )
+            )
+        return out
 
 
 DEFAULT_PROVIDERS = [
