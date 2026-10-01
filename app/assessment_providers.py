@@ -10,6 +10,8 @@ import json
 import shutil
 import subprocess
 
+from .dast import run_safe_web_assessment
+
 
 @dataclass
 class ProviderResult:
@@ -172,6 +174,57 @@ class NmapProvider(CommandProvider):
         ]
 
 
+class AmassProvider(CommandProvider):
+    name = "amass"
+    binary = "amass"
+    timeout = 120
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "enum", "-passive", "-d", target]
+
+    def parse(self, stdout: str, stderr: str, returncode: int) -> list[ProviderResult]:
+        seen = set()
+        out = []
+        for value in stdout.splitlines():
+            value = value.strip().lower()
+            if value and value not in seen:
+                seen.add(value)
+                out.append(
+                    ProviderResult(
+                        title="External asset discovered",
+                        severity="info",
+                        confidence=82,
+                        evidence={"asset": value, "relationship": "subdomain"},
+                    )
+                )
+        return out
+
+
+class SafeWebProvider:
+    name = "safeweb"
+
+    def available(self) -> bool:
+        return True
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        data = run_safe_web_assessment(target)
+        out = []
+        for item in data.get("findings", []):
+            out.append(
+                ProviderResult(
+                    title=str(item.get("title") or "Web exposure evidence"),
+                    severity=str(item.get("severity") or "info"),
+                    confidence=max(0, min(100, int(item.get("confidence", 80) or 80))),
+                    evidence={
+                        "url": data.get("target") or target,
+                        "check": item.get("check"),
+                        "evidence": item.get("evidence"),
+                    },
+                )
+            )
+        return out
+
+
 class OpenVASProvider:
     name = "openvas"
 
@@ -190,9 +243,11 @@ class CredentialExposureProvider:
 
 DEFAULT_PROVIDERS = [
     SubdomainProvider,
+    AmassProvider,
     HttpProbeProvider,
     NucleiProvider,
     NmapProvider,
+    SafeWebProvider,
     OpenVASProvider,
     ZAPProvider,
     ThreatIntelProvider,
