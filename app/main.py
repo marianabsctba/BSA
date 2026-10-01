@@ -1499,7 +1499,7 @@ def discovery_changes(target: str, request: Request):
                 "fingerprint": asset.fingerprint,
                 "asset": asset.value,
                 "type": asset.asset_type,
-                "change": change_summary(asset.fingerprint),
+                "change": change_summary(asset.fingerprint, principal.tenant_id),
             }
             for asset in assets
         ],
@@ -1525,7 +1525,7 @@ def discovery_correlation(target: str, request: Request):
     """Return normalized asset identities for an explicit discovery target."""
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
-    observations = record_observations(assets)
+    observations = record_observations(assets, principal.tenant_id)
     return {
         "target": data["target"],
         "evidence_count": data["evidence_count"],
@@ -1546,7 +1546,7 @@ def discovery_correlation(target: str, request: Request):
                     else "single-source" if len(asset.sources) == 1
                     else "unverified"
                 ),
-                "history": change_summary(asset.fingerprint),
+                "history": change_summary(asset.fingerprint, principal.tenant_id),
             }
             for asset in assets
         ],
