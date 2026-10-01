@@ -14,7 +14,7 @@ class TechnologyObservation:
 ALIASES = {
     "nginx":"nginx","apache":"apache http server","microsoft-iis":"microsoft iis",
     "iis":"microsoft iis","openresty":"openresty","cloudflare":"cloudflare",
-    "wordpress":"wordpress","drupal":"drupal","joomla":"joomla",
+    "wordpress":"wordpress","drupal":"drupal","joomla":"joomla","tomcat":"apache tomcat","iis":"microsoft iis","php":"php","express":"express.js","next":"next.js","react":"react","vue":"vue.js","angular":"angular","spring":"spring framework","gunicorn":"gunicorn","uvicorn":"uvicorn",
 }
 
 VERSION_PATTERNS = [
@@ -22,6 +22,10 @@ VERSION_PATTERNS = [
     (r"apache[/ ](?P<v>\d+(?:\.\d+){1,3})","apache http server"),
     (r"microsoft-iis[/ ](?P<v>\d+(?:\.\d+){1,3})","microsoft iis"),
     (r"openresty[/ ](?P<v>\d+(?:\.\d+){1,3})","openresty"),
+    (r"tomcat[/ ](?P<v>\d+(?:\.\d+){1,3})","apache tomcat"),
+    (r"php[/ ](?P<v>\d+(?:\.\d+){1,3})","php"),
+    (r"gunicorn[/ ](?P<v>\d+(?:\.\d+){1,3})","gunicorn"),
+    (r"uvicorn[/ ](?P<v>\d+(?:\.\d+){1,3})","uvicorn"),
 ]
 
 def _version(value: str, product: str):
