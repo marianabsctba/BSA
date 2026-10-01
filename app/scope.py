@@ -118,9 +118,24 @@ def _scope_pattern_matches(hostname: str, pattern: str) -> bool:
         return False
     return normalized==pattern or normalized.endswith("." + pattern)
 
+def _scope_hostname_from_value(value: str) -> str:
+    raw=str(value or "").strip()
+    if not raw:
+        raise ValueError("empty target")
+    if "://" in raw:
+        host=urlparse(raw).hostname
+        if not host:
+            raise ValueError("invalid URL target")
+        return _normalize_scope_hostname(host)
+    if raw.count(":")==1 and "/" not in raw:
+        host,port=raw.rsplit(":",1)
+        if port.isdigit():
+            return _normalize_scope_hostname(host)
+    return _normalize_scope_hostname(raw)
+
 def asset_in_scope(principal: Principal,value:str):
     try:
-        hostname=_normalize_scope_hostname(value)
+        hostname=_scope_hostname_from_value(value)
     except ValueError:
         return False
     patterns=scoped_patterns(principal)
