@@ -364,7 +364,7 @@ def list_ctem_items(tenant_id: str, states: set[str] | None = None) -> list[dict
     return result
 
 
-def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str, attack_paths: list[dict] | None = None) -> list[dict]:
+def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str, attack_paths: list[dict] | None = None, remediation_leverage: dict[str, dict] | None = None) -> list[dict]:
     """Turn evidence-backed discovery deltas into tenant-scoped CTEM work items."""
     from .risk_engine import prioritize_surface_change, attack_path_ctem_context
     by_fp={getattr(a,"fingerprint",None):a for a in assets}
@@ -388,7 +388,17 @@ def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str, att
         }
         if attack_paths:
             item=attack_path_ctem_context(item,attack_paths)
-            item["action"]="immediate" if item["priority"]>=85 else "expedite" if item["priority"]>=70 else "plan" if item["priority"]>=45 else "monitor"
+        leverage=(remediation_leverage or {}).get(str(getattr(asset,"id",change.get("fingerprint",""))))
+        if leverage:
+            item.update({
+                "leverage_score": int(leverage.get("leverage_score",0) or 0),
+                "paths_affected": int(leverage.get("paths_affected",0) or 0),
+                "risk_reduction_percent": int(leverage.get("reduction_percent",leverage.get("risk_reduction_percent",0)) or 0),
+                "path_coverage_percent": int(leverage.get("path_coverage_percent",0) or 0),
+            })
+            if item["leverage_score"] >= 80:
+                item["drivers"].append("alto potencial de redução de risco")
+        item["action"]="immediate" if item["priority"]>=85 else "expedite" if item["priority"]>=70 else "plan" if item["priority"]>=45 else "monitor"
         created.append(upsert_ctem_item(item,tenant_id))
     return created
 
