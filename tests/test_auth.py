@@ -33,3 +33,16 @@ def test_logout_revokes_session_cookie():
     logout = client.post("/api/v1/auth/logout")
     assert logout.status_code == 200
     assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_custom_role_cannot_escalate_beyond_caller(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth, "DB_PATH", str(tmp_path / "auth.db"))
+    auth._db().close()
+    principal = auth.Principal("u1", "tenant-1", "admin@example.test", "analyst", "Analyst")
+    try:
+        auth.create_custom_role(principal, "too-powerful", ["assets:read", "users:write"])
+    except PermissionError:
+        return
+    raise AssertionError("custom role escalation was accepted")
