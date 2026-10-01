@@ -12,7 +12,7 @@ from pathlib import Path
 DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
-MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14"))
+MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
 _LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
@@ -46,8 +46,10 @@ def _validate_password(password: str):
 
 
 def _db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=15000")
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS tenants(
         id TEXT PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS users(
