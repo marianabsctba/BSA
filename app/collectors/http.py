@@ -349,6 +349,34 @@ def extract_js_literals(js: str, source_url: str, max_items: int = 500) -> list[
             if len(out)>=max_items: return out
     return out
 
+def detect_js_technology_fingerprints(js: str, url: str, max_items: int = 100) -> list[Evidence]:
+    """Fingerprint frontend libraries from inert bundle text; never executes JavaScript."""
+    text_body=js[:1048576]
+    low=text_body.lower()
+    out=[]
+    signatures=[
+        ("react", r"react\\.transitional\\.element", r"(?:react|react-dom)[^\\n]{0,180}?(\\d+\\.\\d+(?:\\.\\d+)?)"),
+        ("react-dom", r"react-dom", r"react-dom[^\\n]{0,180}?(\\d+\\.\\d+(?:\\.\\d+)?)"),
+        ("vue", r"vue", r"vue[^\\n]{0,180}?(\\d+\\.\\d+(?:\\.\\d+)?)"),
+        ("angular", r"angular", r"angular[^\\n]{0,180}?(\\d+\\.\\d+(?:\\.\\d+)?)"),
+    ]
+    for product,marker_pattern,version_pattern in signatures:
+        if not re.search(marker_pattern,text_body,re.I):
+            continue
+        version=None
+        m=re.search(version_pattern,text_body,re.I)
+        if m: version=m.group(1)
+        metadata={"source":"javascript_bundle","marker":product}
+        if version:
+            metadata["version"]=version
+            out.append(Evidence("http",url,"technology_version",f"{product}:{version}",88,metadata))
+        else:
+            out.append(Evidence("http",url,"technology_fingerprint",product,82,metadata))
+    if "/@vite/" in low or "__vite__" in low or "vite/client" in low:
+        out.append(Evidence("http",url,"build_tool_fingerprint","vite",82,{"source":"javascript_bundle"}))
+    if "webpackjsonp" in low or "webpack-runtime" in low:
+        out.append(Evidence("http",url,"build_tool_fingerprint","webpack",82,{"source":"javascript_bundle"}))
+    return out[:max_items]
 def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     text_body=body[:1048576].decode("utf-8","ignore")
     low=text_body.lower()
@@ -490,6 +518,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,js_url))
         evidence.extend(extract_js_literals(js,js_url))
+        evidence.extend(detect_js_technology_fingerprints(js,js_url))
         map_match=re.search(r"""sourceMappingURL\s*=\s*([^\s"'<>]+)""",js[-32768:],re.I)
         if map_match:
             map_url=urljoin(js_url,map_match.group(1).strip())
@@ -520,6 +549,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",asset_url,"manifest_asset_analyzed",asset_url,88,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,asset_url))
         evidence.extend(extract_js_literals(js,asset_url))
+        evidence.extend(detect_js_technology_fingerprints(js,asset_url))
         # Discover source maps from the standard sourceMappingURL trailer.
         map_match=re.search(r"""sourceMappingURL\s*=\s*([^\s"'<>]+)""",js[-32768:],re.I)
         if map_match:
