@@ -1072,6 +1072,7 @@ class OpenVASProvider:
                         "port": port,
                         "vulnerability_id": cve,
                         "cvss": cvss,
+                        "validation_state": "confirmed_evidence" if cve else "observed",
                         "relationship": "vulnerability-assessment",
                     },
                 )
