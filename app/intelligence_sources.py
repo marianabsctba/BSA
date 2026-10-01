@@ -68,6 +68,15 @@ SOURCES: Mapping[str, IntelligenceSource] = {
         auth_env="BSA_HIBP_API_KEY",
         enabled_by_default=False,
     ),
+    "hudson_rock": IntelligenceSource(
+        key="hudson_rock",
+        category="credential_exposure",
+        trust="established_commercial",
+        purpose="Infostealer and stealer-log exposure intelligence",
+        endpoint="https://api.hudsonrock.com/json/v3/search-by-domain",
+        auth_env="BSA_HUDSON_ROCK_API_KEY",
+        enabled_by_default=False,
+    ),
 }
 
 
