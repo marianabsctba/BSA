@@ -22,7 +22,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
@@ -150,6 +150,24 @@ def asset_detail_view(asset_id: str, request: Request):
     return asset_detail(asset, findings, assets)
 
 
+@app.get("/api/v1/discovery/ai-judge/{target}")
+def discovery_ai_judge(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
+    grouped={}
+    for e in data["evidence"]:
+        subject=str(e.get("subject",target))
+        grouped.setdefault(subject,[]).append(e)
+    decisions=[]
+    for subject,items in grouped.items():
+        if len(items)<2: continue
+        decision=judge_correlation(subject,items)
+        if decision: decisions.append({"subject":subject,"decision":decision})
+    return {"target":data["target"],"evidence_count":data["evidence_count"],"ai_enabled":local_ai_enabled(),
+            "model":OLLAMA_MODEL if local_ai_enabled() else None,"decisions":decisions}
+    
 @app.get("/api/v1/discovery/ai-plan/{target}")
 def discovery_ai_plan(target: str, request: Request):
     principal=require(request,"assets:read")
