@@ -50,7 +50,7 @@ def bootstrap_scope(tenant_id="tenant-demo"):
     conn.close()
 
 def create_scope(principal: Principal,name:str,pattern:str):
-    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
+    if not __import__("app.auth",fromlist=["can"]).can(principal,"users:write"): raise PermissionError("users:write required")
     ensure_scope_schema(); conn=_db(); sid=secrets.token_hex(10)
     conn.execute("INSERT INTO scopes(id,tenant_id,name,pattern,created_at) VALUES(?,?,?,?,?)",(sid,principal.tenant_id,name,pattern,int(time.time())))
     conn.commit(); conn.close()
