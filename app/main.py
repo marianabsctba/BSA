@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
+from .auth import authenticate, bootstrap, can, role_permissions, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups
 from .asset_view import asset_detail
@@ -654,6 +654,11 @@ def users_create(request: Request, payload: UserCreateRequest):
     except Exception as exc:
         raise HTTPException(status_code=409, detail="user already exists or invalid data") from exc
 
+
+@app.get("/api/v1/auth/permissions")
+def auth_permissions(request: Request):
+    p=current_principal(request)
+    return {"role":p.role,"permissions":role_permissions(p.role)}
 
 class UserUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
