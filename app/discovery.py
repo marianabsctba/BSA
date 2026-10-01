@@ -6,6 +6,7 @@ from .collectors.dns import DNSCollector
 from .collectors.http import HTTPCollector
 from .collectors.tls import TLSCollector
 from .collectors.certificate_transparency import CertificateTransparencyCollector
+from .collectors.ports import PortCollector
 from .correlation import correlate_evidence
 
 
@@ -14,6 +15,7 @@ COLLECTORS = {
     "http": HTTPCollector(),
     "tls": TLSCollector(),
     "ct": CertificateTransparencyCollector(),
+    "ports": PortCollector(),
 }
 
 
@@ -50,6 +52,9 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
 
     if "ct" in selected:
         evidence.extend(COLLECTORS["ct"].collect(hostname))
+
+    if "ports" in selected:
+        evidence.extend(COLLECTORS["ports"].collect(hostname))
 
     return {
         "target": hostname,
