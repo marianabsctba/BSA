@@ -17,9 +17,9 @@ class Asset:
 
 def test_history_detects_source_and_confidence_changes():
     fp = "test-change-asset"
-    record_observations([Asset(fp, 80, 1, ["dns"], ["web-exposed"])])
-    record_observations([Asset(fp, 95, 2, ["dns", "http"], ["web-exposed", "new"])])
-    result = change_summary(fp)
+    record_observations([Asset(fp, 80, 1, ["dns"], ["web-exposed"])], "tenant-test")
+    record_observations([Asset(fp, 95, 2, ["dns", "http"], ["web-exposed", "new"])], "tenant-test")
+    result = change_summary(fp, "tenant-test")
     assert result["state"] == "changed"
     kinds = {x["kind"] for x in result["changes"]}
     assert "confidence_change" in kinds
