@@ -31,6 +31,10 @@ def ensure_scope_schema():
     conn.execute("""CREATE TABLE IF NOT EXISTS scopes(
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
         pattern TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)""")
+    cols={r["name"] for r in conn.execute("PRAGMA table_info(user_scopes)").fetchall()}
+    if cols and "scope_id" not in cols:
+        legacy="user_scopes_legacy_"+str(int(time.time()))
+        conn.execute(f"ALTER TABLE user_scopes RENAME TO {legacy}")
     conn.execute("""CREATE TABLE IF NOT EXISTS user_scopes(
         user_id TEXT NOT NULL, scope_id TEXT NOT NULL, PRIMARY KEY(user_id,scope_id))""")
     conn.execute("""CREATE TABLE IF NOT EXISTS asset_groups(
