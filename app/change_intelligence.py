@@ -45,3 +45,30 @@ def summarize_changes(events: Iterable[ChangeEvent]) -> dict:
     by_type={}
     for e in events: by_type[e.change_type]=by_type.get(e.change_type,0)+1
     return {"total":len(events),"by_type":by_type,"warnings":sum(e.severity=="warning" for e in events)}
+
+def change_risk_delta(event: ChangeEvent, asset_context: dict | None = None) -> dict:
+    """Translate an evidence-backed surface change into a bounded CTEM delta."""
+    context=asset_context or {}
+    delta=0
+    drivers=[]
+    if event.change_type=="added":
+        delta += 15
+        drivers.append("nova exposição descoberta")
+        if context.get("internet_exposed"):
+            delta += 15
+            drivers.append("novo ativo exposto à Internet")
+    elif event.change_type=="removed":
+        delta -= 10
+        drivers.append("ativo removido da superfície observada")
+    elif event.change_type=="evidence_changed":
+        confidence_delta=(event.metadata or {}).get("confidence_delta",0)
+        delta += 10 if confidence_delta >= 15 else -5 if confidence_delta <= -15 else 0
+        if confidence_delta >= 15:
+            drivers.append("confiança da evidência aumentou")
+        elif confidence_delta <= -15:
+            drivers.append("confiança da evidência diminuiu")
+    if context.get("critical"):
+        delta += 10 if event.change_type=="added" else 0
+        if event.change_type=="added":
+            drivers.append("ativo crítico")
+    return {"delta":max(-100,min(100,delta)),"drivers":drivers}
