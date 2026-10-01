@@ -305,3 +305,14 @@ def test_policy_aware_risk_has_inherent_and_residual_scores():
         assert 0<=risk["inherent_score"]<=100
         assert 0<=risk["residual_score"]<=100
         assert 0<=risk["uncertainty"]<=100
+
+
+def test_risk_attack_paths_contract():
+    h=auth()
+    response=client.get("/api/v1/risk/attack-paths",headers=h)
+    assert response.status_code==200
+    data=response.json()
+    assert "summary" in data and "paths" in data
+    for path in data["paths"]:
+        assert 0<=path["score"]<=100
+        assert "decision_factors" in path
