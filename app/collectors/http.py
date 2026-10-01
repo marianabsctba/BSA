@@ -110,14 +110,20 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         seen.add(js_url)
         try:
             validate_external_target(js_url)
-            req=Request(js_url,method="GET",headers={"User-Agent":"BSA-ASM/0.3 defensive-surface"})
-            with build_opener(_NoRedirect()).open(req,timeout=3.0) as resp:
-                js=resp.read(524288).decode("utf-8","ignore")
-                evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
-                for m in re.finditer(r"""(?:(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)|['"])(?:\s*\(?\s*)?['"]?((?:/api/|/graphql|/v\d+/)[A-Za-z0-9._~:/?#[\]-]{1,240})""",js,re.I):
-                    evidence.append(Evidence("http",js_url,"js_endpoint_reference",m.group(1),84,{"source":"javascript"}))
-                for m in re.finditer(r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#[\]-]{2,180}(?:json|yaml|xml|config|map))['"]""",js,re.I):
-                    evidence.append(Evidence("http",js_url,"js_artifact_reference",m.group(1),80,{"source":"javascript"}))
+            parsed_js=urlparse(js_url)
+            base=urlparse(origin)
+            js_path=parsed_js.path or "/"
+            if parsed_js.query:
+                js_path += "?" + parsed_js.query
+            status_js,headers_js,body_js,final_js=_safe_surface_fetch(origin,js_path,timeout=3.0)
+            if not (status_js and 200 <= status_js < 300 and body_js):
+                continue
+            js=body_js[:524288].decode("utf-8","ignore")
+            evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
+            for m in re.finditer(r"""(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)[^\n]{0,300}?['"]((?:/api/|/graphql|/v\d+/)[A-Za-z0-9._~:/?#[\]-]{1,240})['"]""",js,re.I):
+                evidence.append(Evidence("http",js_url,"js_endpoint_reference",m.group(1),84,{"source":"javascript"}))
+            for m in re.finditer(r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#[\]-]{2,180}(?:json|yaml|xml|config|map))['"]""",js,re.I):
+                evidence.append(Evidence("http",js_url,"js_artifact_reference",m.group(1),80,{"source":"javascript"}))
         except (URLError,OSError,ValueError):
             continue
     return evidence
