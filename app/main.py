@@ -59,6 +59,16 @@ app.add_middleware(
 )
 
 @app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    if request.method in {"POST","PUT","PATCH","DELETE"} and request.cookies.get("bsa_session"):
+        origin=request.headers.get("origin")
+        if origin:
+            allowed=set(ALLOWED_ORIGINS)
+            if origin not in allowed:
+                raise HTTPException(status_code=403, detail="origin not allowed")
+    return await call_next(request)
+
+@app.middleware("http")
 async def security_headers(request: Request, call_next):
     response=await call_next(request)
     response.headers["X-Content-Type-Options"]="nosniff"
@@ -544,7 +554,7 @@ def login(payload: LoginRequest, request: Request):
     audit(principal, "login", "session")
     response = JSONResponse({"token_type": "bearer", "expires_in": 28800,
                              "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}})
-    response.set_cookie("bsa_session", token, httponly=True, secure=os.getenv("BSA_ENV","development").lower() in {"production","prod"}, samesite="lax", max_age=28800, path="/")
+    response.set_cookie("bsa_session", token, httponly=True, secure=os.getenv("BSA_ENV","development").lower() in {"production","prod"}, samesite="strict", max_age=28800, path="/")
     return response
 
 
