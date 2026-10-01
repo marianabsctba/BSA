@@ -1053,12 +1053,16 @@ class OpenVASProvider:
                 "log": "info",
             }.get(threat, "info")
             cve = None
+            references = []
             nvt = result.find("nvt")
             if nvt is not None:
                 for ref in nvt.findall(".//ref"):
-                    if str(ref.attrib.get("type", "")).lower() == "cve":
-                        cve = ref.attrib.get("id")
-                        break
+                    ref_type = str(ref.attrib.get("type", "")).lower()
+                    ref_id = ref.attrib.get("id")
+                    if ref_id:
+                        references.append(str(ref_id))
+                    if ref_type == "cve" and not cve:
+                        cve = ref_id
             try:
                 cvss = float(raw_score) if raw_score else None
             except ValueError:
@@ -1073,6 +1077,8 @@ class OpenVASProvider:
                         "port": port,
                         "vulnerability_id": cve,
                         "cvss": cvss,
+                        "reference": references[:20],
+                        "matched_at": f"{host}:{port}" if port else host,
                         "validation_state": "confirmed_evidence" if cve else "observed",
                         "relationship": "vulnerability-assessment",
                     },
@@ -1132,9 +1138,11 @@ class ZAPProvider:
                         85,
                         {
                             "url": first.get("uri") or site.get("@name") or url,
+                            "matched_at": first.get("uri") or site.get("@name") or url,
                             "parameter": first.get("param"),
                             "cwe": alert.get("cweid"),
                             "wasc": alert.get("wascid"),
+                            "reference": alert.get("reference") or [],
                             "validation_state": "needs_validation",
                             "relationship": "web-assessment",
                         },
