@@ -355,6 +355,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
                 if urlparse(src).hostname == urlparse(origin).hostname:
                     script_urls.append(src)
     seen=set()
+    manifest_assets=[]
     for js_url in script_urls[:max_js]:
         if js_url in seen: continue
         seen.add(js_url)
@@ -372,8 +373,23 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             for asset in extract_manifest_asset_references(body,js_url)[:100]:
                 asset_url=urljoin(origin,asset.value)
                 if urlparse(asset_url).hostname == urlparse(origin).hostname:
+                    manifest_assets.append(asset_url)
                     evidence.append(Evidence("http",js_url,"manifest_discovered_asset",asset_url,86,{"source":js_url}))
 
+    # Analyze bounded manifest-discovered JS chunks in a second pass.
+    for asset_url in list(dict.fromkeys(manifest_assets))[:max_js]:
+        if asset_url in seen: continue
+        seen.add(asset_url)
+        parsed=urlparse(asset_url); asset_path=parsed.path or "/"
+        if parsed.query: asset_path += "?" + parsed.query
+        status,headers,body,final_url=_safe_surface_fetch(origin,asset_path,timeout=3.0)
+        if not (status and 200 <= status < 300 and body): continue
+        ctype=(headers.get("content-type") or "").lower()
+        if "javascript" not in ctype and not asset_path.endswith((".js",".mjs")): continue
+        js=body[:524288].decode("utf-8","ignore")
+        evidence.append(Evidence("http",asset_url,"manifest_asset_analyzed",asset_url,88,{"bytes":len(js)}))
+        evidence.extend(extract_js_surface_references(js,asset_url))
+        evidence.extend(extract_js_literals(js,asset_url))
     return evidence
 
 def _artifact_evidence(url, headers, body):
