@@ -22,7 +22,11 @@ def build_discovery_pivots(values: Iterable[tuple[str,str,str,int,str]]) -> list
     out=[]
     seen=set()
     for kind,value,source,confidence,evidence_ref in values:
-        value=value.strip().lower()
+        value=value.strip()
+        if kind in {"domain","hostname","reverse_dns"}:
+            value=value.lower()
+        elif kind=="asn":
+            value=value.upper()
         if not value or not evidence_ref or not 0 <= confidence <= 100:
             continue
         if kind in {"ip","reverse_dns"} and kind=="ip" and not _valid_ip(value):
