@@ -276,28 +276,8 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
             markers.append(Evidence("http",url,"frontend_build_asset",m.group(1),84,{"source":"html"}))
     return markers[:200]
 
-def discover_web_surface'()*+,;=%-]{3,400})['"]""","js_url_literal"),
-        (r"""['"]((?:/api/|/graphql|/oauth|/auth|/login|/admin|/internal|/health|/metrics)[A-Za-z0-9._~:/?#\[\]-]{0,300})['"]""","js_route_literal"),
-        (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#\[\]-]{2,240}\.(?:json|yaml|yml|xml|txt|config|map|wasm))['"]""","js_file_reference"),
-    ]
-    base=urlparse(source_url)
-    for pattern,kind in patterns:
-        for m in re.finditer(pattern,js,re.I):
-            value=m.group(1)
-            if value in seen: continue
-            seen.add(value)
-            try:
-                parsed=urlparse(value if not value.startswith("//") else base.scheme+":"+value)
-                if parsed.scheme and parsed.hostname and parsed.hostname != base.hostname:
-                    kind="js_external_url_literal"
-            except ValueError:
-                pass
-            out.append(Evidence("http",source_url,kind,value,78,{"source":"javascript"}))
-            if len(out)>=max_items: return out
-    return out
-
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
-    """Bounded same-origin web surface discovery: common files/directories + public JS references."""
+    """Bounded same-origin web surface discovery."""
     validate_external_target(url)
     evidence=[]
     origin=url.rstrip("/")
@@ -305,58 +285,36 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
     script_urls=[]
     for path in paths:
         status,headers,body,final_url=_safe_surface_fetch(origin,path)
-        if status is None: continue
-        kind="surface_path"
-        evidence.append(Evidence("http",origin,kind,path,90,{"surface":classify_surface_response(status,headers,body)}))
+        if status is None:
+            continue
+        evidence.append(Evidence("http",origin,"surface_path",path,90,{"surface":classify_surface_response(status,headers,body)}))
+        ctype=(headers.get("content-type") or "").lower()
         if 200 <= status < 300 and body:
-            ctype=(headers.get("content-type") or "").lower()
             if "javascript" in ctype or path.endswith(".js"):
                 script_urls.append(final_url)
-            elif "html" in ctype or path == "/":
-                try:
-                    html=body.decode("utf-8","ignore")[:1048576]
-                    for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]""",html,re.I):
-                        src=urljoin(origin,m.group(1))
-                        if urlparse(src).hostname == urlparse(origin).hostname:
-                            script_urls.append(src)
-                except UnicodeDecodeError:
-                    pass
-    status,headers,body,final_url=_safe_surface_fetch(origin,"/")
-    if status and body:
-        html=body.decode("utf-8","ignore")[:1048576]
-        for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]""",html,re.I):
-            src=urljoin(origin,m.group(1))
-            parsed=urlparse(src)
-            base=urlparse(origin)
-            if parsed.scheme in {"http","https"} and parsed.hostname==base.hostname:
-                script_urls.append(src)
-        for m in re.finditer(r"""(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)[^\n]{0,300}?['"](/[^'"]{2,200})['"]""",html,re.I):
-            evidence.append(Evidence("http",origin,"js_endpoint_reference",m.group(1),82,{"source":"inline-js"}))
+            if "html" in ctype or path=="/":
+                html=body.decode("utf-8","ignore")[:1048576]
+                evidence.extend(detect_frontend_build_markers(body,origin))
+                for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
+                    src=urljoin(origin,m.group(1))
+                    if urlparse(src).hostname == urlparse(origin).hostname:
+                        script_urls.append(src)
     seen=set()
     for js_url in script_urls[:max_js]:
         if js_url in seen: continue
         seen.add(js_url)
-        try:
-            validate_external_target(js_url)
-            parsed_js=urlparse(js_url)
-            base=urlparse(origin)
-            js_path=parsed_js.path or "/"
-            if parsed_js.query:
-                js_path += "?" + parsed_js.query
-            status_js,headers_js,body_js,final_js=_safe_surface_fetch(origin,js_path,timeout=3.0)
-            if not (status_js and 200 <= status_js < 300 and body_js):
-                continue
-            js=body_js[:524288].decode("utf-8","ignore")
-            evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
-            for m in re.finditer(r"""(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)[^\n]{0,300}?['"]((?:/api/|/graphql|/v\d+/)[A-Za-z0-9._~:/?#[\]-]{1,240})['"]""",js,re.I):
-                evidence.append(Evidence("http",js_url,"js_endpoint_reference",m.group(1),84,{"source":"javascript"}))
-            for m in re.finditer(r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#[\]-]{2,180}(?:json|yaml|xml|config|map))['"]""",js,re.I):
-                evidence.append(Evidence("http",js_url,"js_artifact_reference",m.group(1),80,{"source":"javascript"}))
-        except (URLError,OSError,ValueError):
+        parsed=urlparse(js_url)
+        js_path=parsed.path or "/"
+        if parsed.query: js_path += "?" + parsed.query
+        status,headers,body,final_url=_safe_surface_fetch(origin,js_path,timeout=3.0)
+        if not (status and 200 <= status < 300 and body):
             continue
-            evidence.extend(extract_js_surface_references(js,js_url))
-            evidence.extend(extract_js_literals(js,js_url))
-            evidence.extend(detect_frontend_build_markers(body,origin))
+        js=body[:524288].decode("utf-8","ignore")
+        evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
+        evidence.extend(extract_js_surface_references(js,js_url))
+        evidence.extend(extract_js_literals(js,js_url))
+        if js_url.lower().endswith(".map"):
+            evidence.extend(extract_source_map_metadata(body,js_url))
     return evidence
 
 def _artifact_evidence(url, headers, body):
