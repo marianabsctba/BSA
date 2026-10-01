@@ -1104,3 +1104,62 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .tech-meta{grid-template-columns:1fr}
  .story-card-head{align-items:flex-start;flex-direction:column}
 }
+
+
+/* ASSET INVENTORY + POLICY STUDIO PASS */
+.asset-toolbar{display:grid;gap:10px;margin-bottom:12px}
+.asset-search{margin-bottom:0}
+.asset-toolbar-row{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+ padding:9px 11px;border:1px solid #222b37;border-radius:12px;background:linear-gradient(145deg,#0f151e,#0a0f15)
+}
+.asset-sort{display:flex;align-items:center;gap:8px}
+.asset-sort span{color:#6f7b8b;font:700 7px "DM Mono";letter-spacing:.08em}
+.asset-sort select{background:#090d13;border:1px solid #293341;color:#dfe5ec;border-radius:8px;padding:7px 9px;font:8px "DM Mono"}
+.critical-hot{
+ display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;
+ border:1px solid #ff2d843e;background:#ff2d840a;color:#ff74ad!important
+}
+.policy-status-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:0 18px 14px}
+.policy-readiness,.policy-dirty{
+ display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #2a3442;border-radius:12px;
+ background:linear-gradient(145deg,#111821,#0b1017)
+}
+.policy-readiness.ready{border-color:#68e3a233;background:linear-gradient(145deg,#0e1916,#0b1017)}
+.policy-readiness.ready svg,.policy-readiness.ready b{color:#68e3a2}
+.policy-readiness.blocked{border-color:#f6c86b33;background:linear-gradient(145deg,#18150e,#0b1017)}
+.policy-readiness.blocked svg,.policy-readiness.blocked b{color:#f6c86b}
+.policy-readiness b,.policy-readiness span,.policy-dirty span,.policy-dirty b{display:block}
+.policy-readiness b{font:800 9px "DM Mono";letter-spacing:.05em}
+.policy-readiness span{margin-top:4px;color:#7e8999;font:7px "DM Mono"}
+.policy-dirty{min-width:150px;justify-content:space-between}
+.policy-dirty span{color:#6f7a8a;font:700 7px "DM Mono";letter-spacing:.07em}
+.policy-dirty b{font:800 20px "DM Mono";color:#758092}
+.policy-dirty.hot{border-color:#ff2d8438;background:#ff2d8406}
+.policy-dirty.hot b{color:#ff6fa9}
+.policy-block{margin:0 18px 14px;padding:14px;border:1px solid #ffffff09;border-radius:12px;background:#ffffff018}
+.policy-block>.eyebrow{margin-bottom:11px}
+.policy-weight-bars{display:grid;gap:10px}
+.policy-weight-bars>div>div:first-child{display:flex;justify-content:space-between;gap:10px;margin-bottom:5px}
+.policy-weight-bars span{color:#7a8595;font:700 7px "DM Mono";letter-spacing:.06em}
+.policy-weight-bars b{color:#e9edf2;font:800 8px "DM Mono"}
+.policy-weight-track{height:7px;border-radius:99px;background:#171e27;overflow:hidden}
+.policy-weight-track i{
+ display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#ff2d84,#ff78b0);
+ box-shadow:0 0 12px #ff2d8440
+}
+.policy-grid{margin:0;padding:0}
+.policy-grid .weight-field{border-color:#ff2d8422}
+.policy-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 18px 14px}
+.policy-actions .secondary{display:flex;align-items:center;gap:7px}
+.policy-message{margin:0 18px 16px;padding:9px 11px;border:1px solid #ffffff0b;border-radius:9px;color:#8994a3;font:8px "DM Mono"}
+.policy-message.ok{border-color:#68e3a233;background:#68e3a207;color:#68e3a2}
+.policy-message.bad{border-color:#ff617e33;background:#ff617e07;color:#ff8097}
+@media(max-width:700px){
+ .asset-toolbar-row{align-items:stretch;flex-direction:column}
+ .asset-sort{justify-content:space-between}
+ .policy-status-row{grid-template-columns:1fr}
+ .policy-dirty{min-width:0}
+ .policy-actions{flex-direction:column}
+ .policy-actions button{width:100%;justify-content:center}
+}
