@@ -75,11 +75,6 @@ def _db():
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         revoked_at INTEGER)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS user_scopes(
-        user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
-        scope_type TEXT NOT NULL, scope_value TEXT NOT NULL,
-        active INTEGER NOT NULL DEFAULT 1,
-        PRIMARY KEY(user_id, tenant_id, scope_type, scope_value))""")
     conn.commit()
     return conn
 
@@ -348,11 +343,16 @@ def role_permissions(role: str, tenant_id: str | None = None) -> list[str]:
 
 
 def scope_allowed(principal: Principal, scope_type: str, scope_value: str) -> bool:
-    if principal.role == "superadmin": return True
-    conn=_db()
-    row=conn.execute("SELECT 1 FROM user_scopes WHERE user_id=? AND tenant_id=? AND scope_type=? AND scope_value=? AND active=1",(principal.user_id,principal.tenant_id,scope_type,scope_value)).fetchone()
-    conn.close()
-    return bool(row)
+    """Compatibility helper backed by the canonical scope subsystem."""
+    if principal.role == "superadmin":
+        return True
+    if scope_type not in {"hostname","domain","target"}:
+        return False
+    try:
+        from .scope import asset_in_scope
+        return asset_in_scope(principal, scope_value)
+    except Exception:
+        return False
 
 def list_custom_roles(principal: Principal) -> list[dict]:
     if not can(principal, "users:read"):
