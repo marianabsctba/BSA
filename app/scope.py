@@ -106,6 +106,8 @@ def _scope_pattern_matches(hostname: str, pattern: str) -> bool:
     pattern=pattern.strip().rstrip(".").lower()
     if pattern=="*":
         return True
+    if pattern.startswith("*."):
+        pattern=pattern[2:]
     try:
         pattern=_normalize_scope_hostname(pattern)
     except ValueError:
