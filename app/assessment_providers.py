@@ -646,6 +646,7 @@ class TestSslProvider(CommandProvider):
                         "finding": finding[:500],
                         "cve": row.get("cve"),
                         "cwe": row.get("cwe"),
+                        "validation_state": "observed" if row.get("cve") else "needs_validation",
                         "relationship": "tls-assessment",
                     },
                 )
@@ -1134,6 +1135,7 @@ class ZAPProvider:
                             "parameter": first.get("param"),
                             "cwe": alert.get("cweid"),
                             "wasc": alert.get("wascid"),
+                            "validation_state": "needs_validation",
                             "relationship": "web-assessment",
                         },
                     )
