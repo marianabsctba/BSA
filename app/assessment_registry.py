@@ -10,6 +10,9 @@ from typing import Dict, Type
 from .assessment_providers import (
     AssessmentProvider,
     AmassProvider,
+    PureDnsProvider,
+    AlterXProvider,
+    AssetfinderProvider,
     AsnIntelligenceProvider,
     CredentialExposureProvider,
     CloudExposureProvider,
@@ -63,6 +66,9 @@ class AssessmentRegistry:
         for provider in (
             SubdomainProvider,
             AmassProvider,
+            AssetfinderProvider,
+            AlterXProvider,
+            PureDnsProvider,
             AsnIntelligenceProvider,
             DnsValidationProvider,
             HttpProbeProvider,
@@ -117,7 +123,7 @@ class AssessmentRegistry:
 
     def capability_health(self, target: str | None = None) -> list[dict]:
         mapping = {
-            "discovery": ("subfinder", "amass", "dnsx"),
+            "discovery": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx"),
             "fingerprint": ("httpx", "whatweb"),
             "vulnerability": ("nuclei", "openvas"),
             "service_exposure": ("naabu", "nmap"),
