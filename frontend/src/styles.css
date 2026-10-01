@@ -591,3 +591,78 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .command-action:disabled{opacity:.55;cursor:wait}
 .command-palette>footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:7px;padding:10px 15px;border-top:1px solid #ffffff0a;color:#596575;font:7px "DM Mono"}
 @media(max-width:760px){.command-trigger span,.command-trigger kbd{display:none}.command-trigger{width:34px;justify-content:center;padding:0}.command-backdrop{padding:7vh 12px 16px}.command-palette{max-height:84vh;border-radius:17px}}
+
+
+/* RESPONSIVE NAVIGATION DRAWER */
+.sidebar-backdrop{display:none}
+@media(max-width:1050px){
+ .app-shell{display:block}
+ .sidebar{
+  position:fixed;left:0;top:0;bottom:0;z-index:90;width:min(286px,86vw)!important;height:100dvh;
+  transform:translateX(0);padding:18px 12px;border-right:1px solid #27303c;
+  box-shadow:28px 0 90px #000b;transition:transform .2s ease,box-shadow .2s ease
+ }
+ .sidebar.collapsed{transform:translateX(-105%);width:min(286px,86vw)!important;box-shadow:none}
+ .sidebar .side-brand div:not(.panther),.sidebar .nav-item span,.sidebar .nav-item em,.side-bottom .tenant-card{display:block}
+ .sidebar .nav-item{justify-content:flex-start}
+ .sidebar .side-bottom{display:grid}
+ .sidebar-backdrop{
+  display:block;position:fixed;inset:0;z-index:80;border:0;background:#020305a8;
+  backdrop-filter:blur(5px);cursor:default
+ }
+ .workspace{width:100%;min-width:0}
+ .topbar{padding-inline:16px}
+ .content{padding:24px}
+}
+@media(max-width:700px){
+ .topbar{height:62px;padding-inline:12px;gap:9px}
+ .crumb{min-width:0;flex:1}
+ .crumb span,.crumb svg{display:none}
+ .crumb b{display:block;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .top-actions{gap:6px}
+ .top-actions .avatar{display:none}
+ .locale-select{min-width:48px;padding-inline:7px}
+ .content{padding:16px}
+ .page-title{margin-bottom:20px}
+ .page-title h1{font-size:29px}
+ .secure{margin-top:13px}
+ .panel{border-radius:15px;padding:14px}
+ .kpis{gap:8px}
+ .kpi{min-height:100px;padding:13px}
+}
+
+/* EASM INFORMATION HIERARCHY */
+.easm-kpis{
+ position:sticky;top:82px;z-index:7;
+ padding:8px;margin:0 0 18px;border:1px solid #202936;border-radius:15px;
+ background:#080c11e8;backdrop-filter:blur(16px);box-shadow:0 16px 44px #0004
+}
+.easm-kpis div{
+ min-height:76px;display:flex;flex-direction:column;justify-content:center;
+ border-color:#293342;background:linear-gradient(145deg,#111821,#0b1017)
+}
+.easm-kpis span{letter-spacing:.08em}
+.easm-kpis b{font-size:22px;letter-spacing:-.04em}
+.lifecycle-panel,.easm-discovery{overflow:hidden}
+.lifecycle-panel .panel-head,.easm-discovery .panel-head{margin:-2px -2px 14px;padding:0 2px 12px}
+.lifecycle-actions,.easm-discovery-row{padding-inline:0}
+.lifecycle-kpis{padding:0 0 14px}
+.timeline{margin-left:10px;padding-left:20px}
+.easm-scan-result{margin:0 0 4px}
+.ai-discovery-plan{border-color:#ff2d8430;background:linear-gradient(145deg,#ff2d8408,#ffffff018)}
+.easm-table{overflow:auto;border-radius:16px}
+.easm-table table{min-width:820px}
+@media(max-width:1100px){
+ .easm-kpis{top:74px;grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ .easm-kpis{
+  position:static;grid-template-columns:repeat(2,minmax(0,1fr));
+  padding:6px;border-radius:13px
+ }
+ .easm-kpis div{min-height:68px;padding:10px}
+ .easm-kpis b{font-size:19px}
+ .lifecycle-kpis{grid-template-columns:repeat(2,1fr)}
+ .lifecycle-actions,.easm-discovery-row{padding-inline:0}
+ .timeline{margin-left:6px}
+}
