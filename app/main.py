@@ -538,7 +538,7 @@ def login(payload: LoginRequest, request: Request):
     audit(principal, "login", "session")
     response = JSONResponse({"token_type": "bearer", "expires_in": 28800,
                              "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}})
-    response.set_cookie("bsa_session", token, httponly=True, secure=True, samesite="lax", max_age=28800, path="/")
+    response.set_cookie("bsa_session", token, httponly=True, secure=os.getenv("BSA_ENV","development").lower() in {"production","prod"}, samesite="lax", max_age=28800, path="/")
     return response
 
 
