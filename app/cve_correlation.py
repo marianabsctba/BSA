@@ -35,10 +35,14 @@ def version_in_range(version: str, start: str|None, end: str|None) -> bool:
 
 def match_cve(observed_product: str, observed_version: str|None, cpe: str|None, candidates: list[CVERange]) -> list[CVEMatch]:
     out=[]
+    seen=set()
     for c in candidates:
         if c.product.lower()!=observed_product.lower(): continue
+        key=(c.vulnerability_id, c.product.lower(), observed_version or "")
+        if key in seen: continue
+        seen.add(key)
         if not observed_version:
-            out.append(CVEMatch(c.vulnerability_id,"potential",min(65,70),"produto identificado, versão não confirmada",cpe,None,c.source))
+            out.append(CVEMatch(c.vulnerability_id,"potential",65,"produto identificado, versão não confirmada; não afirmar vulnerabilidade afetada",cpe,None,c.source))
             continue
         affected=observed_version in c.exact_versions or version_in_range(observed_version,c.version_start,c.version_end)
         if affected:
