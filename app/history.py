@@ -478,6 +478,21 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_audit_outcome(item: dict, verifications: list[dict]) -> dict:
+    """Summarize observed remediation outcome from explicit verification evidence."""
+    passed=sum(1 for v in verifications if v.get("result")=="passed")
+    failed=sum(1 for v in verifications if v.get("result")=="failed")
+    latest=verifications[-1] if verifications else None
+    return {
+        "verification_count":len(verifications),
+        "passed_count":passed,
+        "failed_count":failed,
+        "latest_result":latest.get("result") if latest else None,
+        "verified":item.get("state")=="verified" and bool(latest and latest.get("result")=="passed"),
+        "evidence_complete":all(bool(v.get("evidence_refs")) for v in verifications) if verifications else False,
+    }
+
+
 def ctem_audit_diff(before: dict, after: dict) -> dict:
     """Describe measurable CTEM changes without inventing remediation claims."""
     fields=("state","priority","leverage_score","paths_affected","risk_reduction_percent","path_coverage_percent")
