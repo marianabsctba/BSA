@@ -478,6 +478,30 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_audit_diff(before: dict, after: dict) -> dict:
+    """Describe measurable CTEM changes without inventing remediation claims."""
+    fields=("state","priority","leverage_score","paths_affected","risk_reduction_percent","path_coverage_percent")
+    changes={}
+    for field in fields:
+        b=before.get(field)
+        a=after.get(field)
+        if b != a:
+            changes[field]={"before":b,"after":a}
+    before_refs=set(before.get("evidence_refs",[]) or [])
+    after_refs=set(after.get("evidence_refs",[]) or [])
+    return {
+        "changed_fields":changes,
+        "evidence_added":sorted(after_refs-before_refs),
+        "evidence_removed":sorted(before_refs-after_refs),
+        "state_changed":before.get("state") != after.get("state"),
+        "risk_reduced":(
+            isinstance(before.get("priority"),(int,float)) and
+            isinstance(after.get("priority"),(int,float)) and
+            after["priority"] < before["priority"]
+        ),
+    }
+
+
 def ctem_audit_integrity(item: dict, verifications: list[dict]) -> dict:
     """Return stable integrity metadata for an audit timeline."""
     import hashlib, json
