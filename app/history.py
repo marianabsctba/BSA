@@ -17,6 +17,12 @@ def _history_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_obs_tenant_fp ON asset_observations(tenant_id,fingerprint,observed_at)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
+    cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
+    if "evidence_refs_json" not in cols:
+        conn.execute("ALTER TABLE asset_observations ADD COLUMN evidence_refs_json TEXT NOT NULL DEFAULT '[]'")
+    lifecycle_cols={r["name"] for r in conn.execute("PRAGMA table_info(lifecycle_snapshots)").fetchall()}
+    if "evidence_refs_json" not in lifecycle_cols:
+        conn.execute("ALTER TABLE lifecycle_snapshots ADD COLUMN evidence_refs_json TEXT NOT NULL DEFAULT '[]'")
     conn.commit()
     return conn
 
