@@ -996,7 +996,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         cpe = vuln_ctx["cpe"]
 
         title = str(row.get("title") or "Exposure evidence")
-        finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}".encode()).hexdigest()[:16]
+        finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}|{vulnerability_id or ''}".encode()).hexdigest()[:16]
         finding_id = f"fdg-{finding_digest}"
         finding = next((x for x in STORE_FINDINGS if x.tenant_id == principal.tenant_id and x.id == finding_id), None)
 
@@ -1019,6 +1019,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 false_positive_confidence=vuln_ctx["false_positive_confidence"],
                 validation_state=vuln_ctx["validation_state"],
                 evidence_quality=vuln_ctx["evidence_quality"],
+                affected_component=vuln_ctx["affected_component"],
             )
             if finding.vulnerability_id:
                 finding = enrich_finding(finding)
@@ -1041,6 +1042,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.evidence_quality = vuln_ctx["evidence_quality"]
             if vuln_ctx["references"]:
                 finding.source_refs = sorted(set(finding.source_refs + vuln_ctx["references"]))[:20]
+            if vuln_ctx["affected_component"]:
+                finding.affected_component = vuln_ctx["affected_component"]
             if finding.vulnerability_id:
                 enriched = enrich_finding(finding)
                 finding.cvss = enriched.cvss
