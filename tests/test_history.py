@@ -307,3 +307,13 @@ def test_ctem_queue_view_is_deterministic_and_groups_priority():
     assert [x["item_id"] for x in out["ordered_items"]]==["a","b"]
     assert out["buckets"]["critical"]["count"]==1
     assert out["buckets"]["high"]["count"]==1
+
+def test_ctem_queue_filter_combines_state_bucket_and_leverage():
+    from app.history import ctem_queue_filter
+    items=[
+      {"item_id":"a","state":"in_progress","priority":90,"leverage_score":85,"created_at":"2026-10-01T10:00:00Z"},
+      {"item_id":"b","state":"new","priority":90,"leverage_score":70,"created_at":"2026-10-01T09:00:00Z"},
+      {"item_id":"c","state":"in_progress","priority":70,"leverage_score":95,"created_at":"2026-10-01T08:00:00Z"},
+    ]
+    out=ctem_queue_filter(items,state="in_progress",bucket="critical",min_leverage=80)
+    assert [x["item_id"] for x in out]==["a"]
