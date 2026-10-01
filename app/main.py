@@ -27,6 +27,7 @@ from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
+from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -183,6 +184,30 @@ async def correlate_vulnerabilities(request: Request):
         matches=match_cve(product,version,cpe,candidates)
         results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
     return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
+
+@app.get("/api/v1/risk/register")
+def risk_register(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    amap={a.id:a for a in assets}
+    items=[]
+    for f in findings:
+        if f.status!="open": continue
+        a=amap.get(f.asset_id)
+        risk=calculate_risk(f,a)
+        items.append({"finding_id":f.id,"asset_id":f.asset_id,"asset":a.value if a else None,
+                      "title":f.title,"risk":risk})
+    items.sort(key=lambda x:(x["risk"]["residual_score"],x["risk"]["score"]),reverse=True)
+    return {"policy":asdict(DEFAULT_POLICY),"summary":{
+        "findings":len(items),
+        "critical":sum(x["risk"]["band"]=="critical" for x in items),
+        "high":sum(x["risk"]["band"]=="high" for x in items),
+        "medium":sum(x["risk"]["band"]=="medium" for x in items),
+        "low":sum(x["risk"]["band"]=="low" for x in items),
+        "validation_required":sum(x["risk"]["validation_required"] for x in items),
+        "average_inherent":round(sum(x["risk"]["inherent_score"] for x in items)/len(items)) if items else 0,
+        "average_residual":round(sum(x["risk"]["residual_score"] for x in items)/len(items)) if items else 0,
+    },"items":items}
 
 @app.get("/api/v1/risk/overview")
 def risk_overview(request: Request):
