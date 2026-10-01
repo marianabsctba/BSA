@@ -282,6 +282,25 @@ def simulate_remediation(nodes, edges, path, remove_finding_ids=None):
     return {"before": before, "after": after, "risk_reduction": reduction, "reduction_percent": round(reduction / before * 100) if before else 0}
 
 
+def remediation_leverage(nodes, edges, paths, limit=8):
+    """Rank fixes by evidence-backed risk reduction and path coverage."""
+    options=remediation_options(nodes,edges,paths,limit=max(limit,16))
+    if not options:
+        return []
+    max_paths=max((x["paths_affected"] for x in options),default=1)
+    max_reduction=max((x["risk_reduction"] for x in options),default=1)
+    ranked=[]
+    for item in options:
+        coverage=(item["paths_affected"]/max_paths)*100 if max_paths else 0
+        reduction=(item["risk_reduction"]/max_reduction)*100 if max_reduction else 0
+        leverage=round(reduction*.65+coverage*.35)
+        ranked.append({**item,"path_coverage_percent":round(coverage),
+                       "risk_reduction_percent":item["reduction_percent"],
+                       "leverage_score":min(100,leverage)})
+    ranked.sort(key=lambda x:(x["leverage_score"],x["risk_reduction"],x["paths_affected"]),reverse=True)
+    return ranked[:limit]
+
+
 def remediation_options(nodes, edges, paths, limit=8):
     options = []
     seen = set()
