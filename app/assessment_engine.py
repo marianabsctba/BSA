@@ -47,6 +47,8 @@ class AssessmentEngine:
         "trufflehog": "credential_exposure",
         "cloud": "cloud_intelligence",
         "threatfox": "threat_intelligence",
+        "whatweb": "technology_intelligence",
+        "testssl": "tls_assessment",
     }
 
     def __init__(self):
