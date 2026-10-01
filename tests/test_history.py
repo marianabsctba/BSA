@@ -76,3 +76,22 @@ def test_diff_risk_context_adds_risk_delta_for_new_asset():
     out=diff_risk_context(diff,[asset],[finding])
     assert out["risk_context"]["new_risk"] > 0
     assert out["added"][0]["risk_band"] in {"low","medium","high","critical"}
+
+def test_surface_change_ctem_prioritization_requires_evidence():
+    from app.risk_engine import prioritize_surface_change
+    from types import SimpleNamespace
+    change={"fingerprint":"x","reasons":["certificate_name"],"evidence_refs":["ct:cert:x"],
+            "exposure_score":80,"risk_score":0,"rationale":["exposição direta à Internet"]}
+    asset=SimpleNamespace(id="asset-x",criticality=4,confidence=90,tags=["internet-facing"],
+                          type=SimpleNamespace(value="application"))
+    out=prioritize_surface_change(change,asset,[])
+    assert out["state"] == "prioritized"
+    assert out["priority"] == 80
+    assert out["action"] == "expedite"
+
+def test_surface_change_without_evidence_is_not_prioritized():
+    from app.risk_engine import prioritize_surface_change
+    asset=SimpleNamespace(id="asset-x",criticality=4,confidence=90,tags=[],type=SimpleNamespace(value="application"))
+    out=prioritize_surface_change({"fingerprint":"x","exposure_score":90},asset,[])
+    assert out["state"] == "insufficient_evidence"
+    assert out["priority"] == 0
