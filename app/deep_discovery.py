@@ -27,7 +27,10 @@ def build_discovery_pivots(values: Iterable[tuple[str,str,str,int,str]]) -> list
             continue
         if kind in {"ip","reverse_dns"} and kind=="ip" and not _valid_ip(value):
             continue
-        if kind in {"domain","hostname","reverse_dns"} and not _valid_ip(value):
+        if kind in {"domain","hostname"} and not _valid_ip(value):
+            if len(value)>253 or " " in value or not re.fullmatch(r"[a-z0-9._:-]+",value):
+                continue
+        if kind=="reverse_dns":
             if len(value)>253 or " " in value or not re.fullmatch(r"[a-z0-9._:-]+",value):
                 continue
         key=(kind,value)
