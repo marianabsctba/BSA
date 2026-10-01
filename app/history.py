@@ -478,6 +478,25 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_queue_page(items: list[dict], *, page: int = 1, page_size: int = 50) -> dict:
+    """Paginate the canonical CTEM queue with bounded server-side page size."""
+    if page < 1:
+        raise ValueError("page must be >= 1")
+    if page_size < 1 or page_size > 100:
+        raise ValueError("page_size must be between 1 and 100")
+    ordered=ctem_queue_view(items)["ordered_items"]
+    total=len(ordered)
+    start=(page-1)*page_size
+    end=start+page_size
+    return {
+        "page":page,
+        "page_size":page_size,
+        "total":total,
+        "total_pages":(total+page_size-1)//page_size,
+        "items":ordered[start:end],
+    }
+
+
 def ctem_queue_filter(items: list[dict], *, state: str | None = None,
                       bucket: str | None = None, min_leverage: int | None = None) -> list[dict]:
     """Filter CTEM work without changing the canonical queue ordering."""
