@@ -172,9 +172,15 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
     out=[]
     for asset in assets:
         key=asset.fingerprint
-        current=LifecycleSnapshot(key,asset.value,asset.asset_type,now,asset.confidence,asset.evidence_count,signature,tuple(asset.sources),tuple(asset.tags),tuple(asset.evidence_refs))
+        value=getattr(asset,"value",key)
+        asset_type=getattr(asset,"asset_type","unknown")
+        sources=tuple(getattr(asset,"sources",()))
+        tags=tuple(getattr(asset,"tags",()))
+        evidence_refs=tuple(getattr(asset,"evidence_refs",()))
+        evidence_count=int(getattr(asset,"evidence_count",0) or 0)
+        current=LifecycleSnapshot(key,value,asset_type,now,asset.confidence,evidence_count,signature,sources,tags,evidence_refs)
         conn=_history_db()
-        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,asset.value,str(asset.asset_type),now,asset.confidence,asset.evidence_count,signature,json.dumps(asset.sources),json.dumps(asset.tags),json.dumps(asset.evidence_refs)))
+        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,value,str(asset_type),now,asset.confidence,evidence_count,signature,json.dumps(sources),json.dumps(tags),json.dumps(evidence_refs)))
         conn.commit()
         conn.close()
         history=_LIFECYCLE.setdefault(f"{tenant_id}:{key}",[])
@@ -192,12 +198,12 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo
             if set(current.tags)-set(previous.tags):
                 changes.append({"kind":"tag_added","values":sorted(set(current.tags)-set(previous.tags))})
         out.append({
-            "fingerprint":key,"value":asset.value,"type":asset.asset_type,
+            "fingerprint":key,"value":value,"type":asset_type,
             "state":"new" if previous is None else ("changed" if changes else "stable"),
             "first_seen":history[0].observed_at if history else now,
             "last_seen":now,"observations":len(history),
-            "confidence":asset.confidence,"evidence_count":asset.evidence_count,
-            "changes":changes,"sources":list(asset.sources),"tags":list(asset.tags),"evidence_refs":list(asset.evidence_refs),
+            "confidence":asset.confidence,"evidence_count":evidence_count,
+            "changes":changes,"sources":list(sources),"tags":list(tags),"evidence_refs":list(evidence_refs),
         })
     return out
 
@@ -250,11 +256,11 @@ def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: s
         if old["evidence_signature"] != signature:
             reasons.append("evidence_changed")
         if reasons:
-            changed.append({"fingerprint":fp,"value":asset.value,"reasons":reasons,"evidence_refs":list(asset.evidence_refs)})
+            changed.append({"fingerprint":fp,"value":asset.value,"reasons":reasons,"evidence_refs":list(getattr(asset,"evidence_refs",()))})
     return {
         "run_id": run_id, "observed_at": now, "previous_run_available": bool(previous),
         "summary": {"added":len(added),"removed":len(removed),"changed":len(changed),"total":len(current_map)},
-        "added": [{"fingerprint":fp,"value":current_map[fp].value,"evidence_refs":list(current_map[fp].evidence_refs)} for fp in added],
+        "added": [{"fingerprint":fp,"value":current_map[fp].value,"evidence_refs":list(getattr(current_map[fp],"evidence_refs",()))} for fp in added],
         "removed": [{"fingerprint":fp,"value":previous_map[fp]["value"]} for fp in removed],
         "changed": changed,
     }
