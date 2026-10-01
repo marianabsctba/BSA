@@ -50,9 +50,9 @@ def run_safe_web_assessment(target: str) -> dict:
             rp = urlparse(absolute)
             if rp.hostname == parsed.hostname and rp.scheme in {"http","https"}:
                 discovered.append(absolute)
-        if parsed.scheme == "https" and re.search(r'(?:src|href)=["\\']http://', html, re.I):
+        if parsed.scheme == "https" and re.search(r"(?:src|href)=['\"]http://", html, re.I):
             findings.append(DASTFinding("mixed_content","medium","HTTPS page references HTTP resources","http:// resource",90))
-        for action in re.findall(r'<form[^>]+action=["\\']([^"\\']+)["\\']', html, re.I)[:50]:
+        for action in re.findall(r"<form[^>]+action=['\"]([^'\"]+)['\"]", html, re.I)[:50]:
             ap = urlparse(urljoin(url, action))
             if parsed.scheme == "https" and ap.scheme == "http" and ap.hostname == parsed.hostname:
                 findings.append(DASTFinding("form_transport","medium","HTTPS page posts a form to HTTP","form action",94))
