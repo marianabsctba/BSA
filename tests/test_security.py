@@ -26,7 +26,7 @@ def test_login_does_not_expose_session_token_in_json():
     assert body["token_type"] == "bearer"
     cookie = response.headers["set-cookie"].lower()
     assert "httponly" in cookie
-    assert "samesite=lax" in cookie
+    assert "samesite=strict" in cookie
 
 
 def test_production_session_cookie_is_secure(monkeypatch):
