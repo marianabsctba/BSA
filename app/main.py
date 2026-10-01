@@ -25,6 +25,7 @@ from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
+from .risk_engine import assess_risk, normalize_cpe, cpe_product
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -165,6 +166,28 @@ def technology_intelligence_api(target: str, request: Request):
                        "product_only":sum(not x["version_confirmed"] for x in items),
                        "fingerprint_candidates":len(fingerprints),
                        "cve_matching":sum(x["matching"]["matching_allowed"] for x in items)}}
+
+@app.get("/api/v1/risk/overview")
+def risk_overview(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    amap={a.id:a for a in assets}
+    items=[]
+    for f in findings:
+        if f.status!="open": continue
+        a=amap.get(f.asset_id)
+        risk=assess_risk(f,a)
+        items.append({"finding_id":f.id,"asset_id":f.asset_id,"asset":a.value if a else None,
+                      "vulnerability_id":f.vulnerability_id,"cpe":normalize_cpe(f.cpe),
+                      "cpe_product":cpe_product(f.cpe)[0],"cpe_version":cpe_product(f.cpe)[1],
+                      "risk":asdict(risk)})
+    items.sort(key=lambda x:x["risk"]["score"],reverse=True)
+    return {"summary":{"findings":len(items),
+        "critical":sum(x["risk"]["band"]=="critical" for x in items),
+        "high":sum(x["risk"]["band"]=="high" for x in items),
+        "medium":sum(x["risk"]["band"]=="medium" for x in items),
+        "low":sum(x["risk"]["band"]=="low" for x in items),
+        "average":round(sum(x["risk"]["score"] for x in items)/len(items)) if items else 0},"items":items}
 
 @app.get("/api/v1/vulnerabilities/intelligence")
 def vulnerability_intelligence_api(request: Request):
