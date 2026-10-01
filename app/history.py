@@ -478,6 +478,25 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_queue_view(items: list[dict]) -> dict:
+    """Build a deterministic, tenant-scoped operational CTEM queue view."""
+    active=[x for x in items if x.get("state") not in {"verified"}]
+    def key(x):
+        return (-int(x.get("priority",0) or 0), -int(x.get("leverage_score",0) or 0),
+                str(x.get("created_at","")), str(x.get("item_id","")))
+    ordered=sorted(active,key=key)
+    buckets={"critical":[],"high":[],"medium":[],"low":[]}
+    for item in ordered:
+        p=int(item.get("priority",0) or 0)
+        bucket="critical" if p>=85 else "high" if p>=70 else "medium" if p>=45 else "low"
+        buckets[bucket].append(item)
+    return {
+        "total_active":len(ordered),
+        "ordered_items":ordered,
+        "buckets":{k:{"count":len(v),"items":v} for k,v in buckets.items()},
+    }
+
+
 def ctem_audit_outcome(item: dict, verifications: list[dict]) -> dict:
     """Summarize observed remediation outcome from explicit verification evidence."""
     passed=sum(1 for v in verifications if v.get("result")=="passed")
