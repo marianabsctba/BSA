@@ -258,14 +258,31 @@ def list_users(principal: Principal) -> list[dict]:
     conn.close()
     return [dict(r) for r in rows]
 
+def _role_power(role: str, tenant_id: str) -> tuple[int,set[str]]:
+    if role=="superadmin": return (100,set(PERMISSION_CATALOG))
+    perms=set(role_permissions(role,tenant_id))
+    return (len(perms),perms)
+
+def _can_manage_target(principal: Principal, target_role: str, target_tenant: str) -> bool:
+    if principal.role=="superadmin":
+        return True
+    if target_role=="superadmin":
+        return False
+    principal_power,principal_perms=_role_power(principal.role,principal.tenant_id)
+    target_power,target_perms=_role_power(target_role,target_tenant)
+    if target_power >= principal_power:
+        return False
+    return target_perms.issubset(principal_perms)
+
 def update_user(principal: Principal, user_id: str, name: str, role: str | None = None) -> dict:
     if not can(principal, "users:write"): raise PermissionError("users:write required")
     if role is not None and role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX): raise ValueError("invalid role")
     if role and role.startswith(CUSTOM_ROLE_PREFIX): role_permissions(role, principal.tenant_id)
     if role == "superadmin" and principal.role != "superadmin": raise PermissionError("superadmin role requires superadmin")
     conn=_db()
-    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    row=conn.execute("SELECT id,role,tenant_id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
+    if not _can_manage_target(principal,row["role"],row["tenant_id"]): conn.close(); raise PermissionError("target user role is equal or higher than caller")
     if user_id == principal.user_id and role and role != principal.role: conn.close(); raise ValueError("cannot change your own role")
     conn.execute("UPDATE users SET name=?, role=COALESCE(?,role) WHERE id=? AND tenant_id=?", (name,role,user_id,principal.tenant_id))
     conn.commit()
@@ -276,8 +293,9 @@ def update_user(principal: Principal, user_id: str, name: str, role: str | None 
 def set_user_active(principal: Principal, user_id: str, active: bool) -> dict:
     if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
     conn=_db()
-    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    row=conn.execute("SELECT id,role,tenant_id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
+    if not _can_manage_target(principal,row["role"],row["tenant_id"]): conn.close(); raise PermissionError("target user role is equal or higher than caller")
     if user_id == principal.user_id and not active: conn.close(); raise ValueError("cannot deactivate current user")
     conn.execute("UPDATE users SET active=? WHERE id=? AND tenant_id=?", (1 if active else 0,user_id,principal.tenant_id))
     if not active:
@@ -291,8 +309,9 @@ def reset_user_password(principal: Principal, user_id: str, password: str) -> di
     if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
     _validate_password(password)
     conn=_db()
-    row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
+    row=conn.execute("SELECT id,role,tenant_id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
+    if not _can_manage_target(principal,row["role"],row["tenant_id"]): conn.close(); raise PermissionError("target user role is equal or higher than caller")
     conn.execute("UPDATE users SET password_hash=? WHERE id=? AND tenant_id=?", (_hash(password),user_id,principal.tenant_id))
     conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id))
     conn.commit(); conn.close()
