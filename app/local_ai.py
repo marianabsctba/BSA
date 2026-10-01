@@ -167,3 +167,21 @@ def validate_asset_identity(assets, evidence):
     except json.JSONDecodeError:
         return {"confirmed_identities":[],"split_candidates":[],"conflicts":[],"unknowns":["Unstructured local AI response"],"confidence":0,"validation":[]}
 
+
+def analyze_attack_paths(graph: dict) -> dict | None:
+    system=("You are Be Safe ASM Local Attack Path Analyst. Respond in Brazilian Portuguese. "
+            "Use ONLY the supplied graph paths, nodes, edges and deterministic scores. "
+            "Do not create paths, vulnerabilities, ownership or exploitability not present in the graph. "
+            "The deterministic graph score is authoritative. Identify contextual signals, choke points, evidence weaknesses, "
+            "control gaps and validation steps. Return JSON keys: path_signals, choke_points, control_gaps, evidence_weaknesses, "
+            "validation, unknowns, confidence.")
+    paths=(graph or {}).get("risk_paths",[])[:50]
+    nodes=(graph or {}).get("nodes",[])[:300]
+    edges=(graph or {}).get("edges",[])[:500]
+    raw=ask(system,"Analyze deterministic attack paths. JSON only.\n"+json.dumps({"paths":paths,"nodes":nodes,"edges":edges},ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"path_signals":[],"choke_points":[],"control_gaps":[],"evidence_weaknesses":[],"validation":[],"unknowns":["Unstructured local AI response"],"confidence":0}
+
