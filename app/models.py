@@ -64,6 +64,8 @@ class Finding(BaseModel):
     affected_component: str | None = None
     source_refs: list[str] = Field(default_factory=list)
     false_positive_confidence: int = Field(default=0, ge=0, le=100)
+    validation_state: str = "observed"
+    evidence_quality: int = Field(default=50, ge=0, le=100)
 
 
 class Dashboard(BaseModel):
