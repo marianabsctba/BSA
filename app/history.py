@@ -401,9 +401,17 @@ def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: l
     if not row:
         conn.close()
         raise KeyError("CTEM item not found")
-    if row["state"] != "resolved":
+    if row["state"] not in {"resolved","in_progress"}:
         conn.close()
         raise ValueError("CTEM item must be resolved before verification")
+    if row["state"] == "in_progress":
+        prior_failed=conn.execute(
+            "SELECT 1 FROM ctem_verifications WHERE tenant_id=? AND item_id=? AND result='failed' LIMIT 1",
+            (tenant_id,item_id),
+        ).fetchone()
+        if not prior_failed:
+            conn.close()
+            raise ValueError("CTEM item must be resolved before verification")
     now=datetime.now(timezone.utc).isoformat()
     verification_id=str(uuid.uuid4())
     conn.execute("INSERT INTO ctem_verifications(verification_id,tenant_id,item_id,result,evidence_refs_json,notes,verified_at) VALUES(?,?,?,?,?,?,?)",
