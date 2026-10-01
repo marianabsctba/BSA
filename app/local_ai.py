@@ -121,3 +121,20 @@ def prioritize_discovery(target, evidence, signals):
     try:
         data=json.loads(raw); return data if isinstance(data,dict) else None
     except json.JSONDecodeError:return {"priorities":[],"rationale":raw,"evidence_gaps":["unstructured AI response"],"confidence":0}
+
+def analyze_api_surface(target, endpoints, technologies=None):
+    system=("You are Be Safe ASM Local API Surface Intelligence. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied endpoint and technology evidence. Never claim an endpoint is vulnerable merely because it exists or lacks declared authentication. "
+            "Distinguish OBSERVED, INFERENCE, UNKNOWN and VALIDATION. Identify high-value administrative/mutation surfaces, authentication inconsistencies, "
+            "unexpected exposure signals and evidence gaps. Do not invent endpoints, parameters, vulnerabilities or ownership. "
+            "Return JSON keys: summary, observed, risk_signals, high_value_endpoints, auth_gaps, unknowns, validation, confidence.")
+    payload={"target":target,"endpoints":endpoints[:1000],"technologies":(technologies or [])[:100]}
+    raw=ask(system,"Analyze this API surface. JSON only.\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":")))
+    if not raw:
+        return None
+    try:
+        data=json.loads(raw)
+        return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"summary":raw,"observed":[],"risk_signals":[],"high_value_endpoints":[],"auth_gaps":[],"unknowns":["Unstructured local AI response"],"validation":[],"confidence":0}
+
