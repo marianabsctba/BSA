@@ -59,6 +59,27 @@ def _artifact_evidence(url, headers, body):
     return evidence
 
 
+
+def artifact_discovery_candidates(url: str, kind: str, body: bytes) -> list[Evidence]:
+    """Turn references from an already fetched public artifact into bounded candidates.
+    This never performs the follow-up request; discovery orchestration decides scope."""
+    if not body or kind not in {"json","xml","yaml","text"}:
+        return []
+    text_body=body.decode("utf-8","ignore")[:65536]
+    refs=[]
+    seen=set()
+    for match in re.finditer(r"""https?://[^\s<>'"\\]+|(?:^|[\s"'(/])/[A-Za-z0-9._~:/?#[\]-]{2,}""",text_body):
+        ref=match.group(0).strip().rstrip(".,;")
+        if not ref or ref in seen: continue
+        seen.add(ref)
+        if ref.startswith("http"):
+            candidate=ref
+        else:
+            candidate=urljoin(url,ref)
+        refs.append(Evidence("http",url,"discovery_candidate",candidate,72,{"artifact_kind":kind,"derived_from":url}))
+        if len(refs)>=100: break
+    return refs
+
 def _structured_artifact_evidence(url: str, kind: str, body: bytes) -> list[Evidence]:
     if kind != "json" or not body:
         return []
@@ -176,5 +197,6 @@ class HTTPCollector:
             kind=ARTIFACT_CONTENT_TYPES.get(ctype)
             if kind:
                 evidence.extend(_structured_artifact_evidence(url,kind,body))
+                evidence.extend(artifact_discovery_candidates(url,kind,body))
         evidence.extend(security_header_evidence(url, headers))
         return evidence
