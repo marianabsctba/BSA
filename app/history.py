@@ -423,6 +423,25 @@ def ctem_leverage_summary(items: list[dict]) -> dict:
     }
 
 
+def ctem_remediation_evidence(item: dict, verification: dict | None = None) -> dict:
+    """Build an auditable before/after remediation evidence record."""
+    before={
+        "state":item.get("state"),
+        "priority":int(item.get("priority",0) or 0),
+        "leverage_score":int(item.get("leverage_score",0) or 0),
+        "paths_affected":int(item.get("paths_affected",0) or 0),
+        "evidence_refs":list(item.get("evidence_refs",[]) or []),
+    }
+    verification=verification or {}
+    after={
+        "result":verification.get("result"),
+        "state":verification.get("state"),
+        "evidence_refs":list(verification.get("evidence_refs",[]) or []),
+        "verified_at":verification.get("verified_at"),
+    }
+    return {"before":before,"after":after,"evidence_complete":bool(after["result"] and after["evidence_refs"])}
+
+
 def ctem_remediation_coverage(items: list[dict]) -> dict:
     """Measure how much active CTEM work has concrete remediation leverage."""
     active=[x for x in items if x.get("state") not in {"verified"}]
