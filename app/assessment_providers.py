@@ -422,6 +422,104 @@ class SecretExposureProvider(JsonLinesProvider):
         )
 
 
+class WhatWebProvider(CommandProvider):
+    name = "whatweb"
+    binary = "whatweb"
+    timeout = 75
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "--no-errors", "--log-json=-", target]
+
+    def parse(self, stdout: str, stderr: str, returncode: int) -> list[ProviderResult]:
+        try:
+            rows = json.loads(stdout or "[]")
+        except ValueError:
+            return []
+        if isinstance(rows, dict):
+            rows = [rows]
+        out = []
+        for row in rows[:50] if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            plugins = row.get("plugins") or {}
+            technologies = sorted(str(k) for k in plugins.keys())[:100] if isinstance(plugins, dict) else []
+            target = row.get("target") or row.get("url")
+            if not target:
+                continue
+            out.append(
+                ProviderResult(
+                    "Technology fingerprint observed",
+                    "info",
+                    82,
+                    {
+                        "url": target,
+                        "technologies": technologies,
+                        "relationship": "technology-fingerprint",
+                    },
+                )
+            )
+        return out
+
+
+class TestSslProvider(CommandProvider):
+    name = "testssl"
+    binary = "testssl.sh"
+    timeout = 120
+
+    def available(self) -> bool:
+        return bool(shutil.which(self.binary) or shutil.which("testssl"))
+
+    def _command(self, target: str) -> list[str]:
+        binary = shutil.which(self.binary) or shutil.which("testssl") or self.binary
+        return [
+            binary,
+            "--quiet",
+            "--warnings",
+            "off",
+            "--jsonfile",
+            "/dev/stdout",
+            target,
+        ]
+
+    def parse(self, stdout: str, stderr: str, returncode: int) -> list[ProviderResult]:
+        try:
+            data = json.loads(stdout or "[]")
+        except ValueError:
+            return []
+        rows = data if isinstance(data, list) else [data]
+        out = []
+        severity_map = {
+            "CRITICAL": "critical",
+            "HIGH": "high",
+            "MEDIUM": "medium",
+            "LOW": "low",
+            "INFO": "info",
+            "OK": "info",
+        }
+        for row in rows[:250]:
+            if not isinstance(row, dict):
+                continue
+            finding = str(row.get("finding") or row.get("id") or "").strip()
+            if not finding:
+                continue
+            raw_severity = str(row.get("severity") or "INFO").upper()
+            out.append(
+                ProviderResult(
+                    str(row.get("id") or "TLS posture evidence"),
+                    severity_map.get(raw_severity, "info"),
+                    90,
+                    {
+                        "asset": target if (target := row.get("ip") or row.get("fqdn")) else "tls-endpoint",
+                        "finding": finding[:500],
+                        "cve": row.get("cve"),
+                        "cwe": row.get("cwe"),
+                        "relationship": "tls-assessment",
+                    },
+                )
+            )
+        return out
+
+
 class CloudExposureProvider:
     name = "cloud"
 
@@ -677,6 +775,8 @@ DEFAULT_PROVIDERS = [
     TlsIntelligenceProvider,
     HistoricalUrlProvider,
     WebCrawlProvider,
+    WhatWebProvider,
+    TestSslProvider,
     AsnIntelligenceProvider,
     SecretExposureProvider,
     OpenVASProvider,
