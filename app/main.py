@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from urllib.parse import urlparse
 import os
 
 from .changes import seed_changes
@@ -37,7 +38,7 @@ from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, Infr
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
-from .nuclei_engine import NucleiEngineError, run_nuclei
+from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
 
 bootstrap()
 bootstrap_scope()
@@ -1217,7 +1218,7 @@ def dast_nuclei(payload: DASTRequest, request: Request):
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     try:
-        return run_nuclei(payload.target, profile=payload.profile)
+        scan = run_nuclei(payload.target, profile=payload.profile)\n        scan["bsa_findings"] = normalize_findings(scan, asset_id=f"unresolved:{urlparse(payload.target).hostname}")\n        return scan
     except NucleiEngineError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
