@@ -69,9 +69,12 @@ def test_authenticated_session_cannot_be_reused_after_logout():
 
 
 def test_login_rate_limit_is_bound_to_ip():
-    from app.auth import authenticate, _IP_LOGIN_ATTEMPTS
+    from app.auth import authenticate, _IP_LOGIN_ATTEMPTS, _LOGIN_ATTEMPTS
     _IP_LOGIN_ATTEMPTS.clear()
-    for _ in range(20):
-        assert authenticate("definitely-missing@example.invalid","Wrong-Password-2026!","198.51.100.10") is None
-    assert _IP_LOGIN_ATTEMPTS["198.51.100.10"]["until"] > 0
+    _LOGIN_ATTEMPTS.clear()
+    ip="198.51.100.10"
+    for i in range(20):
+        assert authenticate(f"missing-{i}@example.invalid","Wrong-Password-2026!",ip) is None
+    assert _IP_LOGIN_ATTEMPTS[ip]["until"] > 0
     _IP_LOGIN_ATTEMPTS.clear()
+    _LOGIN_ATTEMPTS.clear()
