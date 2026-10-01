@@ -353,11 +353,15 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         if status and 200 <= status < 300 and body:
             html=body.decode("utf-8","ignore")
             evidence.extend(detect_frontend_build_markers(body,origin))
+            evidence.extend(extract_frontend_manifest_candidates(body,origin))
+            for m in re.finditer(r"""<script[^>]+src=[\'"]([^\'"]+(?:manifest|build-manifest|asset-manifest)[^\'"]*)[\'"]""",html,re.I):
+                manifest_urls.append(urljoin(origin,m.group(1)))
             for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
                 src=urljoin(origin,m.group(1))
                 if urlparse(src).hostname == urlparse(origin).hostname:
                     script_urls.append(src)
     # Fetch explicitly referenced frontend manifests with the same bounded transport.
+    manifest_assets=[]
     for manifest_url in list(dict.fromkeys(manifest_urls))[:max_js]:
         parsed=urlparse(manifest_url)
         if parsed.hostname != urlparse(origin).hostname: continue
@@ -373,7 +377,6 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
                 evidence.append(Evidence("http",manifest_url,"manifest_discovered_asset",asset_url,86,{"source":manifest_url}))
 
     seen=set()
-    manifest_assets=[]
     for js_url in script_urls[:max_js]:
         if js_url in seen: continue
         seen.add(js_url)
