@@ -35,7 +35,7 @@ def normalize_target(target: str) -> tuple[str, str]:
 def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
-    selected = checks or ["dns", "http", "tls", "ct"]
+    selected = checks or ["dns", "http", "tls", "ct", "ports"]
     evidence = []
 
     if "dns" in selected:
