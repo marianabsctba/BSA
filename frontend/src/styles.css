@@ -550,3 +550,16 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .infra-action:hover{transform:translateY(-1px);border-color:#ff2d8477;box-shadow:0 8px 24px #ff2d8410}
 .attack-radar{box-shadow:inset 0 1px 0 #ffffff05,0 14px 38px #0004}
 @media (prefers-reduced-motion:reduce){.kpi,.mssp-kpis div,.tenant-table button,.infra-action{transition:none!important;transform:none!important}}
+
+/* Pilot polish: motion, mobile tables and drawer ergonomics */
+.table-panel{overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.drawer{overscroll-behavior:contain}
+@media(max-width:700px){
+ .table-panel table{min-width:720px}
+ .drawer{width:100%;max-width:none;padding:18px 16px;border-left:0}
+ .drawer-head{position:sticky;top:-18px;z-index:3;background:linear-gradient(180deg,#0b0f15 78%,transparent);padding-top:18px;padding-bottom:10px}
+ .drawer-grid{grid-template-columns:1fr 1fr}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
