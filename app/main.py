@@ -500,6 +500,7 @@ def graph(request: Request):
 class LoginRequest(BaseModel):
     email: str
     password: str = Field(min_length=8, max_length=256)
+    mfa_code: str | None = Field(default=None, min_length=6, max_length=6)
 
 class ScopeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -570,7 +571,7 @@ def auth_mfa_enable(request: Request, payload: MFAEnableRequest):
     
 @app.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
-    token = authenticate(payload.email, payload.password, request.client.host if request.client else "")
+    token = authenticate(payload.email, payload.password, request.client.host if request.client else "", payload.mfa_code)
     if not token:
         raise HTTPException(status_code=401, detail="invalid credentials")
     principal = principal_from_token(token)
