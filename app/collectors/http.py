@@ -248,9 +248,9 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
         if hits:
             markers.append(Evidence("http",url,"frontend_framework_marker",framework,82,{"markers":hits}))
     patterns=[
-        r"""['"]([^'"]+/_next/static/[^'"]+.js[^'"]*)['"]""",
-        r"""['"]([^'"]+/_nuxt/[^'"]+.js[^'"]*)['"]""",
-        r"""['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*.js(?:?[^'"]*)?)['"]""",
+        r'''['"]([^'"]+/_next/static/[^'"]+\.js[^'"]*)['"]''',
+        r'''['"]([^'"]+/_nuxt/[^'"]+\.js[^'"]*)['"]''',
+        r'''['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*\.js(?:\?[^'"]*)?)['"]''',
     ]
     for pattern in patterns:
         for m in re.finditer(pattern,text_body,re.I):
