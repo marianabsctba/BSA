@@ -274,6 +274,25 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     return markers[:200]
 
 
+
+def extract_frontend_manifest_candidates(body: bytes, url: str) -> list[Evidence]:
+    text_body=body[:1048576].decode("utf-8","ignore")
+    patterns=[
+        r"""['"]([^'"]+(?:build-manifest|asset-manifest|manifest|webpack-manifest)[^'"]*\.json(?:\?[^'"]*)?)['"]""",
+        r"""['"]([^'"]+(?:_buildManifest|_ssgManifest)[^'"]*\.js(?:\?[^'"]*)?)['"]""",
+        r"""['"]([^'"]+/_next/static/[^'"]+\.js(?:\?[^'"]*)?)['"]""",
+        r"""['"]([^'"]+/_nuxt/[^'"]+\.(?:js|json)(?:\?[^'"]*)?)['"]""",
+    ]
+    out=[]; seen=set()
+    for pattern in patterns:
+        for m in re.finditer(pattern,text_body,re.I):
+            value=m.group(1)
+            if value in seen: continue
+            seen.add(value)
+            out.append(Evidence("http",url,"frontend_manifest_candidate",value,84,{"source":"html"}))
+            if len(out)>=200: return out
+    return out
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery."""
     validate_external_target(url)
@@ -293,6 +312,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             if "html" in ctype or path=="/":
                 html=body.decode("utf-8","ignore")
                 evidence.extend(detect_frontend_build_markers(body,origin))
+                evidence.extend(extract_frontend_manifest_candidates(body,origin))
                 for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
                     src=urljoin(origin,m.group(1))
                     if urlparse(src).hostname == urlparse(origin).hostname:
