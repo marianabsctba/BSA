@@ -1,6 +1,7 @@
 from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
+import re
 from hashlib import sha256
 
 from .base import Evidence
@@ -85,6 +86,15 @@ class HTTPCollector:
             pass
         if body:
             evidence.append(Evidence(self.name,url,"body_sha256",sha256(body).hexdigest(),92))
+            text=body.decode("utf-8","ignore")
+            for kind, pattern in ((
+                ("technology:generator", r"<meta[^>]+name=[\'\"]generator[\'\"][^>]+content=[\'\"]([^\'\"]+)"),
+                ("technology:powered-by", r"<meta[^>]+name=[\'\"]powered-by[\'\"][^>]+content=[\'\"]([^\'\"]+)"),
+            )):
+                for match in re.finditer(pattern, text, re.I):
+                    value=match.group(1).strip()[:180]
+                    if value:
+                        evidence.append(Evidence(self.name,url,kind,value,82))
         if headers.get("server"):
             evidence.append(Evidence(self.name,url,"technology:server",headers.get("server"),78))
         if headers.get("x-powered-by"):
