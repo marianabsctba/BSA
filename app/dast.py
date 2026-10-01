@@ -76,12 +76,4 @@ def run_safe_web_assessment(target: str) -> dict:
                 nxt=urljoin(candidate,ref)
                 if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
                     queue.append(nxt)
-    try:
-        _, options_headers, _, _ = _pinned_fetch(url, timeout=3.0, max_bytes=16384, approved_ips=approved_ips, method="OPTIONS")
-        allow=str(options_headers.get("allow",""))
-        if allow:
-            if any(m.strip().upper() in {"PUT","PATCH","DELETE"} for m in allow.split(",")):
-                findings.append(DASTFinding("method_inventory","low","mutating HTTP methods advertised",allow,82))
-    except Exception:
-        pass
     return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
