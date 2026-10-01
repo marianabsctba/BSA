@@ -28,21 +28,29 @@ TAKEOVER_PATTERNS={
 
 def cloud_signals(values):
     out=[]
+    seen=set()
     for value in values:
         v=str(value).lower()
         for provider,patterns in CLOUD_PATTERNS.items():
             if any(p in v for p in patterns):
-                out.append(ExposureSignal("cloud_provider",provider,88,f"hostname/DNS value matches {provider} infrastructure"))
+                key=(provider, str(value).lower())
+                if key not in seen:
+                    seen.add(key)
+                    out.append(ExposureSignal("cloud_provider",provider,88,f"hostname/DNS value matches {provider} infrastructure"))
     return out
 
 def takeover_signals(http_values):
     out=[]
+    seen=set()
     for value in http_values:
         text=str(value)
         low=text.lower()
         for provider,patterns in TAKEOVER_PATTERNS.items():
             if any(p.lower() in low for p in patterns):
-                out.append(ExposureSignal("potential_takeover",provider,72,"response matches known provider orphaning pattern",True))
+                key=(provider, text[:180])
+                if key not in seen:
+                    seen.add(key)
+                    out.append(ExposureSignal("potential_takeover",provider,72,"response matches known provider orphaning pattern; ownership validation required",True))
     return out
 
 def summarize_signals(signals):
