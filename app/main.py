@@ -561,8 +561,7 @@ class TenantCreateRequest(BaseModel):
 
 @app.get("/api/v1/scopes")
 def scopes(request: Request):
-    p=current_principal(request)
-    if p.role not in {"admin","superadmin"}: raise HTTPException(status_code=403,detail="admin required")
+    p=require(request,"users:read")
     return list_scopes(p)
 
 @app.post("/api/v1/scopes")
@@ -586,8 +585,7 @@ def scopes_assign(request: Request, payload: ScopeAssignRequest):
 
 @app.get("/api/v1/groups")
 def groups(request: Request):
-    p=current_principal(request)
-    if p.role not in {"admin","superadmin"}: raise HTTPException(status_code=403,detail="admin required")
+    p=require(request,"users:read")
     return list_groups(p)
 
 @app.post("/api/v1/groups")
