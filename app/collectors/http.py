@@ -137,6 +137,20 @@ def contextual_surface_paths(evidence: list[dict], max_paths: int = 80) -> list[
                 paths.update({"/wp-admin/","/wp-json/"} if product=="wordpress" else {"/admin/","/core/"} if product=="drupal" else {"/administrator/"})
     return sorted(paths)[:max(1,min(max_paths,200))]
 
+
+def classify_surface_response(status: int | None, headers: dict, body: bytes) -> dict:
+    ctype=(headers.get("content-type") or "").lower()
+    digest=hashlib.sha256(body[:1048576]).hexdigest() if body else None
+    length=len(body)
+    return {
+        "status":status,
+        "content_type":ctype.split(";")[0],
+        "length":length,
+        "sha256":digest,
+        "redirect": status in {301,302,303,307,308} if status else False,
+        "likely_empty": length == 0,
+    }
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
@@ -148,7 +162,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         status,headers,body,final_url=_safe_surface_fetch(origin,path)
         if status is None: continue
         kind="surface_path"
-        evidence.append(Evidence("http",origin,kind,path,90,{"status":status,"content_type":headers.get("content-type","")}))
+        evidence.append(Evidence("http",origin,kind,path,90,{"surface":classify_surface_response(status,headers,body)}))
         if 200 <= status < 300 and body:
             ctype=(headers.get("content-type") or "").lower()
             if "javascript" in ctype or path.endswith(".js"):
