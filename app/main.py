@@ -897,8 +897,8 @@ def asset_timeline(asset_id: str, request: Request):
         "asset_id": asset.id,
         "first_seen": asset.first_seen,
         "last_seen": asset.last_seen,
-        "change_summary": change_summary(asset.fingerprint),
-        "history": [h.__dict__ for h in history_for(asset.fingerprint)],
+        "change_summary": change_summary(asset.fingerprint, principal.tenant_id),
+        "history": [h.__dict__ for h in history_for(asset.fingerprint,principal.tenant_id)],
     }
 
 
@@ -1176,7 +1176,7 @@ def discovery_changes(target: str, request: Request):
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
-    record_observations(assets)
+    record_observations(assets, principal.tenant_id)
     return {
         "target": data["target"],
         "changes": [
@@ -1249,7 +1249,7 @@ def easm_lifecycle(target: str, request: Request):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
     assets=correlate_evidence(data["target"],data["evidence"])
-    lifecycle=record_lifecycle(assets,data["evidence"])
+    lifecycle=record_lifecycle(assets,data["evidence"],principal.tenant_id)
     changed=[x for x in lifecycle if x["state"]=="changed"]
     new=[x for x in lifecycle if x["state"]=="new"]
     return {
@@ -1264,7 +1264,7 @@ def easm_asset_lifecycle(target: str, fingerprint: str, request: Request):
     principal=require(request,"assets:read")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return lifecycle_for(fingerprint)
+    return lifecycle_for(fingerprint,principal.tenant_id)
 
 @app.get("/api/v1/easm/overview")
 def easm_overview(request: Request):
