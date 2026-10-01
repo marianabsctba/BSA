@@ -21,6 +21,7 @@ class Relationship:
     confidence: int
     evidence: str
     impact: int = 0
+    evidence_refs: tuple[str, ...] = ()
 
 
 def node_id(kind: str, value: str) -> str:
@@ -180,9 +181,9 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         aid = add_node(getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset")), asset.value, asset.confidence, score)
         asset_kind = getattr(getattr(asset, "type", None), "value", getattr(asset, "asset_type", "asset"))
         if asset_kind in {"subdomain", "application"}:
-            edges.append(Relationship(domain_id, aid, "namespace_member", asset.confidence, "correlated discovery"))
+            edges.append(Relationship(domain_id, aid, "namespace_member", asset.confidence, "correlated discovery", 0, tuple(getattr(asset, "evidence_refs", ()) or ())))
         elif asset_kind == "service":
-            edges.append(Relationship(domain_id, aid, "dns_related_service", asset.confidence, "DNS evidence"))
+            edges.append(Relationship(domain_id, aid, "dns_related_service", asset.confidence, "DNS evidence", 0, tuple(getattr(asset, "evidence_refs", ()) or ())))
 
     internet_id = add_node("internet", "Internet", 100, 20)
     for source_asset in source_assets:
@@ -190,14 +191,14 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
         asset_kind = getattr(getattr(source_asset, "type", None), "value", getattr(source_asset, "asset_type", "asset"))
         aid = next((n.id for n in nodes.values() if n.label.lower() == source_asset.value.lower()), None)
         if aid and "internet-facing" in source_asset.tags:
-            edges.append(Relationship(internet_id, aid, "internet_exposed", source_asset.confidence, "asset evidence", min(100, source_asset.criticality*20)))
+            edges.append(Relationship(internet_id, aid, "internet_exposed", source_asset.confidence, "asset evidence", min(100, source_asset.criticality*20), tuple(getattr(source_asset, "evidence_refs", ()) or ())))
         for finding in findings:
             if finding.asset_id != source_asset.id or finding.status != "open":
                 continue
             risk=calculate_risk(finding,source_asset)
             fid = add_node("finding", finding.title, risk["confidence"], risk["residual_score"])
             impact = risk["impact"]
-            edges.append(Relationship(aid, fid, "finding_observed", risk["confidence"], "contextual risk engine", impact))
+            edges.append(Relationship(aid, fid, "finding_observed", risk["confidence"], "contextual risk engine", impact, tuple(getattr(finding, "evidence_refs", ()) or ())))
 
     for item in evidence:
         value = str(item.get("value", "")).strip()
@@ -210,31 +211,31 @@ def build_risk_graph(target: str, assets, evidence: list[dict], source_assets=No
             ip_id = add_node("ip", value, confidence)
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
             if host_id:
-                edges.append(Relationship(host_id, ip_id, "resolves_to", confidence, f"{source}:{kind}"))
+                edges.append(Relationship(host_id, ip_id, "resolves_to", confidence, f"{source}:{kind}", 0, (f"{source}:{kind}:{value}",)))
 
         if kind == "certificate_name" and value:
             host_id = next((n.id for n in nodes.values() if n.label.lower() == value.lower()), None)
             cert_id = add_node("certificate", value, confidence)
             if host_id:
-                edges.append(Relationship(host_id, cert_id, "certificate_observed", confidence, "Certificate Transparency"))
+                edges.append(Relationship(host_id, cert_id, "certificate_observed", confidence, "Certificate Transparency", 0, (f"{source}:{kind}:{value}",)))
 
         if kind.startswith("technology:") and value:
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
             tech_id = add_node("technology", value, confidence)
             if host_id:
-                edges.append(Relationship(host_id, tech_id, "technology_observed", confidence, source))
+                edges.append(Relationship(host_id, tech_id, "technology_observed", confidence, source, 0, (f"{source}:{kind}:{value}",)))
 
         if kind == "caa" and value:
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
             caa_id = add_node("certificate-policy", value, confidence)
             if host_id:
-                edges.append(Relationship(host_id, caa_id, "certificate_policy", confidence, source))
+                edges.append(Relationship(host_id, caa_id, "certificate_policy", confidence, source, 0, (f"{source}:{kind}:{value}",)))
 
         if source in {"threat-intelligence", "threat_intel", "cti"} and value:
             host_id = next((n.id for n in nodes.values() if n.label.lower() == subject), None)
             threat_id = add_node("threat", value, confidence)
             if host_id:
-                edges.append(Relationship(host_id, threat_id, "threat_observed", confidence, source))
+                edges.append(Relationship(host_id, threat_id, "threat_observed", confidence, source, 0, (f"{source}:{kind}:{value}",)))
 
     unique = {(e.source_id, e.target_id, e.kind): e for e in edges}
     edge_list = list(unique.values())
