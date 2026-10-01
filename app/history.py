@@ -25,8 +25,13 @@ def _history_db():
         tenant_id TEXT NOT NULL, item_id TEXT PRIMARY KEY, asset_id TEXT NOT NULL,
         finding_id TEXT, state TEXT NOT NULL, priority INTEGER NOT NULL,
         action TEXT NOT NULL, title TEXT NOT NULL, drivers_json TEXT NOT NULL,
-        evidence_refs_json TEXT NOT NULL, created_at TEXT NOT NULL,
+        evidence_refs_json TEXT NOT NULL, leverage_score INTEGER NOT NULL DEFAULT 0,
+        paths_affected INTEGER NOT NULL DEFAULT 0, risk_reduction_percent INTEGER NOT NULL DEFAULT 0,
+        path_coverage_percent INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL, resolved_at TEXT, verified_at TEXT)""")
+    ctem_cols={r["name"] for r in conn.execute("PRAGMA table_info(ctem_items)").fetchall()}
+    for col,typ,default in [("leverage_score","INTEGER","0"),("paths_affected","INTEGER","0"),("risk_reduction_percent","INTEGER","0"),("path_coverage_percent","INTEGER","0")]:
+        if col not in ctem_cols: conn.execute(f"ALTER TABLE ctem_items ADD COLUMN {col} {typ} NOT NULL DEFAULT {default}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")
     conn.execute("""CREATE TABLE IF NOT EXISTS ctem_verifications(
         verification_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
@@ -318,12 +323,14 @@ def upsert_ctem_item(item: dict, tenant_id: str) -> dict:
     else:
         state="new"; resolved_at=None; verified_at=None
     conn.execute("""INSERT OR REPLACE INTO ctem_items
-        (tenant_id,item_id,asset_id,finding_id,state,priority,action,title,drivers_json,evidence_refs_json,created_at,updated_at,resolved_at,verified_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (tenant_id,item_id,asset_id,finding_id,state,priority,action,title,drivers_json,evidence_refs_json,leverage_score,paths_affected,risk_reduction_percent,path_coverage_percent,created_at,updated_at,resolved_at,verified_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (tenant_id,item_id,str(item.get("asset_id","")),item.get("finding_id"),state,int(item.get("priority",0)),
          str(item.get("action","validate")),str(item.get("title","CTEM item")),
          json.dumps(item.get("drivers",[]),ensure_ascii=False),
          json.dumps(item.get("evidence_refs",[]),ensure_ascii=False),
+         int(item.get("leverage_score",0) or 0),int(item.get("paths_affected",0) or 0),
+         int(item.get("risk_reduction_percent",0) or 0),int(item.get("path_coverage_percent",0) or 0),
          row["created_at"] if row else now,now,resolved_at,verified_at))
     conn.commit()
     out=dict(item); out.update({"item_id":item_id,"tenant_id":tenant_id,"state":state,"created_at":row["created_at"] if row else now,"updated_at":now})
