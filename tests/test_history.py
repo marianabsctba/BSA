@@ -1,4 +1,5 @@
 from app.history import change_summary, record_observations
+from types import SimpleNamespace
 
 
 class Asset:
@@ -9,6 +10,8 @@ class Asset:
         self.sources = tuple(sources)
         self.tags = tuple(tags)
         self.evidence_refs = tuple(evidence_refs)
+        self.value = fingerprint
+        self.asset_type = "application"
 
 
 def test_history_detects_source_and_confidence_changes():
@@ -38,12 +41,12 @@ def test_discovery_run_diff_tracks_added_removed_and_changed(tmp_path, monkeypat
     from app import history
     from types import SimpleNamespace
     monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "diff.db"))
-    a=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=90)
-    b=SimpleNamespace(fingerprint="b",value="b.example.org",asset_type="subdomain",confidence=80)
+    a=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=90,evidence_refs=[])
+    b=SimpleNamespace(fingerprint="b",value="b.example.org",asset_type="subdomain",confidence=80,evidence_refs=[])
     first=history.record_discovery_run([a,b],[], "tenant-diff","run-1")
     assert first["summary"]["added"] == 2
-    c_asset=SimpleNamespace(fingerprint="c",value="c.example.org",asset_type="subdomain",confidence=95)
-    a_changed=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=70)
+    c_asset=SimpleNamespace(fingerprint="c",value="c.example.org",asset_type="subdomain",confidence=95,evidence_refs=[])
+    a_changed=SimpleNamespace(fingerprint="a",value="a.example.org",asset_type="subdomain",confidence=70,evidence_refs=[])
     second=history.record_discovery_run([a_changed,c_asset],[], "tenant-diff","run-2")
     assert second["summary"]["added"] == 1
     assert second["summary"]["removed"] == 1
@@ -79,7 +82,6 @@ def test_diff_risk_context_adds_risk_delta_for_new_asset():
 
 def test_surface_change_ctem_prioritization_requires_evidence():
     from app.risk_engine import prioritize_surface_change
-    from types import SimpleNamespace
     change={"fingerprint":"x","reasons":["certificate_name"],"evidence_refs":["ct:cert:x"],
             "exposure_score":80,"risk_score":0,"rationale":["exposição direta à Internet"]}
     asset=SimpleNamespace(id="asset-x",criticality=4,confidence=90,tags=["internet-facing"],
