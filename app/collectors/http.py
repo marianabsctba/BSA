@@ -145,6 +145,28 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
 
 
 
+SECRET_PATTERNS = (
+    ("aws_access_key_id", re.compile(r"\\bAKIA[0-9A-Z]{16}\\b")),
+    ("github_token", re.compile(r"\\bgh[pousr]_[A-Za-z0-9_]{20,255}\\b")),
+    ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
+    ("jwt", re.compile(r"\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b")),
+    ("secret_assignment", re.compile(r"(?i)\\b(?:api[_-]?key|client[_-]?secret|secret|token|password)\\b\\s*[:=]\\s*[A-Za-z0-9_./+=:-]{12,}")),
+)
+
+def detect_potential_secrets(text: str, source: str, max_items: int = 100) -> list[Evidence]:
+    out=[]
+    bounded=text[:1048576]
+    seen=set()
+    for kind,pattern in SECRET_PATTERNS:
+        for match in pattern.finditer(bounded):
+            raw=match.group(0)
+            fingerprint=hashlib.sha256(raw.encode('utf-8','ignore')).hexdigest()
+            key=(kind,fingerprint)
+            if key in seen: continue
+            seen.add(key)
+            out.append(Evidence("http",source,"potential_secret_exposure",kind,93,{"secret_type":kind,"fingerprint":fingerprint,"validation":"suspected_only"}))
+            if len(out)>=max_items: return out
+    return out
 def classify_source_reference(value: str) -> str:
     v=value.lower()
     if any(x in v for x in ("config","secret","credential","token","admin","internal")): return "sensitive-pattern"
@@ -709,6 +731,8 @@ class HTTPCollector:
                 evidence.append(Evidence(self.name,url,f"http_header:{header}",value,85))
         evidence.extend(_artifact_evidence(url,headers,body))
         if body:
+            text_body=body[:1048576].decode("utf-8","ignore")
+            evidence.extend(detect_potential_secrets(text_body,url))
             ctype=(headers.get("content-type") or "").split(";",1)[0].strip().lower()
             kind=ARTIFACT_CONTENT_TYPES.get(ctype)
             if kind:
