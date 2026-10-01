@@ -1,0 +1,29 @@
+FROM golang:1.24-bookworm AS engines
+
+RUN GOBIN=/out go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/httpx/cmd/httpx@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest \
+ && GOBIN=/out go install github.com/projectdiscovery/katana/cmd/katana@latest \
+ && GOBIN=/out go install github.com/lc/gau/v2/cmd/gau@latest
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git nmap whatweb amass \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=engines /out/ /usr/local/bin/
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+
+ENV BSA_ENGINE_BUNDLE=full
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
