@@ -968,7 +968,11 @@ class OpenVASProvider:
     timeout = 180
 
     def available(self) -> bool:
-        return bool(shutil.which("gvm-cli"))
+        binary = shutil.which("gvm-cli")
+        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
+        config_id = os.getenv("BSA_GVM_SCAN_CONFIG_ID", "").strip()
+        scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
+        return bool(binary and socket_path and os.path.exists(socket_path) and config_id and scanner_id)
 
     def _gmp(self, xml: str) -> ET.Element | None:
         binary = shutil.which("gvm-cli")
