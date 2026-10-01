@@ -178,6 +178,15 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     attempts=_LOGIN_ATTEMPTS.get(key, {"count":0,"until":0})
     ip_attempts=_IP_LOGIN_ATTEMPTS.get(ipkey, {"count":0,"until":0})
     if attempts["until"] > now or ip_attempts["until"] > now: return None
+    # Bound in-memory login throttling to avoid unbounded growth from attacker-controlled identifiers.
+    if len(_LOGIN_ATTEMPTS) > 10000:
+        for stale_key, state in list(_LOGIN_ATTEMPTS.items()):
+            if state.get("until", 0) <= now:
+                _LOGIN_ATTEMPTS.pop(stale_key, None)
+    if len(_IP_LOGIN_ATTEMPTS) > 10000:
+        for stale_key, state in list(_IP_LOGIN_ATTEMPTS.items()):
+            if state.get("until", 0) <= now:
+                _IP_LOGIN_ATTEMPTS.pop(stale_key, None)
     conn = _db()
     row = conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1", (email,)).fetchone()
     conn.close()
