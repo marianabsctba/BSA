@@ -239,3 +239,18 @@ def test_ctem_remediation_evidence_keeps_before_after_provenance():
     assert out["before"]["evidence_refs"]==["finding:e1"]
     assert out["after"]["evidence_refs"]==["retest:e2"]
     assert out["evidence_complete"] is True
+
+def test_ctem_audit_timeline_is_chronological_and_evidence_linked():
+    from app.history import ctem_audit_timeline
+    item={"created_at":"2026-10-01T10:00:00+00:00","state":"in_progress",
+          "priority":85,"evidence_refs":["finding:e1"]}
+    verifications=[
+      {"verified_at":"2026-10-01T12:00:00+00:00","result":"failed","state":"in_progress",
+       "evidence_refs":["retest:e2"],"notes":"still exposed"},
+      {"verified_at":"2026-10-01T14:00:00+00:00","result":"passed","state":"verified",
+       "evidence_refs":["retest:e3"],"notes":"condition removed"},
+    ]
+    out=ctem_audit_timeline(item,verifications)
+    assert [x["event"] for x in out]==["created","verification","verification"]
+    assert out[-1]["result"]=="passed"
+    assert out[-1]["evidence_refs"]==["retest:e3"]
