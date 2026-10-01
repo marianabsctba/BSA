@@ -213,3 +213,17 @@ def test_ctem_operations_summary_uses_tenant_scoped_queue(tmp_path, monkeypatch)
     assert summary["active_items"] == 1
     assert summary["high_leverage_items"] == 1
     assert history.list_ctem_items("other-tenant") == []
+
+def test_ctem_operational_summary_tracks_sla_aging_without_time_flakiness():
+    from app.history import ctem_operational_summary
+    from datetime import datetime, timezone, timedelta
+    now=datetime(2026,10,1,12,0,tzinfo=timezone.utc)
+    items=[
+      {"state":"new","priority":90,"created_at":"2026-09-30T10:00:00+00:00","leverage_score":90,"paths_affected":2,"risk_reduction_percent":50},
+      {"state":"in_progress","priority":70,"created_at":"2026-09-29T10:00:00+00:00","leverage_score":60,"paths_affected":1,"risk_reduction_percent":20},
+      {"state":"verified","priority":90,"created_at":"2026-09-20T10:00:00+00:00","leverage_score":100,"paths_affected":9,"risk_reduction_percent":90},
+    ]
+    out=ctem_operational_summary(items,now)
+    assert out["active_items"]==2
+    assert out["overdue_items"]==2
+    assert out["oldest_active_age_hours"]==50
