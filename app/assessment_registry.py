@@ -26,6 +26,8 @@ from .assessment_providers import (
     ThreatFoxProvider,
     TlsIntelligenceProvider,
     WebCrawlProvider,
+    WhatWebProvider,
+    TestSslProvider,
     SecretExposureProvider,
     ZAPProvider,
 )
@@ -65,6 +67,8 @@ class AssessmentRegistry:
             TlsIntelligenceProvider,
             HistoricalUrlProvider,
             WebCrawlProvider,
+            WhatWebProvider,
+            TestSslProvider,
             CloudExposureProvider,
             NucleiProvider,
             NmapProvider,
