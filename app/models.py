@@ -51,6 +51,18 @@ class Finding(BaseModel):
     status: str = "open"
     evidence: str
     remediation: str | None = None
+    vulnerability_id: str | None = None
+    cpe: str | None = None
+    cvss: float | None = Field(default=None, ge=0, le=10)
+    epss: float | None = Field(default=None, ge=0, le=1)
+    kev: bool = False
+    exploit_available: bool = False
+    published_at: str | None = None
+    detected_at: str | None = None
+    fixed_version: str | None = None
+    affected_component: str | None = None
+    source_refs: list[str] = Field(default_factory=list)
+    false_positive_confidence: int = Field(default=0, ge=0, le=100)
 
 
 class Dashboard(BaseModel):
