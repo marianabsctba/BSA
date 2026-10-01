@@ -38,6 +38,9 @@ def cpe_product(cpe: str | None) -> tuple[str|None,str|None]:
 def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     cvss=(finding.cvss or 0)*10
     epss=(finding.epss or 0)*100
+    evidence_strength=min(100, max(0, finding.confidence))
+    identity_bonus=10 if finding.cpe else 0
+    vuln_bonus=15 if finding.vulnerability_id else 0
     exploit=min(100,round(max(cvss,epss*0.8)+(25 if finding.kev else 0)+(15 if finding.exploit_available else 0)))
     exposure=15
     drivers=[]
@@ -53,11 +56,14 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     impact=round(business*.65+min(100,asset.confidence if asset else 70)*.15+(30 if asset and asset.type.value in {"application","service"} else 10))
     likelihood=round(exploit*.65+exposure*.35)
     confidence=min(finding.confidence,asset.confidence if asset else finding.confidence)
-    score=min(100,round(likelihood*.45+impact*.40+confidence*.15))
+    intelligence=min(100, round(evidence_strength*.55 + identity_bonus + vuln_bonus))
+    score=min(100,round(likelihood*.40+impact*.35+confidence*.10+intelligence*.15))
     if finding.kev: drivers.append("KEV / exploração conhecida")
     if finding.exploit_available: drivers.append("exploit disponível")
     if finding.epss is not None: drivers.append(f"EPSS {finding.epss:.1%}")
     if finding.cvss is not None: drivers.append(f"CVSS {finding.cvss:.1f}")
+    if finding.cpe: drivers.append("identificação técnica/CPE disponível")
+    if finding.vulnerability_id: drivers.append("vulnerability ID correlacionado")
     if criticality>=4: drivers.append("alta criticidade de negócio")
     if finding.false_positive_confidence>=60: controls=["validar falso positivo antes de remediação"]
     else: controls=[]
