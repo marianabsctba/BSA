@@ -31,6 +31,7 @@ from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
+from .ip_intelligence import ip_exposure_signal
 
 bootstrap()
 bootstrap_scope()
@@ -150,6 +151,16 @@ def asset_detail_view(asset_id: str, request: Request):
     audit(principal, "read", "asset", asset.id)
     return asset_detail(asset, findings, assets)
 
+
+@app.get("/api/v1/discovery/ip-intelligence/{target}")
+def discovery_ip_intelligence(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct","ports","rdap","ip_intel"])
+    ips=sorted({str(e.get("value")) for e in data["evidence"] if e.get("kind") in {"a_record","aaaa"}})
+    return {"target":data["target"],"ips":[ip_exposure_signal(x) for x in ips],
+            "evidence_count":data["evidence_count"]}
 
 @app.get("/api/v1/discovery/ai-correlate/{target}")
 def discovery_ai_correlate(target: str, request: Request):
