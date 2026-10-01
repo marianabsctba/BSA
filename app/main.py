@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from dataclasses import asdict
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from .changes import seed_changes
 from .graph import RELATIONSHIPS, build_attack_surface_graph, build_risk_graph, simulate_remediation
@@ -42,13 +43,26 @@ app = FastAPI(
     description="Attack Surface Management defensivo, rastreável e orientado a evidências.",
 )
 
+ALLOWED_ORIGINS=[x.strip() for x in os.getenv("BSA_ALLOWED_ORIGINS","").split(",") if x.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+    allow_headers=["Authorization","Content-Type","X-Requested-With"],
 )
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response=await call_next(request)
+    response.headers["X-Content-Type-Options"]="nosniff"
+    response.headers["X-Frame-Options"]="DENY"
+    response.headers["Referrer-Policy"]="no-referrer"
+    response.headers["Permissions-Policy"]="camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"]="default-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    if request.url.scheme=="https":
+        response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.get("/health")
