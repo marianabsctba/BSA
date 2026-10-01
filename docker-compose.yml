@@ -13,10 +13,18 @@ services:
     ports:
       - "8000:8000"
     environment:
+      BSA_ENV: development
+      BSA_JWT_SECRET: "${BSA_JWT_SECRET:-dev-only-jwt-secret-change-before-production-123456}"
+      BSA_ADMIN_EMAIL: "${BSA_ADMIN_EMAIL:-admin@besafe.local}"
+      BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:-Bsa-Dev-Only-2026!ChangeMe}"
+      BSA_AUTH_DB: /data/bsa_auth.db
+      BSA_HISTORY_DB: /data/bsa_history.db
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: "http://ollama:11434"
       BSA_OLLAMA_MODEL: "qwen2.5:7b"
       BSA_AI_TIMEOUT: "15"
+    volumes:
+      - bsa_data:/data
     depends_on:
       - ollama
 
@@ -57,3 +65,4 @@ services:
 
 volumes:
   bsa_ollama:
+  bsa_data:
