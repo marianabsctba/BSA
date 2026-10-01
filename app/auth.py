@@ -56,6 +56,10 @@ def _db():
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
         active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
+        jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        revoked_at INTEGER)""")
     conn.commit()
     return conn
 
@@ -123,13 +127,46 @@ def authenticate(email: str, password: str) -> str | None:
         return None
     _LOGIN_ATTEMPTS.pop(key,None)
     now = int(time.time())
-    return _token({"sub": row["id"], "tenant": row["tenant_id"], "email": row["email"], "name": row["name"], "role": row["role"], "iat": now, "exp": now + TOKEN_TTL})
+    jti=secrets.token_urlsafe(24)
+    exp=now + TOKEN_TTL
+    conn = _db()
+    conn.execute("INSERT INTO sessions(jti,user_id,tenant_id,created_at,expires_at) VALUES(?,?,?,?,?)",
+                 (jti,row["id"],row["tenant_id"],now,exp))
+    conn.commit(); conn.close()
+    return _token({"sub": row["id"], "tenant": row["tenant_id"], "email": row["email"], "name": row["name"], "role": row["role"], "iat": now, "exp": exp, "jti": jti})
 
 def principal_from_token(token: str) -> Principal:
     p = _decode(token)
-    if p.get("role") not in ROLES:
-        raise ValueError("invalid role")
-    return Principal(p["sub"], p["tenant"], p["email"], p["role"], p["name"])
+    if p.get("role") not in ROLES or not p.get("jti"):
+        raise ValueError("invalid token claims")
+    conn = _db()
+    session = conn.execute(
+        "SELECT revoked_at,expires_at FROM sessions WHERE jti=? AND user_id=? AND tenant_id=?",
+        (p["jti"],p["sub"],p["tenant"])
+    ).fetchone()
+    user = conn.execute("SELECT active,role,tenant_id FROM users WHERE id=?", (p["sub"],)).fetchone()
+    tenant = conn.execute("SELECT active FROM tenants WHERE id=?", (p["tenant"],)).fetchone()
+    conn.close()
+    if not session or session["revoked_at"] is not None or int(session["expires_at"]) < int(time.time()):
+        raise ValueError("session revoked or expired")
+    if not user or not user["active"] or user["tenant_id"] != p["tenant"]:
+        raise ValueError("user inactive or tenant mismatch")
+    if not tenant or not tenant["active"]:
+        raise ValueError("tenant inactive")
+    if user["role"] != p["role"]:
+        raise ValueError("role changed; re-authentication required")
+    return Principal(p["sub"], p["tenant"], p["email"], user["role"], p["name"])
+
+def revoke_session(principal: Principal, jti: str | None = None) -> None:
+    conn = _db()
+    if jti:
+        conn.execute("UPDATE sessions SET revoked_at=? WHERE jti=? AND user_id=? AND tenant_id=?",
+                     (int(time.time()),jti,principal.user_id,principal.tenant_id))
+    else:
+        conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",
+                     (int(time.time()),principal.user_id,principal.tenant_id))
+    conn.commit()
+    conn.close()
 
 def create_user(principal: Principal, email: str, name: str, password: str, role: str) -> dict:
     if principal.role not in {"admin", "superadmin"}:
