@@ -25,7 +25,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
@@ -212,6 +212,23 @@ def discovery_ip_intelligence(target: str, request: Request):
     return {"target":data["target"],"ips":[ip_exposure_signal(x) for x in ips],
             "evidence_count":data["evidence_count"]}
 
+
+
+@app.get("/api/v1/discovery/ai-prioritize/{target}")
+def discovery_ai_prioritize(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct"])
+    signals=[]
+    for e in data["evidence"]:
+        if e.get("kind") in {"http_status","certificate_name","a_record","aaaa","openapi_endpoint"}:
+            signals.append({"kind":e.get("kind"),"value":e.get("value"),"confidence":e.get("confidence")})
+    candidate_checks=["dns","http","tls","ct","ports","rdap","ip_intel"]
+    result=prioritize_collection(target,data["evidence"],signals,candidate_checks)
+    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
+            "evidence_count":data["evidence_count"],"candidate_checks":candidate_checks,
+            "prioritization":result,"fallback":"deterministic collector order" if result is None else None}
 
 @app.get("/api/v1/discovery/ai-api-surface/{target}")
 def discovery_ai_api_surface(target: str, request: Request):
