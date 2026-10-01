@@ -84,6 +84,15 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             ctype=(headers.get("content-type") or "").lower()
             if "javascript" in ctype or path.endswith(".js"):
                 script_urls.append(final_url)
+            elif "html" in ctype or path == "/":
+                try:
+                    html=body.decode("utf-8","ignore")[:1048576]
+                    for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]""",html,re.I):
+                        src=urljoin(origin,m.group(1))
+                        if urlparse(src).hostname == urlparse(origin).hostname:
+                            script_urls.append(src)
+                except UnicodeDecodeError:
+                    pass
     status,headers,body,final_url=_safe_surface_fetch(origin,"/")
     if status and body:
         html=body.decode("utf-8","ignore")[:1048576]
