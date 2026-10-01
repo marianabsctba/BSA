@@ -80,6 +80,36 @@ def artifact_discovery_candidates(url: str, kind: str, body: bytes) -> list[Evid
         if len(refs)>=100: break
     return refs
 
+
+def extract_openapi_inventory(url: str, body: bytes) -> list[Evidence]:
+    try:
+        data=json.loads(body.decode("utf-8","ignore"))
+    except Exception:
+        return []
+    if not isinstance(data,dict) or not (data.get("openapi") or data.get("swagger")):
+        return []
+    out=[]
+    paths=data.get("paths")
+    if not isinstance(paths,dict):
+        return out
+    for path,item in paths.items():
+        if not isinstance(path,str) or not path.startswith("/") or not isinstance(item,dict):
+            continue
+        for method,operation in item.items():
+            if method.lower() not in {"get","post","put","patch","delete","head","options","trace"}:
+                continue
+            if not isinstance(operation,dict): operation={}
+            auth=operation.get("security", data.get("security"))
+            out.append(Evidence("http",url,"openapi_endpoint",path,88,{
+                "method":method.upper(),
+                "operation_id":operation.get("operationId"),
+                "auth_declared":bool(auth),
+                "tags":operation.get("tags",[]) if isinstance(operation.get("tags",[]),list) else [],
+                "parameters":len(operation.get("parameters",[])) if isinstance(operation.get("parameters",[]),list) else 0,
+            }))
+            if len(out)>=1000: return out
+    return out
+
 def _structured_artifact_evidence(url: str, kind: str, body: bytes) -> list[Evidence]:
     if kind != "json" or not body:
         return []
@@ -198,5 +228,6 @@ class HTTPCollector:
             if kind:
                 evidence.extend(_structured_artifact_evidence(url,kind,body))
                 evidence.extend(artifact_discovery_candidates(url,kind,body))
+                evidence.extend(extract_openapi_inventory(url,body))
         evidence.extend(security_header_evidence(url, headers))
         return evidence
