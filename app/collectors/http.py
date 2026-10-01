@@ -659,38 +659,23 @@ class HTTPCollector:
 
     def collect(self, url: str, timeout: float = 4.0) -> list[Evidence]:
         validate_external_target(url)
-        req = Request(
-            url,
-            method="GET",
-            headers={"User-Agent": "BSA-ASM/0.3 defensive-discovery"},
-        )
         body=b""
         redirect_chain=[]
         try:
-            opener = build_opener(_NoRedirect())
-            with opener.open(req, timeout=timeout) as resp:
-                headers=resp.headers
-                status=resp.status
-                final_url=resp.geturl()
-                validate_redirect(final_url)
-                body=resp.read(131072)
-        except HTTPError as exc:
-            headers = exc.headers
-            status = exc.code
+            status,headers,body,final_url=_pinned_fetch(url,timeout=timeout,max_bytes=131072)
             if 300 <= status < 400:
-                location = headers.get("Location")
+                location=headers.get("Location")
                 if location:
-                    redirect_url = urljoin(url, location)
+                    redirect_url=urljoin(url,location)
                     validate_redirect(redirect_url)
                     redirect_chain.append(redirect_url)
-        except URLError:
+        except (OSError,ValueError,ssl.SSLError,http.client.HTTPException):
             return []
 
         evidence=[Evidence(self.name,url,"http_status",str(status),98)]
         if redirect_chain:
             evidence.append(Evidence(self.name,url,"redirect_chain"," -> ".join(redirect_chain),96,{"chain":redirect_chain}))
         try:
-            import re
             m=re.search(rb"<title[^>]*>(.*?)</title>",body,re.I|re.S)
             title=m.group(1).decode("utf-8","ignore").strip()[:300] if m else ""
             if title:
@@ -700,11 +685,11 @@ class HTTPCollector:
         if body:
             evidence.append(Evidence(self.name,url,"body_sha256",sha256(body).hexdigest(),92))
             text=body.decode("utf-8","ignore")
-            for kind, pattern in ((
-                ("technology:generator", r"<meta[^>]+name=[\'\"]generator[\'\"][^>]+content=[\'\"]([^\'\"]+)"),
-                ("technology:powered-by", r"<meta[^>]+name=[\'\"]powered-by[\'\"][^>]+content=[\'\"]([^\'\"]+)"),
+            for kind,pattern in ((
+                ("technology:generator",r"<meta[^>]+name=['\"]generator['\"][^>]+content=['\"]([^'\"]+)"),
+                ("technology:powered-by",r"<meta[^>]+name=['\"]powered-by['\"][^>]+content=['\"]([^'\"]+)"),
             )):
-                for match in re.finditer(pattern, text, re.I):
+                for match in re.finditer(pattern,text,re.I):
                     value=match.group(1).strip()[:180]
                     if value:
                         evidence.append(Evidence(self.name,url,kind,value,82))
@@ -714,13 +699,11 @@ class HTTPCollector:
         if headers.get("x-powered-by"):
             evidence.append(Evidence(self.name,url,"technology:x-powered-by",headers.get("x-powered-by"),78))
             evidence.extend(_versioned_technology_evidence(url,"x_powered_by",headers.get("x-powered-by","")))
-
-        for header in ("server", "content-type", "strict-transport-security", "x-powered-by"):
-            value = headers.get(header)
+        for header in ("server","content-type","strict-transport-security","x-powered-by"):
+            value=headers.get(header)
             if value:
-                evidence.append(Evidence(self.name, url, f"http_header:{header}", value, 85))
-
-        evidence.extend(_artifact_evidence(url, headers, body))
+                evidence.append(Evidence(self.name,url,f"http_header:{header}",value,85))
+        evidence.extend(_artifact_evidence(url,headers,body))
         if body:
             ctype=(headers.get("content-type") or "").split(";",1)[0].strip().lower()
             kind=ARTIFACT_CONTENT_TYPES.get(ctype)
@@ -728,5 +711,5 @@ class HTTPCollector:
                 evidence.extend(_structured_artifact_evidence(url,kind,body))
                 evidence.extend(artifact_discovery_candidates(url,kind,body))
                 evidence.extend(extract_openapi_inventory(url,body))
-        evidence.extend(security_header_evidence(url, headers))
+        evidence.extend(security_header_evidence(url,headers))
         return evidence
