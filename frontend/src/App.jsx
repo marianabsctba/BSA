@@ -16,11 +16,11 @@ function App(){
  useEffect(()=>{load().catch(()=>setAuthenticated(false))},[]);
  const filtered=useMemo(()=>assets.filter(a=>a.value.toLowerCase().includes(search.toLowerCase())||a.type.toLowerCase().includes(search.toLowerCase())),[assets,search]);
  const trend=useMemo(()=>{const base=dash?.exposure_score??0;return Array.from({length:7},(_,i)=>({day:"D-"+(6-i),score:Math.max(0,Math.round(base+(i-3)*2))}))},[dash]);
- const doLogin=async e=>{e.preventDefault();setLoginError("");const r=await fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(login)});const d=await r.json();if(!r.ok)return setLoginError(d.detail||"Credenciais inválidas");sessionStorage.setItem("bsa_token",d.access_token);setToken(d.access_token)};
+ const doLogin=async e=>{e.preventDefault();setLoginError("");const r=await fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(login)});const d=await r.json();if(!r.ok)return setLoginError(d.detail||"Credenciais inválidas");setAuthenticated(true)};
  const runDiscovery=async()=>{if(!target)return;setDiscovery({loading:true});const r=await req("/api/v1/discovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target,checks:["dns","http","tls","ct","ports"]})});setDiscovery(await r.json())};
  const ask=async()=>{if(!question)return;const r=await req("/api/v1/exposure/copilot?question="+encodeURIComponent(question));setCopilot(await r.json())};
- const logout=()=>{setToken(null)};
- if(!token)return <Login login={login} setLogin={setLogin} onSubmit={doLogin} error={loginError}/>;
+ const logout=async()=>{await req("/api/v1/auth/logout",{method:"POST"});setAuthenticated(false)};
+ if(!authenticated)return <Login login={login} setLogin={setLogin} onSubmit={doLogin} error={loginError}/>;
  return <div className="app-shell">
   <aside className={cx("sidebar",!sidebar&&"collapsed")}><div className="side-brand"><div className="panther"><img src="/assets/bsa-panther.svg" alt="Be Safe"/></div>{sidebar&&<div><b>BE SAFE</b><span>ASM / EXPOSURE</span></div>}</div>
    <nav>{[["overview","Overview",Activity],["easm","EASM",Radar],["vuln","Vulnerabilities",ShieldAlert],["risk","Risk",TriangleAlert],["ctem","CTEM",Target],["policy","Risk Policy",SlidersHorizontal],["tech","Technology",Cpu],["surface","Attack Surface",Globe2],["ctem","CTEM Queue",Waypoints],["assets","Assets",Boxes],["story","Change Storyline",Clock3],["admin","Governance",Layers3]].map(([id,label,Icon])=><button key={id} className={cx("nav-item",active===id&&"active")} onClick={()=>setActive(id)}><Icon size={18}/>{sidebar&&<><span>{label}</span>{id==="ctem"&&ctem.length>0&&<em>{ctem.length}</em>}</>}</button>)}</nav>
