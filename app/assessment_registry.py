@@ -17,6 +17,7 @@ from .assessment_providers import (
     HistoricalUrlProvider,
     HIBPProvider,
     HttpProbeProvider,
+    HudsonRockProvider,
     NmapProvider,
     NucleiProvider,
     PortExposureProvider,
