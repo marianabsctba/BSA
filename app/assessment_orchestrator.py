@@ -33,6 +33,7 @@ PROFILE_CAPABILITIES = {
         "historical_surface",
         "web_surface",
         "web_assessment",
+        "cloud_exposure",
         "vulnerability",
         "service_exposure",
         "cloud_intelligence",
