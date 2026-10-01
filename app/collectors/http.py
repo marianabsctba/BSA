@@ -94,7 +94,7 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
 
 def classify_source_reference(value: str) -> str:
     v=value.lower()
-    if any(x in v for x in ("config","secret","credential","token")): return "sensitive-pattern"
+    if any(x in v for x in ("config","secret","credential","token","admin","internal")): return "sensitive-pattern"
     if any(x in v for x in ("admin","internal","debug","staging","test")): return "high-interest-pattern"
     if any(x in v for x in ("auth","login","session","identity")): return "identity-surface"
     if any(x in v for x in ("api","graphql","client","service")): return "api-surface"
