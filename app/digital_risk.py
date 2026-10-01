@@ -6,6 +6,7 @@ brand abuse, phishing, leaks, VIP exposure, dark web, supply chain and takedown.
 import os, sqlite3, json, time, uuid, hashlib
 from pathlib import Path
 from pydantic import BaseModel, Field
+from .assessment_engine import mask_public_data
 
 DB_PATH=os.getenv("BSA_AUTH_DB",str(Path("/tmp")/"bsa_auth.db"))
 
@@ -51,7 +52,7 @@ def list_events(tenant_id,category=None):
     c=_db(); q="SELECT payload FROM digital_risk WHERE tenant_id=?"; args=[tenant_id]
     if category: q+=" AND json_extract(payload,'$.category')=?"; args.append(category)
     rows=c.execute(q+" ORDER BY updated_at DESC",args).fetchall(); c.close()
-    return [json.loads(r["payload"]) for r in rows]
+    return [mask_public_data(json.loads(r["payload"])) for r in rows]
 
 def create_takedown(tenant_id,event_id,provider,reason,priority):
     tid=str(uuid.uuid4()); now=int(time.time())
