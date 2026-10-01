@@ -1,6 +1,8 @@
 from dataclasses import asdict
 from urllib.parse import urlparse
 from collections import deque
+import os
+import threading
 
 from .collectors.dns import DNSCollector
 from .collectors.http import HTTPCollector
@@ -11,6 +13,10 @@ from .collectors.rdap import RDAPCollector
 from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
 from .security import validate_external_target
+
+
+MAX_DISCOVERY_CONCURRENCY = max(1, min(int(os.getenv("BSA_MAX_DISCOVERY_CONCURRENCY", "4")), 32))
+_DISCOVERY_GATE = threading.BoundedSemaphore(MAX_DISCOVERY_CONCURRENCY)
 
 
 COLLECTORS = {
@@ -41,43 +47,48 @@ def collect_target(target: str, checks: list[str] | None = None) -> dict:
     """Run bounded, explicit-target discovery only. No recursive scanning."""
     hostname, url = normalize_target(target)
     validate_external_target(target)
-    selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap", "ip_intel"]
-    evidence = []
+    if not _DISCOVERY_GATE.acquire(timeout=10):
+        raise RuntimeError("discovery capacity temporarily exhausted")
+    try:
+        selected = checks or ["dns", "http", "tls", "ct", "ports", "rdap", "ip_intel"]
+        evidence = []
 
-    if "dns" in selected:
-        evidence.extend(COLLECTORS["dns"].collect(hostname))
+        if "dns" in selected:
+            evidence.extend(COLLECTORS["dns"].collect(hostname))
 
-    if "http" in selected:
-        evidence.extend(COLLECTORS["http"].collect(url))
+        if "http" in selected:
+            evidence.extend(COLLECTORS["http"].collect(url))
 
-    if "tls" in selected:
-        try:
-            evidence.extend(COLLECTORS["tls"].collect(hostname))
-        except (OSError, ValueError):
-            pass
+        if "tls" in selected:
+            try:
+                evidence.extend(COLLECTORS["tls"].collect(hostname))
+            except (OSError, ValueError):
+                pass
 
-    if "ct" in selected:
-        evidence.extend(COLLECTORS["ct"].collect(hostname))
+        if "ct" in selected:
+            evidence.extend(COLLECTORS["ct"].collect(hostname))
 
-    if "ports" in selected:
-        evidence.extend(COLLECTORS["ports"].collect(hostname))
+        if "ports" in selected:
+            evidence.extend(COLLECTORS["ports"].collect(hostname))
 
-    if "rdap" in selected:
-        evidence.extend(COLLECTORS["rdap"].collect(hostname))
+        if "rdap" in selected:
+            evidence.extend(COLLECTORS["rdap"].collect(hostname))
 
-    if "ip_intel" in selected:
-        for e in list(evidence):
-            if e.get("kind") in {"a_record","aaaa"}:
-                evidence.extend(COLLECTORS["ip_intel"].collect(str(e.get("value"))))
+        if "ip_intel" in selected:
+            for e in list(evidence):
+                if e.get("kind") in {"a_record","aaaa"}:
+                    evidence.extend(COLLECTORS["ip_intel"].collect(str(e.get("value"))))
 
-    return {
-        "target": hostname,
+        return {
+            "target": hostname,
         "url": url,
         "checks": selected,
         "evidence": [asdict(item) for item in evidence],
         "evidence_count": len(evidence),
-        "confidence": round(sum(e.confidence for e in evidence) / len(evidence)) if evidence else 0,
-    }
+            "confidence": round(sum(e.confidence for e in evidence) / len(evidence)) if evidence else 0,
+        }
+    finally:
+        _DISCOVERY_GATE.release()
 
 
 def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dict:
