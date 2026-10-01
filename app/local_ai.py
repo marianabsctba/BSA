@@ -138,3 +138,19 @@ def analyze_api_surface(target, endpoints, technologies=None):
     except json.JSONDecodeError:
         return {"summary":raw,"observed":[],"risk_signals":[],"high_value_endpoints":[],"auth_gaps":[],"unknowns":["Unstructured local AI response"],"validation":[],"confidence":0}
 
+
+def prioritize_collection(target, evidence, deterministic_signals, candidate_checks):
+    system=("You are Be Safe ASM Local Collection Prioritizer. Respond in Brazilian Portuguese. "
+            "Use ONLY supplied evidence, deterministic signals and the listed candidate checks. "
+            "Choose which already-supported checks should run next to maximize defensive information gain while minimizing unnecessary traffic. "
+            "Never invent a check, endpoint, asset, vulnerability or relationship. Never recommend out-of-scope targets. "
+            "Return JSON keys: priorities, rejected_checks, evidence_gaps, rationale, confidence. "
+            "Each priority must include check, reason, triggering_evidence, expected_information_gain and safety.")
+    payload={"target":target,"evidence":evidence[:500],"signals":deterministic_signals,"candidate_checks":candidate_checks}
+    raw=ask(system,"Prioritize collection. JSON only.\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":")))
+    if not raw:return None
+    try:
+        data=json.loads(raw); return data if isinstance(data,dict) else None
+    except json.JSONDecodeError:
+        return {"priorities":[],"rejected_checks":[],"evidence_gaps":["Unstructured local AI response"],"rationale":raw,"confidence":0}
+
