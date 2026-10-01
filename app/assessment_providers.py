@@ -103,12 +103,26 @@ class NucleiProvider(JsonLinesProvider):
         info = item.get("info") or {}
         severity = str(info.get("severity") or "info").lower()
         title = str(info.get("name") or item.get("matcher-name") or "Exposure evidence")
+        classification = info.get("classification") or {}
+        cve = classification.get("cve-id") or classification.get("cve_id")
+        if isinstance(cve, list):
+            cve = next((str(x) for x in cve if str(x).upper().startswith("CVE-")), None)
+        elif cve:
+            cve = str(cve)
+        cvss = classification.get("cvss-score") or classification.get("cvss_score")
+        cpe = classification.get("cpe") or classification.get("cpe23")
+        if isinstance(cpe, list):
+            cpe = cpe[0] if cpe else None
         evidence = {
             "matched_at": item.get("matched-at") or item.get("host"),
             "type": item.get("type"),
             "severity": severity,
             "reference": info.get("reference") or [],
-            "classification": info.get("classification") or {},
+            "classification": classification,
+            "vulnerability_id": cve,
+            "cvss": cvss,
+            "cpe": cpe,
+            "relationship": "vulnerability-validation",
         }
         return ProviderResult(title=title, severity=severity, confidence=92, evidence=evidence)
 
