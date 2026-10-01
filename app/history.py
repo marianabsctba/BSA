@@ -478,6 +478,22 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_action_transition(item: dict, action: str) -> str:
+    """Validate an operational action against the canonical CTEM state machine."""
+    transitions={
+        "new":{"acknowledge":"acknowledged"},
+        "acknowledged":{"start_remediation":"in_progress"},
+        "in_progress":{"submit_for_verification":"resolved"},
+        "resolved":{"verify":"verified"},
+        "verified":{"closed":"verified"},
+    }
+    state=item.get("state")
+    target=transitions.get(state,{}).get(action)
+    if not target:
+        raise ValueError("invalid CTEM action for current state")
+    return target
+
+
 def ctem_next_action(item: dict) -> dict:
     """Derive an operationally safe next action from explicit CTEM state."""
     state=item.get("state")
