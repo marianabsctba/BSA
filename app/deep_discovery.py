@@ -36,5 +36,24 @@ def build_discovery_pivots(values: Iterable[tuple[str,str,str,int,str]]) -> list
         out.append(DiscoveryPivot(kind,value,source,confidence,evidence_ref))
     return out
 
+def derive_network_pivots(pivots: Iterable[DiscoveryPivot]) -> list[DiscoveryPivot]:
+    """Normalize network pivots without performing network access."""
+    rows=[]
+    for p in pivots:
+        if p.kind=="ip":
+            rows.append(("reverse_dns",p.value,p.source,p.confidence,p.evidence_ref))
+        elif p.kind=="asn":
+            rows.append(("asn",p.value.upper(),p.source,p.confidence,p.evidence_ref))
+    return build_discovery_pivots(rows)
+
+def derive_certificate_pivots(pivots: Iterable[DiscoveryPivot], names: Iterable[str]) -> list[DiscoveryPivot]:
+    rows=[]
+    for p in pivots:
+        if p.kind!="certificate":
+            continue
+        for name in names:
+            rows.append(("hostname",name,p.source,p.confidence,p.evidence_ref))
+    return build_discovery_pivots(rows)
+
 def pivot_candidates(pivots: Iterable[DiscoveryPivot], allowed_kinds: set[str]) -> list[DiscoveryPivot]:
     return [p for p in pivots if p.kind in allowed_kinds]
