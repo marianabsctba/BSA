@@ -23,6 +23,7 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, enabled as local_ai_enabled, OLLAMA_MODEL
+from .vulnerability_intelligence import vulnerability_intelligence
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -143,6 +144,28 @@ def asset_detail_view(asset_id: str, request: Request):
     audit(principal, "read", "asset", asset.id)
     return asset_detail(asset, findings, assets)
 
+
+@app.get("/api/v1/vulnerabilities/intelligence")
+def vulnerability_intelligence_api(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    amap={a.id:a for a in assets}
+    rows=[]
+    for f in findings:
+        if f.status!="open": continue
+        intel=vulnerability_intelligence(f,amap.get(f.asset_id))
+        rows.append({"finding":f.model_dump(),"asset":amap.get(f.asset_id).value if amap.get(f.asset_id) else None,"intelligence":asdict(intel)})
+    rows.sort(key=lambda x:x["intelligence"]["priority_score"],reverse=True)
+    return {"summary":{"findings":len(rows),"critical":sum(x["intelligence"]["band"]=="critical" for x in rows),"high":sum(x["intelligence"]["band"]=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
+
+@app.get("/api/v1/vulnerabilities/{finding_id}/intelligence")
+def vulnerability_finding_intelligence(finding_id: str, request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    f=next((x for x in findings if x.id==finding_id),None)
+    if not f: raise HTTPException(status_code=404,detail="finding not found")
+    a=next((x for x in assets if x.id==f.asset_id),None)
+    return {"finding":f.model_dump(),"asset":a.model_dump() if a else None,"intelligence":asdict(vulnerability_intelligence(f,a))}
 
 @app.get("/api/v1/findings")
 def list_findings(request: Request):
