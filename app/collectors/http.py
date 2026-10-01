@@ -411,9 +411,15 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",asset_url,"manifest_asset_analyzed",asset_url,88,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,asset_url))
         evidence.extend(extract_js_literals(js,asset_url))
-        # Discover adjacent source maps referenced by analyzed chunks.
+        # Discover source maps from the standard sourceMappingURL trailer.
+        map_match=re.search(r"""sourceMappingURL\s*=\s*([^\s"'<>]+)""",js[-32768:],re.I)
+        if map_match:
+            map_url=urljoin(asset_url,map_match.group(1).strip())
+            if urlparse(map_url).hostname == urlparse(origin).hostname:
+                evidence.append(Evidence("http",asset_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
+        # Also support quoted .js.map references used by some build loaders.
         for sm in re.finditer(r"""["']([^"']+\.js\.map(?:\?[^"']*)?)["']""",js,re.I):
-            map_url=urljoin(origin,sm.group(1))
+            map_url=urljoin(asset_url,sm.group(1))
             if urlparse(map_url).hostname == urlparse(origin).hostname:
                 evidence.append(Evidence("http",asset_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
     return evidence
