@@ -31,6 +31,7 @@ from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, analyze_attack_paths, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding
+from .vulnerability_evidence import normalize_vulnerability_evidence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
@@ -986,36 +987,11 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         validation_required = bool(evidence.get("validation_required")) if isinstance(evidence, dict) else False
         if validation_required or str(row.get("category") or "") == "candidate_discovery":
             continue
-        classification = evidence.get("classification") if isinstance(evidence, dict) else {}
-        classification = classification if isinstance(classification, dict) else {}
 
-        vulnerability_id = (
-            evidence.get("vulnerability_id")
-            or evidence.get("cve")
-            or classification.get("cve-id")
-            or classification.get("cve_id")
-        )
-        if isinstance(vulnerability_id, list):
-            vulnerability_id = next((str(x) for x in vulnerability_id if str(x).upper().startswith("CVE-")), None)
-        vulnerability_id = str(vulnerability_id).upper() if vulnerability_id else None
-
-        cvss = evidence.get("cvss")
-        if cvss is None:
-            cvss = classification.get("cvss-score") or classification.get("cvss_score")
-        try:
-            cvss = float(cvss) if cvss is not None else None
-        except (TypeError, ValueError):
-            cvss = None
-        if cvss is not None and not 0 <= cvss <= 10:
-            cvss = None
-
-        cpe = evidence.get("cpe")
-        if not cpe:
-            cpes = classification.get("cpe") or classification.get("cpe23") or []
-            if isinstance(cpes, list) and cpes:
-                cpe = str(cpes[0])
-            elif isinstance(cpes, str):
-                cpe = cpes
+        vuln_ctx = normalize_vulnerability_evidence(row)
+        vulnerability_id = vuln_ctx["vulnerability_id"]
+        cvss = vuln_ctx["cvss"]
+        cpe = vuln_ctx["cpe"]
 
         title = str(row.get("title") or "Exposure evidence")
         finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}".encode()).hexdigest()[:16]
@@ -1037,6 +1013,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 cpe=cpe,
                 cvss=cvss,
                 detected_at=now,
+                source_refs=vuln_ctx["references"],
+                false_positive_confidence=vuln_ctx["false_positive_confidence"],
             )
             if finding.vulnerability_id:
                 finding = enrich_finding(finding)
@@ -1050,6 +1028,12 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.cpe = cpe
             if cvss is not None and finding.cvss is None:
                 finding.cvss = cvss
+            finding.false_positive_confidence = min(
+                finding.false_positive_confidence or 100,
+                vuln_ctx["false_positive_confidence"],
+            )
+            if vuln_ctx["references"]:
+                finding.source_refs = sorted(set(finding.source_refs + vuln_ctx["references"]))[:20]
             if finding.vulnerability_id:
                 enriched = enrich_finding(finding)
                 finding.cvss = enriched.cvss
