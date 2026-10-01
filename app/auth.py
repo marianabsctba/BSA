@@ -170,10 +170,12 @@ def revoke_session(principal: Principal, jti: str | None = None) -> None:
     conn.close()
 
 def create_user(principal: Principal, email: str, name: str, password: str, role: str) -> dict:
-    if principal.role not in {"admin", "superadmin"}:
-        raise PermissionError("admin required")
+    if not can(principal, "users:write"):
+        raise PermissionError("users:write required")
     if role not in ROLES:
         raise ValueError("invalid role")
+    if role == "superadmin" and principal.role != "superadmin":
+        raise PermissionError("superadmin role requires superadmin")
     _validate_password(password)
     conn = _db()
     uid = secrets.token_hex(12)
@@ -184,16 +186,17 @@ def create_user(principal: Principal, email: str, name: str, password: str, role
     return {"id": uid, "tenant_id": principal.tenant_id, "email": email.lower(), "name": name, "role": role, "active": True}
 
 def list_users(principal: Principal) -> list[dict]:
-    if principal.role not in {"admin", "superadmin"}:
-        raise PermissionError("admin required")
+    if not can(principal, "users:read"):
+        raise PermissionError("users:read required")
     conn = _db()
     rows = conn.execute("SELECT id,email,name,role,active,created_at FROM users WHERE tenant_id=? ORDER BY name", (principal.tenant_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 def update_user(principal: Principal, user_id: str, name: str, role: str | None = None) -> dict:
-    if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
+    if not can(principal, "users:write"): raise PermissionError("users:write required")
     if role is not None and role not in ROLES: raise ValueError("invalid role")
+    if role == "superadmin" and principal.role != "superadmin": raise PermissionError("superadmin role requires superadmin")
     conn=_db()
     row=conn.execute("SELECT id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
@@ -269,8 +272,8 @@ def audit(principal: Principal, action: str, resource: str, resource_id: str | N
 
 
 def list_audit(principal: Principal, limit: int = 100) -> list[dict]:
-    if principal.role not in {"admin", "superadmin"}:
-        raise PermissionError("admin required")
+    if not can(principal, "users:write"):
+        raise PermissionError("users:write required")
     conn = _db()
     if principal.role == "superadmin":
         rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (min(limit, 500),)).fetchall()
