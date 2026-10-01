@@ -1,6 +1,22 @@
+import os
+import sqlite3
+import json
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+
+
+def _history_db():
+    path=os.getenv("BSA_HISTORY_DB", str(Path("/tmp") / "bsa_history.db"))
+    conn=sqlite3.connect(path, timeout=15)
+    conn.row_factory=sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=15000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE IF NOT EXISTS asset_observations(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_obs_tenant_fp ON asset_observations(tenant_id,fingerprint,observed_at)")
+    conn.commit()
+    return conn
 
 @dataclass(frozen=True)
 class Observation:
@@ -15,7 +31,7 @@ class Observation:
 _HISTORY: dict[str, list[Observation]] = {}
 
 
-def record_observations(assets) -> list[Observation]:
+def record_observations(assets, tenant_id: str = "tenant-demo") -> list[Observation]:
     now = datetime.now(timezone.utc).isoformat()
     observations = []
     for asset in assets:
@@ -27,19 +43,29 @@ def record_observations(assets) -> list[Observation]:
             tuple(asset.sources),
             tuple(asset.tags),
         )
-        previous = _HISTORY.setdefault(asset.fingerprint, [])
+        previous = _HISTORY.setdefault(f"{tenant_id}:{asset.fingerprint}", [])
         if not previous or previous[-1] != obs:
             previous.append(obs)
         observations.append(obs)
+    conn=_history_db()
+    for obs in observations:
+        conn.execute("INSERT OR IGNORE INTO asset_observations(tenant_id,fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json) VALUES(?,?,?,?,?,?,?)",(tenant_id,obs.fingerprint,obs.observed_at,obs.confidence,obs.evidence_count,json.dumps(obs.sources),json.dumps(obs.tags)))
+    conn.commit()
+    conn.close()
     return observations
 
 
-def history_for(fingerprint: str) -> list[Observation]:
-    return list(_HISTORY.get(fingerprint, []))
+def history_for(fingerprint: str, tenant_id: str = "tenant-demo") -> list[Observation]:
+    conn=_history_db()
+    rows=conn.execute("SELECT * FROM asset_observations WHERE tenant_id=? AND fingerprint=? ORDER BY observed_at",(tenant_id,fingerprint)).fetchall()
+    conn.close()
+    if rows:
+        return [Observation(r["fingerprint"],r["observed_at"],r["confidence"],r["evidence_count"],tuple(json.loads(r["sources_json"])),tuple(json.loads(r["tags_json"]))) for r in rows]
+    return list(_HISTORY.get(f"{tenant_id}:{fingerprint}", []))
 
 
-def change_summary(fingerprint: str) -> dict:
-    history = history_for(fingerprint)
+def change_summary(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
+    history = history_for(fingerprint, tenant_id)
     if not history:
         return {"state": "new", "observations": 0, "changes": []}
 
@@ -116,7 +142,7 @@ def _evidence_signature(evidence: list[dict]) -> str:
     ], key=lambda x:(x["kind"],x["subject"],x["value"]))
     return sha256(json.dumps(stable,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()[:20]
 
-def record_lifecycle(assets, evidence: list[dict]) -> list[dict]:
+def record_lifecycle(assets, evidence: list[dict], tenant_id: str = "tenant-demo") -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
     signature = _evidence_signature(evidence)
     out=[]
@@ -147,8 +173,8 @@ def record_lifecycle(assets, evidence: list[dict]) -> list[dict]:
         })
     return out
 
-def lifecycle_for(fingerprint: str) -> dict:
-    history=_LIFECYCLE.get(fingerprint,[])
+def lifecycle_for(fingerprint: str, tenant_id: str = "tenant-demo") -> dict:
+    history=_LIFECYCLE.get(f"{tenant_id}:{fingerprint}",[])
     if not history:
         return {"state":"unknown","observations":0,"timeline":[]}
     return {
