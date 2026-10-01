@@ -42,6 +42,77 @@ ARTIFACT_PATHS = (
     "/manifest.json",
 )
 
+
+COMMON_SURFACE_PATHS = (
+    "/.git/HEAD","/.env","/.env.example","/.well-known/security.txt",
+    "/robots.txt","/sitemap.xml","/swagger.json","/openapi.json",
+    "/api/openapi.json","/api/docs","/docs","/redoc","/graphql",
+    "/health","/healthz","/status","/metrics","/actuator/health",
+    "/server-status","/phpinfo.php","/debug","/admin","/login",
+    "/signin","/dashboard","/config.json","/manifest.json",
+    "/asset-manifest.json","/service-worker.js","/favicon.ico",
+    "/crossdomain.xml","/clientaccesspolicy.xml","/backup.zip",
+    "/backup.tar.gz","/site-backup.zip","/.DS_Store","/package.json",
+)
+
+def _safe_surface_fetch(base_url: str, path: str, timeout: float = 2.5):
+    candidate=urljoin(base_url,path)
+    validate_external_target(candidate)
+    req=Request(candidate,method="GET",headers={"User-Agent":"BSA-ASM/0.3 defensive-surface"})
+    try:
+        opener=build_opener(_NoRedirect())
+        with opener.open(req,timeout=timeout) as resp:
+            return resp.status, resp.headers, resp.read(262144), resp.geturl()
+    except HTTPError as exc:
+        return exc.code, exc.headers, b"", candidate
+    except (URLError,OSError,ValueError):
+        return None, {}, b"", candidate
+
+def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
+    """Bounded same-origin web surface discovery: common files/directories + public JS references."""
+    validate_external_target(url)
+    evidence=[]
+    origin=url.rstrip("/")
+    paths=list(COMMON_SURFACE_PATHS[:max(1,min(max_paths,len(COMMON_SURFACE_PATHS)))])
+    script_urls=[]
+    for path in paths:
+        status,headers,body,final_url=_safe_surface_fetch(origin,path)
+        if status is None: continue
+        kind="surface_path"
+        evidence.append(Evidence("http",origin,kind,path,90,{"status":status,"content_type":headers.get("content-type","")}))
+        if 200 <= status < 300 and body:
+            ctype=(headers.get("content-type") or "").lower()
+            if "javascript" in ctype or path.endswith(".js"):
+                script_urls.append(final_url)
+    status,headers,body,final_url=_safe_surface_fetch(origin,"/")
+    if status and body:
+        html=body.decode("utf-8","ignore")[:1048576]
+        for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+.js(?:?[^'"]*)?)['"]""",html,re.I):
+            src=urljoin(origin,m.group(1))
+            parsed=urlparse(src)
+            base=urlparse(origin)
+            if parsed.scheme in {"http","https"} and parsed.hostname==base.hostname:
+                script_urls.append(src)
+        for m in re.finditer(r"""(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)[^\n]{0,300}?['"](/[^'"]{2,200})['"]""",html,re.I):
+            evidence.append(Evidence("http",origin,"js_endpoint_reference",m.group(1),82,{"source":"inline-js"}))
+    seen=set()
+    for js_url in script_urls[:max_js]:
+        if js_url in seen: continue
+        seen.add(js_url)
+        try:
+            validate_external_target(js_url)
+            req=Request(js_url,method="GET",headers={"User-Agent":"BSA-ASM/0.3 defensive-surface"})
+            with build_opener(_NoRedirect()).open(req,timeout=3.0) as resp:
+                js=resp.read(524288).decode("utf-8","ignore")
+                evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
+                for m in re.finditer(r"""(?:(?:fetch|axios\.(?:get|post|put|patch|delete)|XMLHttpRequest)|['"])(?:\s*\(?\s*)?['"]?((?:/api/|/graphql|/v\d+/)[A-Za-z0-9._~:/?#[\]-]{1,240})""",js,re.I):
+                    evidence.append(Evidence("http",js_url,"js_endpoint_reference",m.group(1),84,{"source":"javascript"}))
+                for m in re.finditer(r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#[\]-]{2,180}(?:json|yaml|xml|config|map))['"]""",js,re.I):
+                    evidence.append(Evidence("http",js_url,"js_artifact_reference",m.group(1),80,{"source":"javascript"}))
+        except (URLError,OSError,ValueError):
+            continue
+    return evidence
+
 def _artifact_evidence(url, headers, body):
     evidence=[]
     content_type=(headers.get("content-type") or "").split(";",1)[0].strip().lower()
