@@ -2,7 +2,7 @@ import os, socket, struct, random
 
 from .base import Evidence
 
-RECORD_TYPES={"A":1,"NS":2,"CNAME":5,"MX":15,"TXT":16,"AAAA":28,"SRV":33}
+RECORD_TYPES={"A":1,"NS":2,"CNAME":5,"MX":15,"TXT":16,"AAAA":28,"SRV":33,"CAA":257}
 
 def _encode_name(name):
     return b"".join(bytes([len(p)])+p.encode() for p in name.rstrip(".").split("."))+b"\x00"
@@ -48,6 +48,11 @@ def _query(name,qtype,server,timeout):
             while p<end:
                 n=data[p];p+=1;chunks.append(data[p:p+n].decode("utf-8","ignore"));p+=n
             value="".join(chunks)
+        elif typ==257 and rdlen>=2:
+            flags=data[off]
+            tag_len=data[off+1]
+            tag=data[off+2:off+2+tag_len].decode("utf-8","ignore")
+            value=f"{flags} {tag} {data[off+2+tag_len:rstart+rdlen].decode("utf-8","ignore")}"
         elif typ==33 and rdlen>=7:
             pri,weight,port=struct.unpack("!HHH",data[off:off+6]); host,_=_read_name(data,off+6); value=f"{pri} {weight} {port} {host}"
         else:value=""
