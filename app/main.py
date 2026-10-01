@@ -12,7 +12,7 @@ from .intelligence import ownership_confidence, blast_radius, finding_context_sc
 from .models import Dashboard
 from .scoring import exposure_score
 from .exposure import exposure_breakdown, exposure_band
-from .discovery import collect_target, discover_surface
+from .discovery import collect_target, discover_surface, adaptive_discovery
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
@@ -22,6 +22,7 @@ from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
+from .discovery_orchestrator import plan_candidate_collection
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
@@ -201,6 +202,22 @@ def asset_detail_view(asset_id: str, request: Request):
     audit(principal, "read", "asset", asset.id)
     return asset_detail(asset, findings, assets)
 
+
+@app.get("/api/v1/discovery/adaptive/{target}")
+def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_assets: int = 40):
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    result=adaptive_discovery(target,max_rounds=max_rounds,max_assets=max_assets)
+    candidates=[{"kind":"hostname","value":x["value"],"confidence":x["confidence"],
+                 "evidence_refs":x["evidence_refs"],"reasons":x["reasons"]} for x in result.get("candidates",[])]
+    plans=plan_candidate_collection(candidates, max_jobs=max_assets)
+    authorized=[p for p in plans if asset_in_scope(principal,p.target)]
+    return {"target":result["seed"],"rounds":result["rounds"],"candidates":candidates,
+            "collection_plan":[{"collector":p.collector,"target_kind":p.target_kind,"target":p.target,
+                                "priority":p.priority,"reason":p.reason} for p in authorized],
+            "summary":{"candidate_count":len(candidates),"planned_jobs":len(authorized),
+                       "max_assets":max_assets,"scope_filtered_jobs":len(plans)-len(authorized)}}
 
 @app.get("/api/v1/discovery/ip-intelligence/{target}")
 def discovery_ip_intelligence(target: str, request: Request):
