@@ -243,11 +243,11 @@ def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: s
         if old["evidence_signature"] != signature:
             reasons.append("evidence_changed")
         if reasons:
-            changed.append({"fingerprint":fp,"value":asset.value,"reasons":reasons})
+            changed.append({"fingerprint":fp,"value":asset.value,"reasons":reasons,"evidence_refs":list(asset.evidence_refs)})
     return {
         "run_id": run_id, "observed_at": now, "previous_run_available": bool(previous),
         "summary": {"added":len(added),"removed":len(removed),"changed":len(changed),"total":len(current_map)},
-        "added": [{"fingerprint":fp,"value":current_map[fp].value} for fp in added],
+        "added": [{"fingerprint":fp,"value":current_map[fp].value,"evidence_refs":list(current_map[fp].evidence_refs)} for fp in added],
         "removed": [{"fingerprint":fp,"value":previous_map[fp]["value"]} for fp in removed],
         "changed": changed,
     }
