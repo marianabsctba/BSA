@@ -37,6 +37,7 @@ from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, Infr
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
+from .nuclei_engine import NucleiEngineError, run_nuclei
 
 bootstrap()
 bootstrap_scope()
@@ -899,6 +900,7 @@ class DiscoveryRequest(BaseModel):
 class DASTRequest(BaseModel):
     target: str = Field(min_length=1, max_length=2048)
     authorization_ref: str = Field(min_length=1, max_length=200)
+    profile: str = Field(default="safe", max_length=20)
 
 
 
@@ -1204,6 +1206,22 @@ def score(request: Request):
         "assets": breakdowns,
     }
 
+
+@app.post("/api/v1/dast/nuclei")
+def dast_nuclei(payload: DASTRequest, request: Request):
+    principal=require(request, "discovery:run")
+    if not payload.authorization_ref.strip():
+        raise HTTPException(status_code=400, detail="authorization_ref is required")
+    if payload.profile not in {"safe", "standard"}:
+        raise HTTPException(status_code=400, detail="unsupported DAST profile")
+    if not asset_in_scope(principal, payload.target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
+    try:
+        return run_nuclei(payload.target, profile=payload.profile)
+    except NucleiEngineError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.post("/api/v1/dast/safe-web")
 def dast_safe_web(payload: DASTRequest, request: Request):
