@@ -1517,9 +1517,12 @@ def ctem_audit_export(item_id: str, request: Request):
         raise HTTPException(status_code=404,detail="CTEM item not found")
     verifications=ctem_verification_history(item_id,principal.tenant_id)
     timeline=ctem_audit_timeline(item,verifications)
+    import hashlib, json
+    canonical=json.dumps(timeline,ensure_ascii=False,sort_keys=True,separators=(",",":"))
+    evidence_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return {"format":"ctem-audit-v1","tenant_id":principal.tenant_id,
             "item_id":item_id,"generated_at":datetime.now(timezone.utc).isoformat(),
-            "timeline":timeline}
+            "evidence_hash_sha256":evidence_hash,"timeline":timeline}
 
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
