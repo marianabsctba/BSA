@@ -328,3 +328,12 @@ def test_ctem_queue_page_is_bounded_and_deterministic():
     assert out["total"]==5
     assert out["total_pages"]==3
     assert len(out["items"])==2
+
+def test_ctem_next_action_follows_safe_state_workflow():
+    from app.history import ctem_next_action
+    assert ctem_next_action({"state":"new"})["action"]=="acknowledge"
+    assert ctem_next_action({"state":"acknowledged"})["action"]=="start_remediation"
+    assert ctem_next_action({"state":"in_progress"})["action"]=="submit_for_verification"
+    assert ctem_next_action({"state":"resolved"})["action"]=="verify"
+    assert ctem_next_action({"state":"verified"})["action"]=="closed"
+    assert ctem_next_action({"state":"resolved"})["requires_evidence"] is True
