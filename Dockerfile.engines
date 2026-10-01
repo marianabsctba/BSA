@@ -2,20 +2,30 @@ FROM ghcr.io/zaproxy/zaproxy:stable AS zap
 
 FROM golang:1.26-bookworm AS engines
 
-RUN GOBIN=/out go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
- && CGO_ENABLED=0 GOBIN=/out go install github.com/owasp-amass/amass/v5/cmd/amass@main \
- && GOBIN=/out go install github.com/projectdiscovery/httpx/cmd/httpx@latest \
- && GOBIN=/out go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
- && GOBIN=/out go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest \
- && GOBIN=/out go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
- && GOBIN=/out go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
- && GOBIN=/out go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest \
- && GOBIN=/out go install github.com/projectdiscovery/katana/cmd/katana@latest \
- && GOBIN=/out go install github.com/lc/gau/v2/cmd/gau@latest \
- && GOBIN=/out go install github.com/trufflesecurity/trufflehog/v3@latest \
- && GOBIN=/out go install github.com/tomnomnom/assetfinder@latest \
- && GOBIN=/out go install github.com/projectdiscovery/alterx/cmd/alterx@latest \
- && GOBIN=/out go install github.com/d3mondev/puredns/v2@latest
+RUN set -eux; \
+    export GOBIN=/out GOPROXY=https://proxy.golang.org,direct GODEBUG=http2client=0; \
+    retry() { \
+      n=0; \
+      until "$@"; do \
+        n=$((n+1)); \
+        if [ "$n" -ge 3 ]; then return 1; fi; \
+        sleep $((n*3)); \
+      done; \
+    }; \
+    retry go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest; \
+    retry env CGO_ENABLED=0 GOBIN=/out GOPROXY="$GOPROXY" GODEBUG="$GODEBUG" go install github.com/owasp-amass/amass/v5/cmd/amass@main; \
+    retry go install github.com/projectdiscovery/httpx/cmd/httpx@latest; \
+    retry go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest; \
+    retry go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest; \
+    retry go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest; \
+    retry go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest; \
+    retry go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest; \
+    retry go install github.com/projectdiscovery/katana/cmd/katana@latest; \
+    retry go install github.com/lc/gau/v2/cmd/gau@latest; \
+    retry go install github.com/trufflesecurity/trufflehog/v3@latest; \
+    retry go install github.com/tomnomnom/assetfinder@latest; \
+    retry go install github.com/projectdiscovery/alterx/cmd/alterx@latest; \
+    retry go install github.com/d3mondev/puredns/v2@latest
 
 FROM debian:bookworm-slim AS massdns
 RUN apt-get update \
