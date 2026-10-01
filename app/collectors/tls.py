@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 
 from .base import Evidence
-from ..security import validate_external_target
+from ..security import validate_external_target, _public_ip, resolve_public
 
 
 def classify_certificate_expiry(expiry: datetime, now: datetime | None = None) -> tuple[str,float]:
@@ -15,10 +15,16 @@ def classify_certificate_expiry(expiry: datetime, now: datetime | None = None) -
 class TLSCollector:
     name = "tls"
 
-    def collect(self, target: str, port: int = 443, timeout: float = 3.0) -> list[Evidence]:
+    def collect(self, target: str, port: int = 443, timeout: float = 3.0, approved_ips: list[str] | None = None) -> list[Evidence]:
         host, _ = validate_external_target(target)
+        ips=list(approved_ips) if approved_ips is not None else resolve_public(host)
+        if not ips:
+            return []
+        ip=ips[0]
+        if not _public_ip(ip):
+            return []
         context = ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=timeout) as sock:
+        with socket.create_connection((ip, port), timeout=timeout) as sock:
             with context.wrap_socket(sock, server_hostname=host) as tls:
                 cert = tls.getpeercert()
                 der = tls.getpeercert(binary_form=True)
