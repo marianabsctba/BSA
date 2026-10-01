@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1530,6 +1530,14 @@ def ctem_audit_export(item_id: str, request: Request):
     return {"format":"ctem-audit-v1","tenant_id":principal.tenant_id,
             "item_id":item_id,"generated_at":datetime.now(timezone.utc).isoformat(),
             "integrity":integrity,"outcome":outcome,"timeline":timeline,"diffs":diffs}
+
+@app.get("/api/v1/ctem/queue")
+def ctem_queue_page_api(request: Request, state: str | None = None, bucket: str | None = None,
+                        min_leverage: int | None = None, page: int = 1, page_size: int = 50):
+    principal=require(request,"findings:read")
+    items=list_ctem_items(principal.tenant_id)
+    filtered=ctem_queue_filter(items,state=state,bucket=bucket,min_leverage=min_leverage)
+    return ctem_queue_page(filtered,page=page,page_size=page_size)
 
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
