@@ -6,6 +6,7 @@ from .collectors.dns import DNSCollector
 from .collectors.http import HTTPCollector
 from .collectors.tls import TLSCollector
 from .collectors.certificate_transparency import CertificateTransparencyCollector
+from .correlation import correlate_evidence
 
 
 COLLECTORS = {
