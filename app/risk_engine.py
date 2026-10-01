@@ -103,3 +103,35 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     else: controls=[]
     band="critical" if score>=85 else "high" if score>=70 else "medium" if score>=45 else "low"
     return RiskAssessment(score,band,likelihood,impact,exposure,exploit,business,confidence,drivers,controls)
+
+def prioritize_surface_change(change: dict, asset: Asset | None, findings: list[Finding]) -> dict:
+    """Turn an evidence-backed surface change into a CTEM work item."""
+    relevant=[f for f in findings if getattr(f,"asset_id",None)==getattr(asset,"id",None)
+             and getattr(f,"status","open")=="open"]
+    assessments=[assess_ctem_priority(f,asset) for f in relevant]
+    best=max(assessments,key=lambda x:x["priority"],default=None)
+    exposure=int(change.get("exposure_score",0) or 0)
+    risk=int(change.get("risk_score",0) or 0)
+    evidence_backed=bool(change.get("fingerprint")) and (
+        bool(change.get("evidence_refs")) or bool(change.get("reasons"))
+    )
+    delta=max(risk, exposure)
+    if best:
+        delta=max(delta, int(best["priority"]))
+    if not evidence_backed:
+        return {
+            "state":"insufficient_evidence",
+            "priority":0,
+            "action":"validate",
+            "drivers":["mudança sem evidência suficiente para priorização"],
+        }
+    action="immediate" if delta>=85 else "expedite" if delta>=70 else "plan" if delta>=45 else "monitor"
+    return {
+        "state":"prioritized",
+        "priority":min(100,delta),
+        "action":action,
+        "exposure_score":exposure,
+        "risk_score":risk,
+        "finding_priority":best["priority"] if best else 0,
+        "drivers":(best["drivers"] if best else []) + list(change.get("rationale",[])),
+    }
