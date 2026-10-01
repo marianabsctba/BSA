@@ -25,7 +25,7 @@ from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
-from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, enabled as local_ai_enabled, OLLAMA_MODEL
+from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
 from .risk_engine import assess_risk, normalize_cpe, cpe_product
@@ -213,6 +213,21 @@ def discovery_ip_intelligence(target: str, request: Request):
             "evidence_count":data["evidence_count"]}
 
 
+
+
+@app.get("/api/v1/discovery/ai-identity/{target}")
+def discovery_ai_identity(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct","rdap"])
+    assets=correlate_evidence(target,data["evidence"])
+    payload=[{"fingerprint":a.fingerprint,"value":a.value,"asset_type":a.asset_type,
+              "confidence":a.confidence,"sources":list(a.sources),"evidence_count":a.evidence_count,
+              "tags":list(a.tags)} for a in assets]
+    result=validate_asset_identity(payload,data["evidence"])
+    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
+            "assets":payload,"evidence_count":data["evidence_count"],"identity_validation":result}
 
 @app.get("/api/v1/discovery/ai-prioritize/{target}")
 def discovery_ai_prioritize(target: str, request: Request):
