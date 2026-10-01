@@ -355,7 +355,7 @@ def detect_js_technology_fingerprints(js: str, url: str, max_items: int = 100) -
     low=text_body.lower()
     out=[]
     signatures=[
-        ("react", r"react\.transitional\.element", r"(?:react|react-dom)[^\n]{0,180}?(\d+\.\d+(?:\.\d+)?)"),
+        ("react", r"(?:react\.transitional\.element|React\\.(?:Fragment|Component|StrictMode|Suspense)|__REACT_DEVTOOLS_GLOBAL_HOOK__)", r"(?:react|react-dom)[^\n]{0,180}?(\d+\.\d+(?:\.\d+)?)"),
         ("react-dom", r"react-dom", r"react-dom[^\n]{0,180}?(\d+\.\d+(?:\.\d+)?)"),
         ("vue", r"vue", r"vue[^\n]{0,180}?(\d+\.\d+(?:\.\d+)?)"),
         ("angular", r"angular", r"angular[^\n]{0,180}?(\d+\.\d+(?:\.\d+)?)"),
