@@ -1551,12 +1551,14 @@ def ctem_queue(request: Request, state: str | None = None):
 def ctem_verify(item_id: str, request: Request, payload: dict):
     principal=require(request,"remediation:write")
     try:
-        return verify_ctem_item(
+        result=verify_ctem_item(
             item_id, principal.tenant_id,
             str(payload.get("result","")),
             list(payload.get("evidence_refs") or []),
             str(payload.get("notes","")),
-        )
+        )        audit(principal,"ctem_verification","ctem",item_id,{"result":str(payload.get("result","")),"evidence_count":len(list(payload.get("evidence_refs") or []))})
+        return result
+
     except KeyError:
         raise HTTPException(status_code=404,detail="CTEM item not found")
     except ValueError as exc:
