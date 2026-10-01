@@ -111,4 +111,10 @@ def run_safe_web_assessment(target: str) -> dict:
                 nxt=urljoin(candidate,ref)
                 if urlparse(nxt).hostname == parsed.hostname and nxt not in seen and len(queue)<30:
                     queue.append(nxt)
-    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"api_inventory":api_inventory,"api_validation":api_validation,"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
+    evidence=[asdict(x) for x in security_header_evidence(url,headers)]
+    for item in api_validation:
+        if item.get("status") == "template":
+            evidence.append({"check":"api_template","severity":"info","title":"API path requires explicit parameter value","evidence":item["path"],"confidence":100})
+        elif isinstance(item.get("status"), int):
+            evidence.append({"check":"api_status","severity":"info","title":"Documented GET API validated","evidence":f"{item["method"]} {item["path"]} -> {item["status"]}","confidence":90})
+    return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"api_inventory":api_inventory,"api_validation":api_validation,"evidence":evidence,"body_bytes_observed":len(body)}
