@@ -134,3 +134,22 @@ def test_materialize_ctem_from_evidence_backed_surface_diff(tmp_path, monkeypatc
     assert out[0]["state"] == "new"
     assert out[0]["priority"] >= 90
     assert history.list_ctem_items("tenant-b") == []
+
+def test_ctem_verification_requires_evidence_and_reopens_on_failed_retest(tmp_path, monkeypatch):
+    from app import history
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "verify.db"))
+    item=history.upsert_ctem_item({"asset_id":"a","priority":90,"action":"immediate","title":"x",
+        "drivers":["exposure"],"evidence_refs":["e:1"]},"tenant-v")
+    history.update_ctem_state(item["item_id"],"tenant-v","acknowledged")
+    history.update_ctem_state(item["item_id"],"tenant-v","in_progress")
+    history.update_ctem_state(item["item_id"],"tenant-v","resolved")
+    try:
+        history.verify_ctem_item(item["item_id"],"tenant-v","passed",[])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("verification without evidence was accepted")
+    failed=history.verify_ctem_item(item["item_id"],"tenant-v","failed",["retest:1"],"condition still present")
+    assert failed["state"] == "in_progress"
+    passed=history.verify_ctem_item(item["item_id"],"tenant-v","passed",["retest:2"],"condition removed")
+    assert passed["state"] == "verified"
