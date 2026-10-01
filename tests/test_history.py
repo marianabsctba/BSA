@@ -266,3 +266,16 @@ def test_ctem_verification_history_is_tenant_scoped(tmp_path, monkeypatch):
     history.verify_ctem_item("ctem-1","tenant-a","passed",["retest:1"],"fixed")
     assert history.ctem_verification_history("ctem-1","tenant-a")[0]["result"]=="passed"
     assert history.ctem_verification_history("ctem-1","tenant-b")==[]
+
+def test_ctem_audit_diff_reports_measurable_changes_and_evidence():
+    from app.history import ctem_audit_diff
+    before={"state":"in_progress","priority":85,"leverage_score":80,
+            "paths_affected":3,"evidence_refs":["finding:e1"]}
+    after={"state":"verified","priority":40,"leverage_score":20,
+           "paths_affected":1,"evidence_refs":["finding:e1","retest:e2"]}
+    out=ctem_audit_diff(before,after)
+    assert out["state_changed"] is True
+    assert out["risk_reduced"] is True
+    assert out["evidence_added"]==["retest:e2"]
+    assert out["evidence_removed"]==[]
+    assert out["changed_fields"]["priority"]=={"before":85,"after":40}
