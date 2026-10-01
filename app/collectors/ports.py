@@ -6,9 +6,9 @@ COMMON_PORTS=(21,22,25,53,80,110,143,443,445,465,587,993,995,1433,1521,2049,3306
 
 class PortCollector:
     name="ports"
-    def collect(self,target:str,timeout:float=0.45,ports=COMMON_PORTS)->list[Evidence]:
+    def collect(self,target:str,timeout:float=0.45,ports=COMMON_PORTS,approved_ips: list[str] | None = None)->list[Evidence]:
         try:
-            ips=resolve_public(target)
+            ips=list(approved_ips) if approved_ips is not None else resolve_public(target)
         except ValueError:
             return []
         if not ips:
