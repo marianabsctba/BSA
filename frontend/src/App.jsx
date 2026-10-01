@@ -6,20 +6,20 @@ const api="";
 const cx=(...x)=>x.filter(Boolean).join(" ");
 const esc=(v)=>String(v??"");
 async function req(path,opts={}){
- const h=new Headers(opts.headers||{});const t=sessionStorage.getItem("bsa_token");if(t)h.set("Authorization","Bearer "+t);
- const r=await fetch(api+path,{...opts,headers:h});if(r.status===401){sessionStorage.removeItem("bsa_token");location.reload()}return r;
+ const h=new Headers(opts.headers||{});
+ const r=await fetch(api+path,{...opts,headers:h,credentials:"include"});if(r.status===401){location.reload()}return r;
 }
 function App(){
- const[token,setToken]=useState(sessionStorage.getItem("bsa_token"));
+ const[authenticated,setAuthenticated]=useState(true);
  const[me,setMe]=useState(null),[dash,setDash]=useState(null),[assets,setAssets]=useState([]),[exposure,setExposure]=useState([]),[ctem,setCtem]=useState([]),[impact,setImpact]=useState([]),[story,setStory]=useState([]),[selected,setSelected]=useState(null),[mssp,setMssp]=useState({tenants:[],summary:{}}),[msspTrend,setMsspTrend]=useState({tenants:[]}),[controls,setControls]=useState({coverage:{},controls:[],choke_points:[]}),[aiStatus,setAiStatus]=useState(null),[pathAI,setPathAI]=useState(null),[pathAILoading,setPathAILoading]=useState(false),[drp,setDrp]=useState({events:[],summary:{}}),[brandAI,setBrandAI]=useState(null),[infra,setInfra]=useState(null),[infraGraph,setInfraGraph]=useState(null),[easm,setEasm]=useState({summary:{},inventory:[],changes:{},risk:{}}),[graph,setGraph]=useState({nodes:[],edges:[],top_risk_paths:[]}),[search,setSearch]=useState(""),[active,setActive]=useState("overview"),[loading,setLoading]=useState(false),[sidebar,setSidebar]=useState(true),[target,setTarget]=useState(""),[discovery,setDiscovery]=useState(null),[question,setQuestion]=useState(""),[copilot,setCopilot]=useState(null),[login,setLogin]=useState({email:"",password:""}),[loginError,setLoginError]=useState("");
  const load=async()=>{setLoading(true);try{const [m,d,a,e,c,b,s,g,mssp,msspTrend,controls,aiStatus,drp,easm]=await Promise.all([req("/api/v1/auth/me"),req("/api/v1/dashboard"),req("/api/v1/radar"),req("/api/v1/exposure"),req("/api/v1/exposure/ctem"),req("/api/v1/exposure/business-impact"),req("/api/v1/exposure/storyline"),req("/api/v1/graph"),req("/api/v1/mssp/command-center"),req("/api/v1/mssp/command-center/trend"),req("/api/v1/graph/control-coverage"),req("/api/v1/exposure/ai/status"),req("/api/v1/digital-risk"),req("/api/v1/easm/overview")]);setMe(await m.json());setDash(await d.json());setAssets((await a.json()).assets||[]);setExposure(await e.json());setCtem((await c.json()).items||[]);setImpact((await b.json()).items||[]);setStory((await s.json()).events||[]);setGraph(await g.json());setMssp(mssp.ok?await mssp.json():{tenants:[],summary:{}});setMsspTrend(msspTrend.ok?await msspTrend.json():{tenants:[]});setControls(controls.ok?await controls.json():{coverage:{},controls:[],choke_points:[]});setAiStatus(aiStatus.ok?await aiStatus.json():null);setDrp(drp.ok?await drp.json():{events:[],summary:{}});setEasm(easm.ok?await easm.json():{summary:{},inventory:[],changes:{},risk:{}})}finally{setLoading(false)}};
- useEffect(()=>{if(token)load()},[token]);
+ useEffect(()=>{load().catch(()=>setAuthenticated(false))},[]);
  const filtered=useMemo(()=>assets.filter(a=>a.value.toLowerCase().includes(search.toLowerCase())||a.type.toLowerCase().includes(search.toLowerCase())),[assets,search]);
  const trend=useMemo(()=>{const base=dash?.exposure_score??0;return Array.from({length:7},(_,i)=>({day:"D-"+(6-i),score:Math.max(0,Math.round(base+(i-3)*2))}))},[dash]);
  const doLogin=async e=>{e.preventDefault();setLoginError("");const r=await fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(login)});const d=await r.json();if(!r.ok)return setLoginError(d.detail||"Credenciais inválidas");sessionStorage.setItem("bsa_token",d.access_token);setToken(d.access_token)};
  const runDiscovery=async()=>{if(!target)return;setDiscovery({loading:true});const r=await req("/api/v1/discovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target,checks:["dns","http","tls","ct","ports"]})});setDiscovery(await r.json())};
  const ask=async()=>{if(!question)return;const r=await req("/api/v1/exposure/copilot?question="+encodeURIComponent(question));setCopilot(await r.json())};
- const logout=()=>{sessionStorage.removeItem("bsa_token");setToken(null)};
+ const logout=()=>{setToken(null)};
  if(!token)return <Login login={login} setLogin={setLogin} onSubmit={doLogin} error={loginError}/>;
  return <div className="app-shell">
   <aside className={cx("sidebar",!sidebar&&"collapsed")}><div className="side-brand"><div className="panther"><img src="/assets/bsa-panther.svg" alt="Be Safe"/></div>{sidebar&&<div><b>BE SAFE</b><span>ASM / EXPOSURE</span></div>}</div>
