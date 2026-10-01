@@ -42,6 +42,12 @@ class TLSCollector:
                 evidence.append(Evidence(self.name, target, "certificate_issuer", issuer["commonName"], 98))
             if not_after:
                 expiry = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-                evidence.append(Evidence(self.name, target, "certificate_expires", expiry.isoformat(), 99))
+                now=datetime.now(timezone.utc)
+                days=(expiry-now).total_seconds()/86400
+                evidence.append(Evidence(self.name, target, "certificate_expires", expiry.isoformat(), 99,
+                                          {"days_remaining":round(days,1),"expired":days < 0}))
+                evidence.append(Evidence(self.name,target,"certificate_expiry_status",
+                                          "expired" if days < 0 else "expiring_soon" if days <= 30 else "valid",99,
+                                          {"days_remaining":round(days,1)}))
 
         return evidence
