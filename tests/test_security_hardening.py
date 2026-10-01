@@ -22,3 +22,19 @@ def test_security_headers_are_present():
     assert response.headers["x-content-type-options"]=="nosniff"
     assert response.headers["x-frame-options"]=="DENY"
     assert response.headers["referrer-policy"]=="no-referrer"
+
+
+def test_cookie_mutation_requires_csrf_marker():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client=TestClient(app)
+    blocked=client.post("/api/v1/auth/logout",cookies={"bsa_session":"invalid-session"})
+    assert blocked.status_code==403
+    assert blocked.json()["detail"]=="csrf request marker required"
+
+    marked=client.post(
+        "/api/v1/auth/logout",
+        cookies={"bsa_session":"invalid-session"},
+        headers={"X-Requested-With":"BeSafeASM"},
+    )
+    assert marked.status_code==401
