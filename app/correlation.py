@@ -3,6 +3,7 @@ from hashlib import sha256
 from urllib.parse import urlparse
 
 from .models import AssetType
+from .asset_identity import evidence_reference, normalize_asset_value, provenance_confidence
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class CorrelatedAsset:
     sources: tuple[str, ...]
     evidence_count: int
     tags: tuple[str, ...]
+    evidence_refs: tuple[str, ...] = ()
 
 
 def _fingerprint(asset_type: str, value: str) -> str:
@@ -24,37 +26,58 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
     """Collapse duplicate observations into stable asset identities."""
     grouped: dict[tuple[str, str], dict] = {}
 
-    def add(asset_type: str, value: str, source: str, confidence: int, tags=()):
-        if not value:
+    def add(asset_type: str, value: str, source: str, confidence: int, tags=(), evidence_ref: str | None = None):
+        normalized = normalize_asset_value(asset_type, value)
+        if not normalized:
             return
-        key = (asset_type, value.lower().strip())
-        item = grouped.setdefault(key, {"sources": set(), "confidence": [], "count": 0, "tags": set()})
+        key = (asset_type, normalized)
+        item = grouped.setdefault(
+            key,
+            {"sources": set(), "confidence": [], "count": 0, "tags": set(), "evidence_refs": set()},
+        )
         item["sources"].add(source)
         item["confidence"].append(confidence)
         item["count"] += 1
         item["tags"].update(tags)
+        if evidence_ref:
+            item["evidence_refs"].add(evidence_ref)
 
-    add(AssetType.DOMAIN.value, target, "target", 100, ("seed",))
+    add(
+        AssetType.DOMAIN.value,
+        target,
+        "target",
+        100,
+        ("seed",),
+        f"target:domain:{normalize_asset_value(AssetType.DOMAIN.value, target)}",
+    )
     for item in evidence:
         source = str(item.get("source", "unknown"))
         value = str(item.get("value", "")).strip()
         kind = str(item.get("kind", ""))
         confidence = int(item.get("confidence", 0) or 0)
+        evidence_ref = evidence_reference(item, source, kind, value)
 
         if kind == "certificate_name":
-            add(AssetType.SUBDOMAIN.value, value, source, confidence, ("certificate-derived",))
+            add(
+                AssetType.SUBDOMAIN.value,
+                value,
+                source,
+                confidence,
+                ("certificate-derived",),
+                evidence_ref,
+            )
         elif kind == "http_status" or kind.startswith("http_header:") or kind.startswith("security_header:") or kind in {"page_title","body_sha256","redirect_chain"} or kind.startswith("technology:"):
             host = urlparse(str(item.get("subject", ""))).hostname or value
-            add(AssetType.APPLICATION.value, host, source, confidence, ("web-exposed",))
+            add(AssetType.APPLICATION.value, host, source, confidence, ("web-exposed",), evidence_ref)
             if kind == "redirect_chain":
                 for hop in str(value).split(" -> "):
                     host2=urlparse(hop).hostname
                     if host2:
-                        add(AssetType.DOMAIN.value, host2, source, confidence, ("redirect-derived",))
+                        add(AssetType.DOMAIN.value, host2, source, confidence, ("redirect-derived",), evidence_ref)
         elif kind in {"a", "aaaa", "a_record", "aaaa_record"}:
-            add(AssetType.IP.value, value, source, confidence, ("dns-resolved",))
+            add(AssetType.IP.value, value, source, confidence, ("dns-resolved",), evidence_ref)
         elif kind in {"cname", "mx", "ns", "srv", "txt", "caa"}:
-            add(AssetType.SERVICE.value, value, source, confidence, ("dns-related",))
+            add(AssetType.SERVICE.value, value, source, confidence, ("dns-related",), evidence_ref)
 
     # Merge the same hostname observed through different collectors.
     # A web observation upgrades a certificate-only hostname to an application asset
@@ -77,6 +100,7 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
                 "confidence": [],
                 "count": 0,
                 "tags": set(),
+                "evidence_refs": set(),
             },
         )
         current["types"].append(asset_type)
@@ -84,13 +108,12 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
         current["confidence"].extend(item["confidence"])
         current["count"] += item["count"]
         current["tags"].update(item["tags"])
+        current["evidence_refs"].update(item["evidence_refs"])
 
     result = []
     for value, item in sorted(merged.items()):
         asset_type = max(item["types"], key=lambda t: type_priority.get(t, 0))
-        avg = round(sum(item["confidence"]) / len(item["confidence"]))
-        if len(item["sources"]) >= 3:
-            avg = min(100, avg + 5)
+        avg = provenance_confidence(item["confidence"], len(item["sources"]), item["count"])
         result.append(
             CorrelatedAsset(
                 fingerprint=_fingerprint(asset_type, value),
@@ -100,6 +123,7 @@ def correlate_evidence(target: str, evidence: list[dict]) -> list[CorrelatedAsse
                 sources=tuple(sorted(item["sources"])),
                 evidence_count=item["count"],
                 tags=tuple(sorted(item["tags"])),
+                evidence_refs=tuple(sorted(item["evidence_refs"])),
             )
         )
     return result
