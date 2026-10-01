@@ -16,6 +16,7 @@ def test_tls_collector_connects_to_approved_ip(monkeypatch):
             assert server_hostname=="example.org"
             return FakeTLS()
     monkeypatch.setattr("app.collectors.tls.ssl.create_default_context",lambda:FakeContext())
+    monkeypatch.setattr("app.collectors.tls._public_ip",lambda ip:True)
     monkeypatch.setattr("app.collectors.tls.socket.create_connection",lambda addr,timeout: calls.append(addr) or FakeSocket())
     TLSCollector().collect("example.org",approved_ips=["203.0.113.10"])
     assert calls == [("203.0.113.10",443)]
