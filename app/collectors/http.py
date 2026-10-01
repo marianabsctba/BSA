@@ -1,6 +1,6 @@
 from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
 from urllib.error import URLError, HTTPError
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import re
 import json
 from hashlib import sha256
