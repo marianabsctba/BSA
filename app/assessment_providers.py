@@ -752,6 +752,88 @@ class HIBPProvider:
         ]
 
 
+class HudsonRockProvider:
+    name = "hudsonrock"
+    timeout = 15
+
+    def available(self) -> bool:
+        return bool(os.getenv("BSA_HUDSON_ROCK_API_KEY", "").strip())
+
+    def supports(self, target: str) -> bool:
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        return bool(parsed.hostname)
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        api_key = os.getenv("BSA_HUDSON_ROCK_API_KEY", "").strip()
+        if not api_key:
+            return []
+        parsed = urlparse(target if "://" in target else f"https://{target}")
+        domain = (parsed.hostname or "").lower()
+        if not domain:
+            return []
+        endpoint = SOURCES["hudson_rock"].endpoint
+        req = Request(
+            endpoint,
+            data=json.dumps({"domain": domain}).encode(),
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "api-key": api_key,
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=self.timeout) as response:
+                raw = response.read(1048576)
+        except HTTPError as exc:
+            if exc.code in {401, 403, 404}:
+                return []
+            raise
+        try:
+            data = json.loads(raw.decode("utf-8", "ignore"))
+        except ValueError:
+            return []
+        rows = data.get("data") or data.get("stealers") or []
+        if not isinstance(rows, list) or not rows:
+            return []
+
+        families = set()
+        compromised_dates = []
+        stealer_count = 0
+        credential_count = 0
+        for row in rows[:200]:
+            if not isinstance(row, dict):
+                continue
+            stealer_count += 1
+            family = row.get("stealer_family")
+            if family:
+                families.add(str(family))
+            date = row.get("date_compromised")
+            if date:
+                compromised_dates.append(str(date))
+            credentials = row.get("credentials") or []
+            if isinstance(credentials, list):
+                credential_count += len(credentials)
+
+        return [
+            ProviderResult(
+                "Infostealer exposure detected",
+                "high",
+                94,
+                {
+                    "asset": domain,
+                    "stealer_log_count": stealer_count,
+                    "credential_count": credential_count,
+                    "stealer_families": sorted(families)[:20],
+                    "first_seen": min(compromised_dates) if compromised_dates else None,
+                    "last_seen": max(compromised_dates) if compromised_dates else None,
+                    "redacted": True,
+                    "relationship": "credential-exposure",
+                },
+            )
+        ]
+
+
 class OpenVASProvider:
     name = "openvas"
     timeout = 180
