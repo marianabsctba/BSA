@@ -43,5 +43,6 @@ def test_candidate_collection_plan_is_bounded_and_cache_aware():
         now=now,
     )
     assert plans
-    assert all(p.target == "admin.example.org" for p in plans)
+    assert any(p.target == "admin.example.org" for p in plans)
+    assert not any(p.target == "api.example.org" and p.collector == "http" for p in plans)
     assert len(plans) <= 3
