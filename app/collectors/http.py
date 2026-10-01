@@ -237,26 +237,25 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     signatures=[
         ("nextjs",("__next_data__","/_next/")),
         ("vite",("/@vite/client","vite/")),
-        ("webpack",("webpackjsonp","webpack-runtime","webpack")),
-        ("angular",("ng-version","runtime.","main.")),
-        ("react",("react","react-dom")),
+        ("webpack",("webpackjsonp","webpack-runtime")),
+        ("angular",("ng-version",)),
+        ("react",("react-dom",)),
         ("nuxt",("__nuxt__","/_nuxt/")),
-        ("svelte",("__svelte","svelte")),
+        ("svelte",("__svelte",)),
     ]
     for framework,needles in signatures:
         hits=[n for n in needles if n in low]
         if hits:
             markers.append(Evidence("http",url,"frontend_framework_marker",framework,82,{"markers":hits}))
-    asset_patterns=[
-        r"""['"]([^'"]+/_next/static/[^'"]+\.js[^'"]*)['"]""",
-        r"""['"]([^'"]+/_nuxt/[^'"]+\.js[^'"]*)['"]""",
-        r"""['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*\.js(?:\?[^'"]*)?)['"]""",
+    patterns=[
+        r"""['"]([^'"]+/_next/static/[^'"]+.js[^'"]*)['"]""",
+        r"""['"]([^'"]+/_nuxt/[^'"]+.js[^'"]*)['"]""",
+        r"""['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*.js(?:?[^'"]*)?)['"]""",
     ]
-    for pattern in asset_patterns:
+    for pattern in patterns:
         for m in re.finditer(pattern,text_body,re.I):
             markers.append(Evidence("http",url,"frontend_build_asset",m.group(1),84,{"source":"html"}))
     return markers[:200]
-
 def discover_web_surface'()*+,;=%-]{3,400})['"]""","js_url_literal"),
         (r"""['"]((?:/api/|/graphql|/oauth|/auth|/login|/admin|/internal|/health|/metrics)[A-Za-z0-9._~:/?#\[\]-]{0,300})['"]""","js_route_literal"),
         (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#\[\]-]{2,240}\.(?:json|yaml|yml|xml|txt|config|map|wasm))['"]""","js_file_reference"),
