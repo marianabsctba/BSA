@@ -1508,6 +1508,19 @@ def ctem_audit(item_id: str, request: Request):
     verifications=ctem_verification_history(item_id,principal.tenant_id)
     return {"item_id":item_id,"timeline":ctem_audit_timeline(item,verifications)}
 
+@app.get("/api/v1/ctem/{item_id}/audit/export")
+def ctem_audit_export(item_id: str, request: Request):
+    principal=require(request,"findings:read")
+    items=list_ctem_items(principal.tenant_id)
+    item=next((x for x in items if x.get("item_id")==item_id),None)
+    if item is None:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    verifications=ctem_verification_history(item_id,principal.tenant_id)
+    timeline=ctem_audit_timeline(item,verifications)
+    return {"format":"ctem-audit-v1","tenant_id":principal.tenant_id,
+            "item_id":item_id,"generated_at":datetime.now(timezone.utc).isoformat(),
+            "timeline":timeline}
+
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
     principal=require(request,"findings:read")
