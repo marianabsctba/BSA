@@ -254,7 +254,7 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     low=text_body.lower()
     markers=[]
     signatures=[
-        ("nextjs",("__next_data__","__next_data__","/_next/")),
+        ("nextjs",("__next_data__","/_next/")),
         ("vite",("/@vite/client","vite/")),
         ("webpack",("webpackjsonp","webpack-runtime")),
         ("angular",("ng-version",)),
@@ -266,15 +266,13 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
         hits=[n for n in needles if n in low]
         if hits:
             markers.append(Evidence("http",url,"frontend_framework_marker",framework,82,{"markers":hits}))
-    patterns=[
-        r'''['"]([^'"]+/_next/static/[^'"]+\.js[^'"]*)['"]''',
-        r'''['"]([^'"]+/_nuxt/[^'"]+\.js[^'"]*)['"]''',
-        r'''['"]([^'"]+(?:runtime|main|polyfills|vendor)[^'"]*\.js(?:\?[^'"]*)?)['"]''',
-    ]
-    for pattern in patterns:
-        for m in re.finditer(pattern,text_body,re.I):
-            markers.append(Evidence("http",url,"frontend_build_asset",m.group(1),84,{"source":"html"}))
+    pattern=r"""<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
+    for m in re.finditer(pattern,text_body,re.I):
+        src=m.group(1)
+        if any(x in src.lower() for x in ("/_next/","/_nuxt/","runtime","main","polyfills","vendor")):
+            markers.append(Evidence("http",url,"frontend_build_asset",src,84,{"source":"html"}))
     return markers[:200]
+
 
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery."""
