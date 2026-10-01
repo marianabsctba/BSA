@@ -226,10 +226,29 @@ def classify_surface_candidate(response: dict, baseline: dict) -> str:
 
 
 def extract_js_literals(js: str, source_url: str, max_items: int = 500) -> list[Evidence]:
-    """Extract non-executed, same-origin-relevant literals from public JS bundles."""
+    """Extract non-executed literals from public JS bundles."""
     out=[]; seen=set()
     patterns=[
-        (r"""['"]((?:https?://|//)[A-Za-z0-9._~:/?#\[\]@!
+        (r"""['"]((?:https?://|//)[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{3,400})['"]""","js_url_literal"),
+        (r"""['"]((?:/api/|/graphql|/oauth|/auth|/login|/admin|/internal|/health|/metrics)[A-Za-z0-9._~:/?#\[\]-]{0,300})['"]""","js_route_literal"),
+        (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#\[\]-]{2,240}\.(?:json|yaml|yml|xml|txt|config|map|wasm))['"]""","js_file_reference"),
+    ]
+    base=urlparse(source_url)
+    for pattern,kind in patterns:
+        for m in re.finditer(pattern,js,re.I):
+            value=m.group(1)
+            if value in seen: continue
+            seen.add(value)
+            try:
+                parsed=urlparse(value if not value.startswith("//") else base.scheme+":"+value)
+                if parsed.scheme and parsed.hostname and parsed.hostname != base.hostname:
+                    kind="js_external_url_literal"
+            except ValueError:
+                pass
+            out.append(Evidence("http",source_url,kind,value,78,{"source":"javascript"}))
+            if len(out)>=max_items: return out
+    return out
+
 def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
     text_body=body[:1048576].decode("utf-8","ignore")
     low=text_body.lower()
@@ -256,6 +275,7 @@ def detect_frontend_build_markers(body: bytes, url: str) -> list[Evidence]:
         for m in re.finditer(pattern,text_body,re.I):
             markers.append(Evidence("http",url,"frontend_build_asset",m.group(1),84,{"source":"html"}))
     return markers[:200]
+
 def discover_web_surface'()*+,;=%-]{3,400})['"]""","js_url_literal"),
         (r"""['"]((?:/api/|/graphql|/oauth|/auth|/login|/admin|/internal|/health|/metrics)[A-Za-z0-9._~:/?#\[\]-]{0,300})['"]""","js_route_literal"),
         (r"""['"]((?:/|\./|\.\./)[A-Za-z0-9._~:/?#\[\]-]{2,240}\.(?:json|yaml|yml|xml|txt|config|map|wasm))['"]""","js_file_reference"),
