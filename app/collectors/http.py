@@ -1,4 +1,4 @@
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
 from hashlib import sha256
@@ -9,7 +9,7 @@ from ..security import validate_external_target, validate_redirect
 
 
 
-class _NoRedirect:
+class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
@@ -53,7 +53,7 @@ class HTTPCollector:
         body=b""
         redirect_chain=[]
         try:
-            opener = __import__("urllib.request", fromlist=["build_opener"]).build_opener(_NoRedirect())
+            opener = build_opener(_NoRedirect())
             with opener.open(req, timeout=timeout) as resp:
                 headers=resp.headers
                 status=resp.status
