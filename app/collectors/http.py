@@ -69,7 +69,7 @@ def artifact_discovery_candidates(url: str, kind: str, body: bytes) -> list[Evid
     refs=[]
     seen=set()
     for match in re.finditer(r"""https?://[^\s<>'"\\]+|(?:^|[\s"'(/])/[A-Za-z0-9._~:/?#[\]-]{2,}""",text_body):
-        ref=match.group(0).strip().rstrip(".,;")
+        ref=match.group(0).strip().strip('"\'').rstrip(".,;")
         if not ref or ref in seen: continue
         seen.add(ref)
         if ref.startswith("http"):
