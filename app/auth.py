@@ -71,6 +71,11 @@ def _db():
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         revoked_at INTEGER)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS user_scopes(
+        user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+        scope_type TEXT NOT NULL, scope_value TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY(user_id, tenant_id, scope_type, scope_value))""")
     conn.commit()
     return conn
 
@@ -359,6 +364,9 @@ def create_custom_role(principal: Principal, name: str, permissions: list[str]) 
     if not name.strip() or len(name)>80: raise ValueError("invalid role name")
     role_name=CUSTOM_ROLE_PREFIX+name.strip().lower().replace(" ","-")
     perms=validate_permissions(permissions)
+    caller_perms=set(role_permissions(principal.role, principal.tenant_id))
+    if "*" not in caller_perms and not set(perms).issubset(caller_perms):
+        raise PermissionError("custom role cannot grant permissions beyond caller scope")
     conn=_db()
     conn.execute("INSERT INTO custom_roles(name,tenant_id,permissions,created_at) VALUES(?,?,?,?)",(role_name,principal.tenant_id,json.dumps(perms),int(time.time())))
     conn.commit(); conn.close()
