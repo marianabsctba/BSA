@@ -660,6 +660,11 @@ def auth_permissions(request: Request):
     p=current_principal(request)
     return {"role":p.role,"permissions":role_permissions(p.role)}
 
+@app.get("/api/v1/rbac/permissions")
+def rbac_permissions():
+    from .auth import PERMISSION_CATALOG
+    return {"permissions": PERMISSION_CATALOG}
+
 class CustomRoleRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     permissions: list[str] = Field(min_length=1, max_length=50)
