@@ -50,3 +50,23 @@ def match_cve(observed_product: str, observed_version: str|None, cpe: str|None, 
         else:
             out.append(CVEMatch(c.vulnerability_id,"not_affected",95,"versão observada fora da faixa afetada",cpe,observed_version,c.source))
     return out
+
+def cpe_matches_product(cpe: str | None, vendor: str, product: str) -> bool:
+    if not cpe: return False
+    value=cpe.lower()
+    return vendor.lower() in value and product.lower() in value
+
+def enrich_cve_matches(observed_product: str, observed_version: str | None, cpe: str | None,
+                       candidates: list[CVERange]) -> list[CVEMatch]:
+    """Conservative correlation: CPE/vendor/product must agree when available."""
+    out=[]
+    for match in match_cve(observed_product,observed_version,cpe,candidates):
+        candidate=next((x for x in candidates if x.vulnerability_id==match.vulnerability_id),None)
+        if candidate and cpe and not cpe_matches_product(cpe,candidate.vendor,candidate.product):
+            out.append(CVEMatch(match.vulnerability_id,"needs_validation",55,
+                                "CPE não confirma vendor/product do catálogo; validação necessária",
+                                cpe,observed_version,match.source))
+        else:
+            out.append(match)
+    return out
+
