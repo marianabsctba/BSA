@@ -11,6 +11,7 @@ from typing import Callable
 from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
 from .exposure_signals import cloud_signals, summarize_signals
+from .vulnerability_evidence import vulnerability_identity_key
 
 
 PROFILES = {
