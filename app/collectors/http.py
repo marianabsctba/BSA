@@ -117,6 +117,26 @@ def analyze_public_artifact_references(url: str, body: bytes, content_type: str 
             pass
     return out[:1000]
 
+
+def contextual_surface_paths(evidence: list[dict], max_paths: int = 80) -> list[str]:
+    """Build bounded, evidence-derived paths; no arbitrary wordlist expansion."""
+    paths=set()
+    for e in evidence[-1000:]:
+        kind=str(e.get("kind",""))
+        value=str(e.get("value",""))
+        if kind in {"js_endpoint_reference","js_artifact_reference","openapi_endpoint","sourcemap_source"}:
+            parsed=urlparse(value)
+            p=parsed.path if parsed.scheme else value
+            if p.startswith("/"):
+                paths.add(p)
+                base=p.rsplit("/",1)[0] or "/"
+                if base != "/": paths.add(base)
+        if kind=="technology_version":
+            product=str(e.get("metadata",{}).get("product","")).lower()
+            if product in {"wordpress","drupal","joomla"}:
+                paths.update({"/wp-admin/","/wp-json/"} if product=="wordpress" else {"/admin/","/core/"} if product=="drupal" else {"/administrator/"})
+    return sorted(paths)[:max(1,min(max_paths,200))]
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
