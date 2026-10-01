@@ -328,3 +328,15 @@ def test_risk_remediation_options_contract():
         assert 0<=item["before"]<=100
         assert 0<=item["after"]<=100
         assert 0<=item["reduction_percent"]<=100
+
+
+def test_tenant_risk_policy_validation_contract():
+    h=auth()
+    response=client.get("/api/v1/risk/policy",headers=h)
+    assert response.status_code==200
+    data=response.json()
+    assert data["policy"]["tenant_id"]
+    assert data["validation"]==[]
+    bad={"likelihood_weight":0.9,"impact_weight":0.9,"confidence_weight":0.1}
+    response=client.put("/api/v1/risk/policy",headers={**h,"Content-Type":"application/json"},json=bad)
+    assert response.status_code==400
