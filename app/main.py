@@ -1224,6 +1224,13 @@ def discovery_correlation(target: str, request: Request):
                 "sources": list(asset.sources),
                 "evidence_count": asset.evidence_count,
                 "tags": list(asset.tags),
+                "evidence_refs": list(asset.evidence_refs),
+                "independent_source_count": len(asset.sources),
+                "identity_quality": (
+                    "corroborated" if len(asset.sources) >= 2 and asset.evidence_count >= 2
+                    else "single-source" if len(asset.sources) == 1
+                    else "unverified"
+                ),
                 "history": change_summary(asset.fingerprint),
             }
             for asset in assets
