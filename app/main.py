@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1518,9 +1518,15 @@ def ctem_audit_export(item_id: str, request: Request):
     verifications=ctem_verification_history(item_id,principal.tenant_id)
     timeline=ctem_audit_timeline(item,verifications)
     integrity=ctem_audit_integrity(item,verifications)
+    diffs=[]
+    for current in timeline[1:]:
+        if current.get("event")=="verification":
+            diffs.append({"event":"verification","timestamp":current.get("timestamp"),
+                          "result":current.get("result"),
+                          "diff":ctem_audit_diff(timeline[0],current)})
     return {"format":"ctem-audit-v1","tenant_id":principal.tenant_id,
             "item_id":item_id,"generated_at":datetime.now(timezone.utc).isoformat(),
-            "integrity":integrity,"timeline":timeline}
+            "integrity":integrity,"timeline":timeline,"diffs":diffs}
 
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
