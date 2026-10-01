@@ -26,3 +26,22 @@ def test_adaptive_discovery_exposes_bounded_evidence_backed_candidates(monkeypat
     assert [x["value"] for x in out["candidates"]] == ["api.example.org"]
     assert out["candidates"][0]["evidence_refs"]
     assert out["candidates"][0]["confidence"] >= 92
+
+
+def test_candidate_collection_plan_is_bounded_and_cache_aware():
+    from app.discovery_orchestrator import plan_candidate_collection, CollectionCacheEntry
+    from datetime import datetime, timezone
+
+    now=datetime.now(timezone.utc)
+    cache=[CollectionCacheEntry("http","hostname","api.example.org",now,3600,"fp")]
+    plans=plan_candidate_collection(
+        [{"kind":"hostname","value":"api.example.org","confidence":95},
+         {"kind":"hostname","value":"admin.example.org","confidence":80}],
+        enabled={"http","tls"},
+        max_jobs=3,
+        cache=cache,
+        now=now,
+    )
+    assert plans
+    assert all(p.target == "admin.example.org" for p in plans)
+    assert len(plans) <= 3
