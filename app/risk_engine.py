@@ -35,6 +35,21 @@ def cpe_product(cpe: str | None) -> tuple[str|None,str|None]:
     p=c[5:].split(":")
     return (p[1] if len(p)>1 else None),(p[2] if len(p)>2 and p[2]!="*" else None)
 
+def apply_attack_path_context(priority: dict, paths: list[object]) -> dict:
+    """Increase CTEM urgency only when paths are backed by evidence."""
+    result=dict(priority)
+    valid=[p for p in paths if getattr(p,"evidence",None) or getattr(p,"edges",())]
+    if not valid:
+        return result
+    best=max(valid,key=lambda p:getattr(p,"score",0))
+    path_score=int(getattr(best,"score",0))
+    path_conf=int(getattr(best,"confidence",0))
+    result["attack_path_score"]=path_score
+    result["attack_path_confidence"]=path_conf
+    result["priority"]=min(100,round(result["priority"]*.75+path_score*.15+path_conf*.10))
+    result["drivers"]=list(result.get("drivers",[]))+["caminho de exposição sustentado por evidências"]
+    return result
+
 def assess_ctem_priority(finding: Finding, asset: Asset | None) -> dict:
     """Return a deterministic CTEM priority breakdown using vulnerability intelligence and exposure context."""
     risk=assess_risk(finding,asset)
