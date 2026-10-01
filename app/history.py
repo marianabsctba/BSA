@@ -478,12 +478,32 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_operation_result(tenant_id: str, operation_key: str) -> dict | None:
+    conn=_history_db()
+    row=conn.execute("SELECT result_json FROM ctem_operations WHERE tenant_id=? AND operation_key=?",
+                      (tenant_id,operation_key)).fetchone()
+    conn.close()
+    if not row or not row["result_json"]:
+        return None
+    import json
+    return json.loads(row["result_json"])
+
+
+def ctem_store_operation_result(tenant_id: str, operation_key: str, result: dict) -> None:
+    import json
+    conn=_history_db()
+    conn.execute("UPDATE ctem_operations SET result_json=? WHERE tenant_id=? AND operation_key=?",
+                 (json.dumps(result,ensure_ascii=False,separators=(",",":")),tenant_id,operation_key))
+    conn.commit()
+    conn.close()
+
+
 def ctem_claim_operation(tenant_id: str, operation_key: str, action: str, item_id: str) -> bool:
     """Atomically claim a CTEM operation key; False means it was already claimed."""
     conn=_history_db()
     conn.execute("""CREATE TABLE IF NOT EXISTS ctem_operations(
         tenant_id TEXT NOT NULL, operation_key TEXT NOT NULL, action TEXT NOT NULL,
-        item_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        item_id TEXT NOT NULL, created_at TEXT NOT NULL, result_json TEXT,
         PRIMARY KEY(tenant_id,operation_key))""")
     now=datetime.now(timezone.utc).isoformat()
     try:
