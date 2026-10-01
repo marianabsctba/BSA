@@ -37,6 +37,11 @@ class AssessmentEngine:
         "subfinder": "external_discovery",
         "amass": "external_discovery",
         "safeweb": "web_assessment",
+        "dnsx": "dns_intelligence",
+        "naabu": "service_exposure",
+        "tlsx": "certificate_intelligence",
+        "gau": "historical_surface",
+        "katana": "web_surface",
     }
 
     def __init__(self):
