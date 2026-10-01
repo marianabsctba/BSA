@@ -97,7 +97,10 @@ def mssp_command_center_trend(request: Request):
         raise HTTPException(status_code=403, detail="MSSP role required")
     from .auth import _db
     conn=_db()
-    tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants ORDER BY name").fetchall()]
+    if principal.role == "superadmin":
+        tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants ORDER BY name").fetchall()]
+    else:
+        tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants WHERE id=?",(principal.tenant_id,)).fetchall()]
     conn.close()
     out=[]
     for t in tenants:
@@ -112,7 +115,10 @@ def mssp_command_center(request: Request):
         raise HTTPException(status_code=403, detail="MSSP role required")
     from .auth import _db
     conn=_db()
-    tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()]
+    if principal.role == "superadmin":
+        tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()]
+    else:
+        tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants WHERE id=?",(principal.tenant_id,)).fetchall()]
     conn.close()
     rows=[]
     for t in tenants:
