@@ -56,6 +56,30 @@ def extract_technologies(evidence: list[dict]) -> list[TechnologyObservation]:
         if not prev or obs.confidence>prev.confidence: out[key]=obs
     return sorted(out.values(),key=lambda x:(x.product,x.version or ""))
 
+def fingerprint_technology(evidence: list[dict]) -> list[dict]:
+    candidates={}
+    for e in evidence:
+        kind=str(e.get("kind","")); value=str(e.get("value","")).lower()
+        if not value: continue
+        if kind.startswith("technology:") or kind=="http_header:server":
+            weight=78
+        elif kind=="page_title":
+            weight=62
+        elif kind=="body_sha256":
+            weight=45
+        elif kind=="http_header:content-type":
+            weight=40
+        else:
+            continue
+        for alias,product in ALIASES.items():
+            if alias in value:
+                item=candidates.setdefault(product,{"signals":[],"score":0})
+                item["signals"].append({"type":kind,"evidence":value[:180],"weight":weight})
+                item["score"]=min(100,item["score"]+weight)
+    return [{"product":p,"confidence":v["score"],"signals":v["signals"],
+             "version":None,"version_confirmed":False,"matching_allowed":False}
+            for p,v in sorted(candidates.items(),key=lambda x:-x[1]["score"])]
+
 def technology_match_quality(observation: TechnologyObservation) -> dict:
     if observation.version_confirmed:
         return {"state":"version_confirmed","confidence":observation.confidence,"matching_allowed":True}
