@@ -91,6 +91,23 @@ def extract_js_surface_references(js: str, source_url: str) -> list[Evidence]:
 
 
 
+
+def classify_source_reference(value: str) -> str:
+    v=value.lower()
+    if any(x in v for x in ("config","secret","credential","token")): return "sensitive-pattern"
+    if any(x in v for x in ("admin","internal","debug","staging","test")): return "high-interest-pattern"
+    if any(x in v for x in ("auth","login","session","identity")): return "identity-surface"
+    if any(x in v for x in ("api","graphql","client","service")): return "api-surface"
+    return "general"
+
+def source_map_context_evidence(source_map_url: str, sources: list[str]) -> list[Evidence]:
+    out=[]
+    for src in sources[:500]:
+        if not isinstance(src,str) or not src: continue
+        out.append(Evidence("http",source_map_url,"sourcemap_source_classification",
+                            src,82,{"classification":classify_source_reference(src)}))
+    return out
+
 def extract_source_map_metadata(body: bytes, source_map_url: str) -> list[Evidence]:
     try:
         obj=json.loads(body[:2097152].decode("utf-8","ignore"))
