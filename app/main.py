@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1566,8 +1566,20 @@ def ctem_verify(item_id: str, request: Request, payload: dict):
 def ctem_state(item_id: str, request: Request, payload: dict):
     principal=require(request,"remediation:write")
     new_state=str(payload.get("state",""))
+    items=list_ctem_items(principal.tenant_id)
+    item=next((x for x in items if x.get("item_id")==item_id),None)
+    if item is None:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    transitions={"acknowledged":"acknowledge","in_progress":"start_remediation",
+                 "resolved":"submit_for_verification","verified":"verify"}
+    action=transitions.get(new_state)
+    if not action:
+        raise HTTPException(status_code=400,detail="invalid CTEM target state")
     try:
-        return update_ctem_state(item_id,principal.tenant_id,new_state)
+        target=ctem_action_transition(item,action)
+        result=update_ctem_state(item_id,principal.tenant_id,target)
+        audit(principal,"ctem_state_transition","ctem",item_id,{"action":action,"from":item.get("state"),"to":target})
+        return result
     except KeyError:
         raise HTTPException(status_code=404,detail="CTEM item not found")
     except ValueError as exc:
