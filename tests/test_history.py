@@ -260,6 +260,7 @@ def test_ctem_verification_history_is_tenant_scoped(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "audit.db"))
     history.upsert_ctem_item({"item_id":"ctem-1","asset_id":"a","priority":80,
         "action":"expedite","title":"x","drivers":[],"evidence_refs":[]},"tenant-a")
+    history.update_ctem_state("ctem-1","tenant-a","resolved")
     history.verify_ctem_item("ctem-1","tenant-a","passed",["retest:1"],"fixed")
     assert history.ctem_verification_history("ctem-1","tenant-a")[0]["result"]=="passed"
     assert history.ctem_verification_history("ctem-1","tenant-b")==[]
