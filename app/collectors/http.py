@@ -2,6 +2,10 @@ from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin, urlparse
 import re
+import http.client
+import ipaddress
+import socket
+import ssl
 import hashlib
 import json
 from hashlib import sha256
@@ -56,18 +60,62 @@ COMMON_SURFACE_PATHS = (
     "/backup.tar.gz","/site-backup.zip","/.DS_Store","/package.json",
 )
 
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, host, approved_ip, port=None, timeout=4.0):
+        super().__init__(host, port=port, timeout=timeout)
+        self.approved_ip=approved_ip
+
+    def connect(self):
+        self.sock=socket.create_connection((self.approved_ip,self.port),self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host, approved_ip, port=None, timeout=4.0):
+        context=ssl.create_default_context()
+        super().__init__(host, port=port, timeout=timeout, context=context)
+        self.approved_ip=approved_ip
+
+    def connect(self):
+        self.sock=socket.create_connection((self.approved_ip,self.port),self.timeout)
+        self.sock=self._context.wrap_socket(self.sock,server_hostname=self._tunnel_host or self.host)
+
+
+def _pinned_fetch(url: str, timeout: float = 4.0, max_bytes: int = 262144):
+    parsed=urlparse(url)
+    if parsed.scheme not in {"http","https"} or not parsed.hostname:
+        raise ValueError("invalid URL")
+    host=parsed.hostname.rstrip(".")
+    try:
+        ipaddress.ip_address(host)
+        ips=[host]
+    except ValueError:
+        from ..security import resolve_public
+        ips=resolve_public(host)
+    if not ips:
+        raise ValueError("hostname did not resolve")
+    port=parsed.port or (443 if parsed.scheme=="https" else 80)
+    path=parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+    conn_cls=_PinnedHTTPSConnection if parsed.scheme=="https" else _PinnedHTTPConnection
+    conn=conn_cls(host,ips[0],port=port,timeout=timeout)
+    try:
+        conn.request("GET",path,headers={"User-Agent":"BSA-ASM/0.3 defensive-discovery","Host":host})
+        resp=conn.getresponse()
+        body=resp.read(max_bytes)
+        headers=dict(resp.getheaders())
+        return resp.status,headers,body,url
+    finally:
+        conn.close()
+
+
 def _safe_surface_fetch(base_url: str, path: str, timeout: float = 2.5):
     candidate=urljoin(base_url,path)
     validate_external_target(candidate)
-    req=Request(candidate,method="GET",headers={"User-Agent":"BSA-ASM/0.3 defensive-surface"})
     try:
-        opener=build_opener(_NoRedirect())
-        with opener.open(req,timeout=timeout) as resp:
-            return resp.status, resp.headers, resp.read(262144), resp.geturl()
-    except HTTPError as exc:
-        return exc.code, exc.headers, b"", candidate
-    except (URLError,OSError,ValueError):
-        return None, {}, b"", candidate
+        return _pinned_fetch(candidate,timeout=timeout,max_bytes=262144)
+    except (OSError,ValueError,ssl.SSLError,http.client.HTTPException):
+        return None,{},b"",candidate
 
 
 JS_CHUNK_PATHS = ("/_next/static/","/static/js/","/assets/","/js/")
