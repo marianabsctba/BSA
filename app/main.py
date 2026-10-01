@@ -942,6 +942,11 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             skipped_out_of_scope += 1
             continue
 
+        evidence = row.get("evidence") or {}
+        validation_required = bool(evidence.get("validation_required")) if isinstance(evidence, dict) else False
+        if validation_required or str(row.get("category") or "") == "candidate_discovery":
+            continue
+
         confidence = max(0, min(100, int(row.get("confidence", 50) or 50)))
         if "://" in value:
             kind = AssetType.APPLICATION
@@ -984,11 +989,6 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             severity = Severity(str(row.get("severity") or "info").lower())
         except ValueError:
             severity = Severity.INFO
-
-        evidence = row.get("evidence") or {}
-        validation_required = bool(evidence.get("validation_required")) if isinstance(evidence, dict) else False
-        if validation_required or str(row.get("category") or "") == "candidate_discovery":
-            continue
 
         vuln_ctx = normalize_vulnerability_evidence(row)
         vulnerability_id = vuln_ctx["vulnerability_id"]
