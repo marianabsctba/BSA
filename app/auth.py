@@ -56,7 +56,11 @@ def _db():
     conn.execute("PRAGMA busy_timeout=15000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS tenants(
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)""")
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+        locale TEXT NOT NULL DEFAULT 'pt-BR')""")
+    tenant_cols={r["name"] for r in conn.execute("PRAGMA table_info(tenants)").fetchall()}
+    if "locale" not in tenant_cols:
+        conn.execute("ALTER TABLE tenants ADD COLUMN locale TEXT NOT NULL DEFAULT 'pt-BR'")
     conn.execute("""CREATE TABLE IF NOT EXISTS users(
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
