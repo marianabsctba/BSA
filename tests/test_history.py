@@ -227,3 +227,15 @@ def test_ctem_operational_summary_tracks_sla_aging_without_time_flakiness():
     assert out["active_items"]==2
     assert out["overdue_items"]==2
     assert out["oldest_active_age_hours"]==50
+
+def test_ctem_remediation_evidence_keeps_before_after_provenance():
+    from app.history import ctem_remediation_evidence
+    item={"state":"in_progress","priority":85,"leverage_score":88,"paths_affected":3,
+          "evidence_refs":["finding:e1"]}
+    verification={"result":"passed","state":"verified","evidence_refs":["retest:e2"],
+                  "verified_at":"2026-10-01T12:00:00+00:00"}
+    out=ctem_remediation_evidence(item,verification)
+    assert out["before"]["priority"]==85
+    assert out["before"]["evidence_refs"]==["finding:e1"]
+    assert out["after"]["evidence_refs"]==["retest:e2"]
+    assert out["evidence_complete"] is True
