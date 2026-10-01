@@ -39,6 +39,7 @@ from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
 from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
+from .assessment_orchestrator import run_public_assessment
 
 bootstrap()
 bootstrap_scope()
@@ -902,6 +903,44 @@ class DASTRequest(BaseModel):
     target: str = Field(min_length=1, max_length=2048)
     authorization_ref: str = Field(min_length=1, max_length=200)
     profile: str = Field(default="safe", max_length=20)
+
+
+class AssessmentRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=2048)
+    authorization_ref: str = Field(min_length=1, max_length=200)
+    profile: str = Field(default="rapid", pattern="^(surface|rapid|network|balanced)$")
+
+
+@app.post("/api/v1/exposure/assessment")
+def exposure_assessment(payload: AssessmentRequest, request: Request):
+    principal = require(request, "discovery:run")
+    if not asset_in_scope(principal, payload.target):
+        raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if not rate_limit_action("exposure-assessment", principal.user_id, limit=8, window_seconds=300):
+        raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
+    try:
+        result = run_public_assessment(
+            payload.target,
+            profile=payload.profile,
+            authorize=lambda target: asset_in_scope(principal, target),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit(
+        principal,
+        "run",
+        "exposure_assessment",
+        payload.target,
+        {
+            "profile": payload.profile,
+            "authorization_ref": payload.authorization_ref,
+            "finding_count": result.get("finding_count", 0),
+            "partial_coverage": result.get("partial_coverage", False),
+        },
+    )
+    return result
 
 
 
