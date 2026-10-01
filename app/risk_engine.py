@@ -118,6 +118,9 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     evidence_quality = int(getattr(finding, "evidence_quality", 50) or 50)
     intelligence=min(100, round(evidence_strength*.35 + evidence_quality*.30 + identity_bonus + vuln_bonus))
     score=min(100,round(likelihood*.40+impact*.35+confidence*.10+intelligence*.15))
+    false_positive = max(0, min(100, int(getattr(finding, "false_positive_confidence", 0) or 0)))
+    if false_positive:
+        score = max(0, round(score * (1.0 - min(0.35, false_positive / 285))))
     if finding.kev: drivers.append("KEV / exploração conhecida")
     if finding.exploit_available: drivers.append("exploit disponível")
     if validation_state == "needs_validation": drivers.append("evidência requer validação adicional")
@@ -128,8 +131,11 @@ def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     if finding.cpe: drivers.append("identificação técnica/CPE disponível")
     if finding.vulnerability_id: drivers.append("vulnerability ID correlacionado")
     if criticality>=4: drivers.append("alta criticidade de negócio")
-    if finding.false_positive_confidence>=60: controls=["validar falso positivo antes de remediação"]
-    else: controls=[]
+    if false_positive >= 60:
+        drivers.append("probabilidade elevada de falso positivo")
+        controls=["validar falso positivo antes de remediação"]
+    else:
+        controls=[]
     band="critical" if score>=85 else "high" if score>=70 else "medium" if score>=45 else "low"
     return RiskAssessment(score,band,likelihood,impact,exposure,exploit,business,confidence,drivers,controls)
 
