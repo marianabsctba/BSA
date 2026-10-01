@@ -42,6 +42,8 @@ class AssessmentEngine:
         "tlsx": "certificate_intelligence",
         "gau": "historical_surface",
         "katana": "web_surface",
+        "asnmap": "network_intelligence",
+        "trufflehog": "credential_exposure",
     }
 
     def __init__(self):
