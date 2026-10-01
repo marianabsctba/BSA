@@ -9,7 +9,7 @@ from .intelligence import ownership_confidence, blast_radius, finding_context_sc
 from .models import Dashboard
 from .scoring import exposure_score
 from .exposure import exposure_breakdown, exposure_band
-from .discovery import collect_target
+from .discovery import collect_target, discover_surface
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
@@ -786,6 +786,16 @@ def discovery_correlation(target: str, request: Request):
         "observation_count": len(observations),
     }
 
+
+@app.get("/api/v1/easm/discover/{target}")
+def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets: int = 40):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if max_depth < 0 or max_depth > 3 or max_assets < 1 or max_assets > 100:
+        raise HTTPException(status_code=400,detail="invalid discovery bounds")
+    result=discover_surface(target,max_depth=max_depth,max_assets=max_assets)
+    return result
 
 @app.get("/api/v1/easm/overview")
 def easm_overview(request: Request):
