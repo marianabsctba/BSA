@@ -24,6 +24,7 @@ from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, enabled as local_ai_enabled, OLLAMA_MODEL
 from .vulnerability_intelligence import vulnerability_intelligence
+from .technology_intelligence import extract_technologies, technology_match_quality
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
 
 bootstrap()
@@ -144,6 +145,24 @@ def asset_detail_view(asset_id: str, request: Request):
     audit(principal, "read", "asset", asset.id)
     return asset_detail(asset, findings, assets)
 
+
+@app.get("/api/v1/technologies/intelligence/{target}")
+def technology_intelligence_api(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["http","tls"])
+    observations=extract_technologies(data["evidence"])
+    items=[]
+    for o in observations:
+        item={"product":o.product,"version":o.version,"confidence":o.confidence,"source":o.source,
+              "evidence":o.evidence,"version_confirmed":o.version_confirmed}
+        item["matching"]=technology_match_quality(o)
+        items.append(item)
+    return {"target":data["target"],"technologies":items,
+            "summary":{"products":len(items),"version_confirmed":sum(x["version_confirmed"] for x in items),
+                       "product_only":sum(not x["version_confirmed"] for x in items),
+                       "cve_matching":sum(x["matching"]["matching_allowed"] for x in items)}}
 
 @app.get("/api/v1/vulnerabilities/intelligence")
 def vulnerability_intelligence_api(request: Request):
