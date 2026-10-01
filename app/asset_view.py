@@ -8,7 +8,7 @@ from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 
 
-def asset_detail(asset, findings, all_assets):
+def asset_detail(asset, findings, all_assets, tenant_id: str):
     asset_findings = [f for f in findings if f.asset_id == asset.id]
     exposure = exposure_breakdown(asset, findings)
     ownership = ownership_confidence(asset)
@@ -46,8 +46,8 @@ def asset_detail(asset, findings, all_assets):
             for f in asset_findings
         ],
         "remediation": plans,
-        "history": [h.__dict__ for h in history_for(fingerprint)],
-        "change_summary": change_summary(fingerprint),
+        "history": [h.__dict__ for h in history_for(fingerprint, tenant_id)],
+        "change_summary": change_summary(fingerprint, tenant_id),
         "graph": graph,
         "exposure_dna": asdict(dna),
         "evidence": {
