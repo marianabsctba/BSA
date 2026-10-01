@@ -156,7 +156,16 @@ class AssessmentEngine:
             return "[REDACTED]"
 
         if isinstance(value, dict):
-            return {k: cls._mask_value(k, v) for k, v in value.items()}
+            blocked_nested = {
+                "engine", "provider", "scanner", "command", "binary",
+                "template", "template_id", "template-id", "tool", "tool_name",
+                "tool-name", "provider_name", "provider-name", "adapter", "executor",
+            }
+            return {
+                k: cls._mask_value(k, v)
+                for k, v in value.items()
+                if str(k).lower() not in blocked_nested
+            }
         if isinstance(value, list):
             return [cls._mask_value(key, item) for item in value]
         if isinstance(value, tuple):
