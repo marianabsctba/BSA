@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 import uuid
+import re
 from .collectors.http import _pinned_fetch, security_header_evidence
 from .security import validate_external_target, resolve_public
 
@@ -32,4 +33,12 @@ def run_safe_web_assessment(target: str) -> dict:
         for flag,severity in (("secure","medium"),("httponly","medium"),("samesite","low")):
             if flag not in cookie.lower(): findings.append(DASTFinding("session_cookie",severity,f"session cookie without {flag.title()}","bsa_session",92))
     if 500 <= status <= 599: findings.append(DASTFinding("http_status","medium","server returned 5xx",str(status),85))
+    if body:
+        html=body.decode("utf-8","ignore")[:262144]
+        forms=len(re.findall(r"<form\\b",html,re.I))
+        scripts=len(re.findall(r"<script\\b",html,re.I))
+        if forms:
+            findings.append(DASTFinding("surface_inventory","info",f"forms observed: {forms}",f"forms={forms}",95))
+        if scripts:
+            findings.append(DASTFinding("surface_inventory","info",f"scripts observed: {scripts}",f"scripts={scripts}",95))
     return {"job_id":str(uuid.uuid4()),"target":url,"final_url":final_url,"profile":"safe-web","destructive_tests":False,"started_at":datetime.now(timezone.utc).isoformat(),"http_status":status,"findings":[asdict(x) for x in findings],"finding_count":len(findings),"evidence":[asdict(x) for x in security_header_evidence(url,headers)],"body_bytes_observed":len(body)}
