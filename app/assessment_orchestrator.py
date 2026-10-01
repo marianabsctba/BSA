@@ -17,7 +17,7 @@ PROFILES = {
     "surface": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
     "rapid": ("httpx", "tlsx", "nuclei"),
     "network": ("dnsx", "httpx", "naabu", "nmap"),
-    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau", "katana", "safeweb", "nuclei", "naabu", "nmap", "trufflehog"),
+    "balanced": ("subfinder", "amass", "dnsx", "asnmap", "httpx", "tlsx", "gau", "katana", "safeweb", "cloud", "nuclei", "naabu", "nmap", "cti", "leak", "trufflehog"),
 }
 
 PROFILE_CAPABILITIES = {
@@ -38,6 +38,7 @@ PROFILE_CAPABILITIES = {
         "service_exposure",
         "cloud_intelligence",
         "credential_exposure",
+        "intelligence",
     ),
 }
 
