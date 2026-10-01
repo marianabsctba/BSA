@@ -15,7 +15,8 @@ def test_login_and_me():
 
 
 def test_api_requires_authentication():
-    response = client.get("/api/v1/assets")
+    unauthenticated = TestClient(app)
+    response = unauthenticated.get("/api/v1/assets")
     assert response.status_code == 401
 
 
