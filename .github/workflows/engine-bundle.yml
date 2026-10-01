@@ -1,0 +1,50 @@
+name: Engine Bundle CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.engines"
+      - "app/assessment_*.py"
+      - "app/engine_health.py"
+      - ".github/workflows/engine-bundle.yml"
+  pull_request:
+    paths:
+      - "Dockerfile.engines"
+      - "app/assessment_*.py"
+      - "app/engine_health.py"
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build full engine image
+        run: docker build -f Dockerfile.engines -t bsa-engines-ci .
+      - name: Verify integrated binaries
+        run: |
+          docker run --rm --entrypoint sh bsa-engines-ci -lc '
+            set -eu
+            command -v nuclei
+            command -v httpx
+            command -v subfinder
+            command -v dnsx
+            command -v naabu
+            command -v tlsx
+            command -v asnmap
+            command -v katana
+            command -v gau
+            command -v trufflehog
+            command -v assetfinder
+            command -v alterx
+            command -v puredns
+            command -v massdns
+            command -v nmap
+            command -v whatweb
+            command -v testssl.sh
+            command -v zap-baseline.py
+            command -v gvm-cli
+          '
+      - name: Import assessment stack
+        run: |
+          docker run --rm --entrypoint python bsa-engines-ci -c "from app.assessment_registry import registry; from app.assessment_orchestrator import PROFILES; print(len(registry.providers), sorted(PROFILES))"
