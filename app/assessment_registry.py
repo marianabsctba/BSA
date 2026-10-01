@@ -23,6 +23,7 @@ from .assessment_providers import (
     SafeWebProvider,
     SubdomainProvider,
     ThreatIntelProvider,
+    ThreatFoxProvider,
     TlsIntelligenceProvider,
     WebCrawlProvider,
     SecretExposureProvider,
@@ -73,6 +74,7 @@ class AssessmentRegistry:
             OpenVASProvider,
             ZAPProvider,
             ThreatIntelProvider,
+            ThreatFoxProvider,
             CredentialExposureProvider,
         ):
             self.register(provider.name, provider)
