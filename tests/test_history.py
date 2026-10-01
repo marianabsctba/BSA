@@ -345,3 +345,10 @@ def test_ctem_action_transition_rejects_state_skips():
     import pytest
     with pytest.raises(ValueError):
         ctem_action_transition({"state":"new"},"verify")
+
+def test_ctem_action_transition_requires_canonical_sequence():
+    from app.history import ctem_action_transition
+    assert ctem_action_transition({"state":"new"},"acknowledge")=="acknowledged"
+    assert ctem_action_transition({"state":"acknowledged"},"start_remediation")=="in_progress"
+    assert ctem_action_transition({"state":"in_progress"},"submit_for_verification")=="resolved"
+    assert ctem_action_transition({"state":"resolved"},"verify")=="verified"
