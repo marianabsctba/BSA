@@ -227,7 +227,8 @@ def set_user_active(principal: Principal, user_id: str, active: bool) -> dict:
     if not row: conn.close(); raise ValueError("user not found")
     if user_id == principal.user_id and not active: conn.close(); raise ValueError("cannot deactivate current user")
     conn.execute("UPDATE users SET active=? WHERE id=? AND tenant_id=?", (1 if active else 0,user_id,principal.tenant_id))
-    if not active: conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id))
+    if not active:
+        conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id)) conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",(int(time.time()),user_id,principal.tenant_id))
     conn.commit()
     out=dict(conn.execute("SELECT id,tenant_id,email,name,role,active,created_at FROM users WHERE id=?", (user_id,)).fetchone())
     conn.close()
