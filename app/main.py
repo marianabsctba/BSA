@@ -790,7 +790,7 @@ def discovery_correlation(target: str, request: Request):
 @app.get("/api/v1/easm/overview")
 def easm_overview(request: Request):
     principal=require(request,"assets:read")
-    ASSETS,FINDINGS=tenant_scope(principal,ASSETS,FINDINGS)
+    scoped_assets,scoped_findings=tenant_scope(principal,ASSETS,FINDINGS)
     def state(a):
         if a.status in {"approved","owned","managed"}: return "approved"
         if a.status in {"dependency","third_party"}: return "dependency"
@@ -799,7 +799,7 @@ def easm_overview(request: Request):
         return "candidate"
     inventory=[{"id":a.id,"value":a.value,"type":a.type.value,"state":state(a),"confidence":a.confidence,"criticality":a.criticality,
                "first_seen":a.first_seen,"last_seen":a.last_seen,"sources":a.sources,"evidence_count":a.evidence_count,
-               "owner":a.owner,"environment":a.environment,"cloud_provider":a.cloud_provider} for a in ASSETS]
+               "owner":a.owner,"environment":a.environment,"cloud_provider":a.cloud_provider} for a in scoped_assets]
     by_state={}
     by_type={}
     for x in inventory:
