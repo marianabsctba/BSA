@@ -645,6 +645,8 @@ class MFAEnableRequest(BaseModel):
 @app.post("/api/v1/auth/mfa/enable")
 def auth_mfa_enable(request: Request, payload: MFAEnableRequest):
     p=current_principal(request)
+    if not rate_limit_action("mfa-enable", p.user_id, limit=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="too many MFA attempts")
     try:
         if not mfa_enable(p,payload.code): raise HTTPException(status_code=400,detail="invalid MFA code")
         audit(p,"enable","mfa")
