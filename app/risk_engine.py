@@ -135,3 +135,28 @@ def prioritize_surface_change(change: dict, asset: Asset | None, findings: list[
         "finding_priority":best["priority"] if best else 0,
         "drivers":(best["drivers"] if best else []) + list(change.get("rationale",[])),
     }
+
+
+def attack_path_ctem_context(ctem_item: dict, paths: list[dict]) -> dict:
+    """Add deterministic attack-path context without inventing relationships."""
+    asset_id=str(ctem_item.get("asset_id",""))
+    relevant=[]
+    for path in paths:
+        nodes=path.get("nodes",[])
+        if asset_id and asset_id in nodes:
+            relevant.append(path)
+        elif asset_id and any(str(n.get("asset_id",""))==asset_id for n in path.get("node_details",[]) if isinstance(n,dict)):
+            relevant.append(path)
+    max_score=max((int(p.get("score",0) or 0) for p in relevant),default=0)
+    path_count=len(relevant)
+    multiplier=15 if max_score>=85 else 10 if max_score>=70 else 5 if max_score>=45 else 0
+    base=int(ctem_item.get("priority",0) or 0)
+    priority=min(100,base+multiplier)
+    drivers=list(ctem_item.get("drivers",[]))
+    if path_count:
+        drivers.append(f"{path_count} attack path(s) evidence-backed")
+    if max_score:
+        drivers.append(f"highest attack-path score: {max_score}")
+    return {**ctem_item,"priority":priority,"attack_path_count":path_count,
+            "attack_path_score":max_score,"drivers":drivers,
+            "attack_path_context":"present" if path_count else "none"}
