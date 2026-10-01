@@ -478,6 +478,13 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             "oldest_active_age_hours":oldest_age_hours}
 
 
+def ctem_action_idempotency_key(item_id: str, action: str, request_id: str | None) -> str:
+    """Build a stable operation key for safe client retries."""
+    import hashlib
+    raw=f"{item_id}:{action}:{request_id or ''}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def ctem_action_transition(item: dict, action: str) -> str:
     """Validate an operational action against the canonical CTEM state machine."""
     transitions={
