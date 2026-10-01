@@ -52,7 +52,7 @@ ALLOWED_ORIGINS=[x.strip() for x in os.getenv("BSA_ALLOWED_ORIGINS","").split(",
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allow_headers=["Authorization","Content-Type","X-Requested-With"],
 )
