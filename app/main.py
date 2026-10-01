@@ -29,9 +29,9 @@ from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, a
 from .asset_view import asset_detail
 from .exposure_dna import build_exposure_dna
 from .local_ai import analyze_exposure, explain_attack_path, analyze_brand_context, analyze_infrastructure_cluster, plan_discovery, judge_correlation, correlate_exposure, analyze_api_surface, prioritize_collection, validate_asset_identity, analyze_attack_paths, enabled as local_ai_enabled, OLLAMA_MODEL
-from .vulnerability_intelligence import vulnerability_intelligence
+from .vulnerability_intelligence import vulnerability_intelligence, enrich_finding
 from .technology_intelligence import extract_technologies, technology_match_quality, fingerprint_technology
-from .risk_engine import assess_risk, normalize_cpe, cpe_product
+from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
@@ -925,6 +925,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
     created_assets = 0
     created_findings = 0
     created_ctem = 0
+    skipped_out_of_scope = 0
 
     scoped_assets, _ = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     by_value = {a.value.lower(): a for a in scoped_assets}
@@ -933,12 +934,21 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         value = str(row.get("asset") or "").strip()
         if not value:
             continue
+        if not asset_in_scope(principal, value):
+            skipped_out_of_scope += 1
+            continue
+
         confidence = max(0, min(100, int(row.get("confidence", 50) or 50)))
         asset = by_value.get(value.lower())
 
         if asset is None:
             digest = sha256(f"{principal.tenant_id}|{value}".encode()).hexdigest()[:16]
-            kind = AssetType.APPLICATION if "://" in value else AssetType.SUBDOMAIN if value.count(".") >= 2 else AssetType.DOMAIN
+            if "://" in value:
+                kind = AssetType.APPLICATION
+            elif value.count(":") == 1 and value.rsplit(":", 1)[1].isdigit():
+                kind = AssetType.SERVICE
+            else:
+                kind = AssetType.SUBDOMAIN if value.count(".") >= 2 else AssetType.DOMAIN
             asset = Asset(
                 tenant_id=principal.tenant_id,
                 id=f"ast-{digest}",
@@ -970,6 +980,38 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         except ValueError:
             severity = Severity.INFO
 
+        evidence = row.get("evidence") or {}
+        classification = evidence.get("classification") if isinstance(evidence, dict) else {}
+        classification = classification if isinstance(classification, dict) else {}
+
+        vulnerability_id = (
+            evidence.get("vulnerability_id")
+            or evidence.get("cve")
+            or classification.get("cve-id")
+            or classification.get("cve_id")
+        )
+        if isinstance(vulnerability_id, list):
+            vulnerability_id = next((str(x) for x in vulnerability_id if str(x).upper().startswith("CVE-")), None)
+        vulnerability_id = str(vulnerability_id).upper() if vulnerability_id else None
+
+        cvss = evidence.get("cvss")
+        if cvss is None:
+            cvss = classification.get("cvss-score") or classification.get("cvss_score")
+        try:
+            cvss = float(cvss) if cvss is not None else None
+        except (TypeError, ValueError):
+            cvss = None
+        if cvss is not None and not 0 <= cvss <= 10:
+            cvss = None
+
+        cpe = evidence.get("cpe")
+        if not cpe:
+            cpes = classification.get("cpe") or classification.get("cpe23") or []
+            if isinstance(cpes, list) and cpes:
+                cpe = str(cpes[0])
+            elif isinstance(cpes, str):
+                cpe = cpes
+
         title = str(row.get("title") or "Exposure evidence")
         finding_digest = sha256(f"{principal.tenant_id}|{asset.id}|{title}".encode()).hexdigest()[:16]
         finding_id = f"fdg-{finding_digest}"
@@ -986,23 +1028,43 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 status="open",
                 evidence="Evidence confirmed by assessment intelligence.",
                 remediation="Review the exposure and validate remediation.",
+                vulnerability_id=vulnerability_id,
+                cpe=cpe,
+                cvss=cvss,
                 detected_at=now,
             )
+            if finding.vulnerability_id:
+                finding = enrich_finding(finding)
             STORE_FINDINGS.append(finding)
             created_findings += 1
+        else:
+            finding.confidence = max(finding.confidence, confidence)
+            if vulnerability_id and not finding.vulnerability_id:
+                finding.vulnerability_id = vulnerability_id
+            if cpe and not finding.cpe:
+                finding.cpe = cpe
+            if cvss is not None and finding.cvss is None:
+                finding.cvss = cvss
+            if finding.vulnerability_id:
+                enriched = enrich_finding(finding)
+                finding.cvss = enriched.cvss
+                finding.epss = enriched.epss
+                finding.kev = enriched.kev
+                finding.cpe = enriched.cpe
+                finding.published_at = enriched.published_at
 
-        base = {"critical": 90, "high": 75, "medium": 55, "low": 30, "info": 10}[severity.value]
-        priority = max(0, min(100, round(base * .8 + confidence * .2)))
+        priority_data = assess_ctem_priority(finding, asset)
+        priority = int(priority_data["priority"])
         if priority >= 45:
             upsert_ctem_item({
                 "item_id": f"assessment:{principal.tenant_id}:{finding.id}",
                 "asset_id": asset.id,
                 "finding_id": finding.id,
                 "priority": priority,
-                "action": "immediate" if priority >= 85 else "expedite" if priority >= 70 else "plan",
+                "action": priority_data["action"],
                 "title": "Exposure requiring remediation attention",
-                "drivers": [f"severity={severity.value}", f"confidence={confidence}"],
-                "evidence_refs": [],
+                "drivers": priority_data["drivers"],
+                "evidence_refs": list(finding.source_refs),
             }, principal.tenant_id)
             created_ctem += 1
 
@@ -1010,8 +1072,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         "assets_created": created_assets,
         "findings_created": created_findings,
         "ctem_items": created_ctem,
+        "skipped_out_of_scope": skipped_out_of_scope,
     }
-
 
 @app.get("/api/v1/exposure/assessment/capabilities")
 def exposure_assessment_capabilities(request: Request, target: str | None = None):
