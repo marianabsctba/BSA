@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from dataclasses import asdict
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 import os
 
 from .changes import seed_changes
@@ -42,6 +43,10 @@ app = FastAPI(
     version="0.3.0",
     description="Attack Surface Management defensivo, rastreável e orientado a evidências.",
 )
+
+ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
+if ALLOWED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 ALLOWED_ORIGINS=[x.strip() for x in os.getenv("BSA_ALLOWED_ORIGINS","").split(",") if x.strip()]
 app.add_middleware(
