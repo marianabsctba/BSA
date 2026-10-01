@@ -20,6 +20,33 @@ services:
     depends_on:
       - ollama
 
+  api-full:
+    profiles: ["full-engines"]
+    build:
+      context: .
+      dockerfile: Dockerfile.engines
+    container_name: bsa-api-full
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      BSA_AI_ENABLED: "1"
+      BSA_OLLAMA_URL: "http://ollama:11434"
+      BSA_OLLAMA_MODEL: "qwen2.5:7b"
+      BSA_AI_TIMEOUT: "15"
+      BSA_ENGINE_BUNDLE: "full"
+      BSA_OPENVAS_URL: "${BSA_OPENVAS_URL:-}"
+      BSA_OPENVAS_TOKEN: "${BSA_OPENVAS_TOKEN:-}"
+      BSA_ZAP_URL: "${BSA_ZAP_URL:-}"
+      BSA_ZAP_TOKEN: "${BSA_ZAP_TOKEN:-}"
+      BSA_CTI_URL: "${BSA_CTI_URL:-}"
+      BSA_CTI_TOKEN: "${BSA_CTI_TOKEN:-}"
+      BSA_LEAK_INTEL_URL: "${BSA_LEAK_INTEL_URL:-}"
+      BSA_LEAK_INTEL_TOKEN: "${BSA_LEAK_INTEL_TOKEN:-}"
+      BSA_THREATFOX_AUTH_KEY: "${BSA_THREATFOX_AUTH_KEY:-}"
+    depends_on:
+      - ollama
+
   web:
     build:
       context: .
