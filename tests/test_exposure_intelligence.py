@@ -249,3 +249,13 @@ def test_easm_discovery_rejects_unbounded_parameters():
     h=auth()
     assert client.get("/api/v1/easm/discover/example.com?max_depth=4",headers=h).status_code==400
     assert client.get("/api/v1/easm/discover/example.com?max_assets=101",headers=h).status_code==400
+
+
+def test_easm_lifecycle_contract():
+    h=auth()
+    r=client.get("/api/v1/easm/lifecycle/example.com",headers=h)
+    assert r.status_code in (200,403)
+    if r.status_code==200:
+        data=r.json()
+        assert "summary" in data and "assets" in data
+        assert data["summary"]["new"] + data["summary"]["changed"] + data["summary"]["stable"] == data["summary"]["assets"]
