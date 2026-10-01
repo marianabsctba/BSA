@@ -87,7 +87,7 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
     status,headers,body,final_url=_safe_surface_fetch(origin,"/")
     if status and body:
         html=body.decode("utf-8","ignore")[:1048576]
-        for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+.js(?:?[^'"]*)?)['"]""",html,re.I):
+        for m in re.finditer(r"""<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]""",html,re.I):
             src=urljoin(origin,m.group(1))
             parsed=urlparse(src)
             base=urlparse(origin)
