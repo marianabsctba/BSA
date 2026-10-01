@@ -11,7 +11,7 @@ class RDAPCollector:
         url="https://rdap.org/domain/"+quote(target)
         req=Request(url,headers={"User-Agent":"BSA-ASM/0.3 defensive-rdap-discovery"})
         try:
-            with urlopen(req,timeout=timeout) as resp: data=json.loads(resp.read().decode("utf-8","replace"))
+            with urlopen(req,timeout=timeout) as resp: data=json.loads(resp.read(1024 * 1024).decode("utf-8","replace"))
         except (URLError,HTTPError,ValueError,TimeoutError): return out
         for item in data.get("nameservers",[]) or []:
             name=(item.get("ldhName") or item.get("unicodeName") or "").lower().rstrip(".")
