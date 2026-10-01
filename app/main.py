@@ -20,7 +20,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
+from .auth import authenticate, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .discovery_orchestrator import plan_candidate_collection
 from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
@@ -663,7 +663,8 @@ def login(payload: LoginRequest, request: Request):
 @app.get("/api/v1/auth/me")
 def me(request: Request):
     p = current_principal(request)
-    return {"id": p.user_id, "email": p.email, "name": p.name, "role": p.role, "tenant_id": p.tenant_id}
+    tenant=tenant_settings(p)
+    return {"id": p.user_id, "email": p.email, "name": p.name, "role": p.role, "tenant_id": p.tenant_id, "tenant_name":tenant["name"], "locale":tenant["locale"]}
 
 
 
@@ -671,6 +672,10 @@ def me(request: Request):
 class TenantCreateRequest(BaseModel):
     id: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]+$")
     name: str = Field(min_length=1, max_length=120)
+    locale: str = Field(default="pt-BR", pattern=r"^(pt-BR|en|es)$")
+
+class TenantLocaleRequest(BaseModel):
+    locale: str = Field(pattern=r"^(pt-BR|en|es)$")
 
 
 
@@ -724,6 +729,23 @@ def audit_events(request: Request, limit: int = 100):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@app.get("/api/v1/tenant/settings")
+def tenant_settings_get(request: Request):
+    p=current_principal(request)
+    return tenant_settings(p)
+
+@app.patch("/api/v1/tenant/settings")
+def tenant_settings_update(request: Request, payload: TenantLocaleRequest):
+    p=current_principal(request)
+    try:
+        result=update_tenant_locale(p,payload.locale)
+        audit(p,"update","tenant_settings",p.tenant_id,{"locale":payload.locale})
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
 @app.get("/api/v1/tenants")
 def tenants(request: Request):
     p = current_principal(request)
@@ -738,7 +760,7 @@ def tenants_create(request: Request, payload: TenantCreateRequest):
     if p.role != "superadmin":
         raise HTTPException(status_code=403, detail="superadmin required")
     try:
-        result = create_tenant(p, payload.id, payload.name)
+        result = create_tenant(p, payload.id, payload.name, payload.locale)
         audit(p, "create", "tenant", payload.id)
         return result
     except PermissionError as exc:
