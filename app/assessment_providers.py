@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 from .dast import run_safe_web_assessment
 from .exposure_signals import cloud_signals
+from .intelligence_sources import SOURCES
 
 
 @dataclass
@@ -531,6 +532,55 @@ class CredentialExposureProvider(_ConfiguredJsonIntelProvider):
             "relationship": "credential-exposure",
         }
         return [ProviderResult("Credential exposure detected", severity, confidence, evidence)]
+
+
+class ThreatFoxProvider(_ConfiguredJsonIntelProvider):
+    name = "threatfox"
+    endpoint_env = "BSA_THREATFOX_URL"
+    token_env = "BSA_THREATFOX_AUTH_KEY"
+
+    def available(self) -> bool:
+        return bool(os.getenv(self.token_env, "").strip())
+
+    def _post(self, payload: dict) -> dict:
+        endpoint = os.getenv(self.endpoint_env, "").strip() or SOURCES["threatfox"].endpoint
+        token = os.getenv(self.token_env, "").strip()
+        if not token:
+            return {}
+        req = Request(
+            endpoint,
+            data=json.dumps(payload, separators=(",", ":")).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Auth-Key": token,
+            },
+            method="POST",
+        )
+        with urlopen(req, timeout=self.timeout) as response:
+            raw = response.read(262144)
+        data = json.loads(raw.decode("utf-8", "ignore"))
+        return data if isinstance(data, dict) else {}
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        data = self._post({"query": "search_ioc", "search_term": target})
+        rows = data.get("data") or []
+        if not isinstance(rows, list) or not rows:
+            return []
+        rows = rows[:50]
+        malware = sorted({str(x.get("malware_printable") or x.get("malware") or "") for x in rows if isinstance(x, dict)})
+        malware = [x for x in malware if x][:20]
+        return [ProviderResult(
+            "Threat intelligence correlation",
+            "high",
+            90,
+            {
+                "asset": target,
+                "match_count": len(rows),
+                "malware_families": malware,
+                "relationship": "threat-intelligence",
+            },
+        )]
 
 
 class OpenVASProvider:
