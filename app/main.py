@@ -30,6 +30,7 @@ from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
 from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
+from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 
 bootstrap()
 bootstrap_scope()
@@ -149,6 +150,17 @@ def asset_detail_view(asset_id: str, request: Request):
     audit(principal, "read", "asset", asset.id)
     return asset_detail(asset, findings, assets)
 
+
+@app.get("/api/v1/discovery/signals/{target}")
+def discovery_signals(target: str, request: Request):
+    principal=require(request,"assets:read")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
+    values=[str(e.get("value","")) for e in data["evidence"]]
+    http_values=[str(e.get("value","")) for e in data["evidence"] if str(e.get("kind","")).startswith("http_") or str(e.get("kind","")).startswith("page_")]
+    signals=cloud_signals(values)+takeover_signals(http_values)
+    return {"target":data["target"],"evidence_count":data["evidence_count"],**summarize_signals(signals)}
 
 @app.get("/api/v1/discovery/ai-judge/{target}")
 def discovery_ai_judge(target: str, request: Request):
