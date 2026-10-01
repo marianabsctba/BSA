@@ -14,6 +14,7 @@ from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
 from .security import validate_external_target
 from .local_ai import prioritize_collection
+from .collectors.http import discover_web_surface
 
 
 MAX_DISCOVERY_CONCURRENCY = max(1, min(int(os.getenv("BSA_MAX_DISCOVERY_CONCURRENCY", "4")), 32))
@@ -115,6 +116,12 @@ def discover_surface(seed: str, max_depth: int = 2, max_assets: int = 40) -> dic
             continue
         visited.add(current)
         data = collect_target(current, ["dns", "http", "tls", "ct"])
+        try:
+            data["evidence"].extend(asdict(e) for e in discover_web_surface(data["url"], max_paths=40, max_js=20))
+            data["evidence_count"]=len(data["evidence"])
+            data["confidence"]=round(sum(int(e.get("confidence",0)) for e in data["evidence"])/len(data["evidence"])) if data["evidence"] else 0
+        except (OSError, ValueError):
+            pass
         all_evidence.extend(data["evidence"])
         artifact_candidates = set()
         for e in data["evidence"]:
