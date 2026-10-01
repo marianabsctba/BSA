@@ -293,12 +293,22 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
             if "javascript" in ctype or path.endswith(".js"):
                 script_urls.append(final_url)
             if "html" in ctype or path=="/":
-                html=body.decode("utf-8","ignore")[:1048576]
+                html=body.decode("utf-8","ignore")
                 evidence.extend(detect_frontend_build_markers(body,origin))
                 for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
                     src=urljoin(origin,m.group(1))
                     if urlparse(src).hostname == urlparse(origin).hostname:
                         script_urls.append(src)
+    # Always inspect root independently: bounded discovery must not depend on '/' being in the first N paths.
+    if "/" not in paths:
+        status,headers,body,final_url=_safe_surface_fetch(origin,"/")
+        if status and 200 <= status < 300 and body:
+            html=body.decode("utf-8","ignore")
+            evidence.extend(detect_frontend_build_markers(body,origin))
+            for m in re.finditer(r'''<script[^>]+src=['"]([^'"]+\.js(?:\?[^'"]*)?)['"]''',html,re.I):
+                src=urljoin(origin,m.group(1))
+                if urlparse(src).hostname == urlparse(origin).hostname:
+                    script_urls.append(src)
     seen=set()
     for js_url in script_urls[:max_js]:
         if js_url in seen: continue
@@ -313,8 +323,6 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",js_url,"javascript_asset",js_url,90,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,js_url))
         evidence.extend(extract_js_literals(js,js_url))
-        if js_url.lower().endswith(".map"):
-            evidence.extend(extract_source_map_metadata(body,js_url))
     return evidence
 
 def _artifact_evidence(url, headers, body):
