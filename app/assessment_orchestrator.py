@@ -20,6 +20,10 @@ PROFILES = {
     "balanced": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "threatfox", "hibp", "trufflehog"),
 }
 
+DISCOVERY_PROVIDERS = {"subfinder", "amass", "assetfinder", "alterx"}
+FOLLOWUP_PROVIDERS = ("puredns", "dnsx", "httpx", "tlsx", "whatweb")
+MAX_FOLLOWUP_TARGETS = 32
+
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
     "rapid": ("fingerprint", "certificate_intelligence", "vulnerability"),
@@ -96,7 +100,10 @@ def run_assessment(
         "attempted": [],
         "available": [],
         "errors": [],
+        "followup_targets": [],
+        "scope_filtered": 0,
     }
+    discovered_subjects: list[str] = []
 
     for provider_name in PROFILES[profile]:
         internal["attempted"].append(provider_name)
@@ -114,7 +121,14 @@ def run_assessment(
                     or evidence.get("matched_at")
                     or target
                 )
-                engine.add_provider_result(provider_name, str(subject), payload)
+                subject = str(subject)
+                engine.add_provider_result(provider_name, subject, payload)
+                if provider_name in DISCOVERY_PROVIDERS and subject != target:
+                    if authorize is None or authorize(subject):
+                        if subject not in discovered_subjects and len(discovered_subjects) < MAX_FOLLOWUP_TARGETS:
+                            discovered_subjects.append(subject)
+                    else:
+                        internal["scope_filtered"] += 1
         except Exception as exc:
             internal["errors"].append(
                 {
@@ -122,6 +136,32 @@ def run_assessment(
                     "error": exc.__class__.__name__,
                 }
             )
+
+    if profile in {"surface", "balanced"}:
+        for child in discovered_subjects:
+            internal["followup_targets"].append(child)
+            for provider_name in FOLLOWUP_PROVIDERS:
+                try:
+                    if not registry.available(provider_name, child):
+                        continue
+                    results = registry.execute(provider_name, target=child)
+                    for result in results:
+                        payload = asdict(result)
+                        evidence = payload.get("evidence") or {}
+                        subject = str(
+                            evidence.get("asset")
+                            or evidence.get("url")
+                            or evidence.get("matched_at")
+                            or child
+                        )
+                        if authorize is not None and not authorize(subject):
+                            internal["scope_filtered"] += 1
+                            continue
+                        engine.add_provider_result(provider_name, subject, payload)
+                except Exception as exc:
+                    internal["errors"].append(
+                        {"provider": provider_name, "error": exc.__class__.__name__, "phase": "followup"}
+                    )
 
     public = engine.export_public()
     cloud = _cloud_intelligence(public.get("findings", []))
@@ -136,6 +176,8 @@ def run_assessment(
             "coverage": {
                 "requested_capabilities": len(PROFILE_CAPABILITIES[profile]),
                 "evidence_count": public["finding_count"],
+                "followup_targets": len(internal["followup_targets"]),
+                "scope_filtered": internal["scope_filtered"],
             },
         }
     )
