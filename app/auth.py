@@ -263,14 +263,14 @@ def _role_power(role: str, tenant_id: str) -> tuple[int,set[str]]:
     perms=set(role_permissions(role,tenant_id))
     return (len(perms),perms)
 
-def _can_manage_target(principal: Principal, target_role: str, target_tenant: str) -> bool:
+def _can_manage_target(principal: Principal, target_role: str, target_tenant: str, allow_equal: bool = False) -> bool:
     if principal.role=="superadmin":
         return True
     if target_role=="superadmin":
         return False
     principal_power,principal_perms=_role_power(principal.role,principal.tenant_id)
     target_power,target_perms=_role_power(target_role,target_tenant)
-    if target_power >= principal_power:
+    if target_power > principal_power or (target_power == principal_power and not allow_equal):
         return False
     return target_perms.issubset(principal_perms)
 
@@ -295,7 +295,7 @@ def set_user_active(principal: Principal, user_id: str, active: bool) -> dict:
     conn=_db()
     row=conn.execute("SELECT id,role,tenant_id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
-    if not _can_manage_target(principal,row["role"],row["tenant_id"]): conn.close(); raise PermissionError("target user role is equal or higher than caller")
+    if not _can_manage_target(principal,row["role"],row["tenant_id"],allow_equal=True): conn.close(); raise PermissionError("target user role is higher than caller")
     if user_id == principal.user_id and not active: conn.close(); raise ValueError("cannot deactivate current user")
     conn.execute("UPDATE users SET active=? WHERE id=? AND tenant_id=?", (1 if active else 0,user_id,principal.tenant_id))
     if not active:
