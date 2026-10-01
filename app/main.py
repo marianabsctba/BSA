@@ -790,7 +790,7 @@ def discovery_correlation(target: str, request: Request):
 @app.get("/api/v1/easm/overview")
 def easm_overview(request: Request):
     principal=require(request,"assets:read")
-    scoped_assets,scoped_findings=tenant_scope(principal,ASSETS,FINDINGS)
+    scoped_assets,scoped_findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
     def state(a):
         if a.status in {"approved","owned","managed"}: return "approved"
         if a.status in {"dependency","third_party"}: return "dependency"
