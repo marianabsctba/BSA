@@ -65,7 +65,7 @@ async def csrf_origin_guard(request: Request, call_next):
         if origin:
             allowed=set(ALLOWED_ORIGINS)
             if origin not in allowed:
-                raise HTTPException(status_code=403, detail="origin not allowed")
+                return JSONResponse(status_code=403, content={"detail":"origin not allowed"})
     return await call_next(request)
 
 @app.middleware("http")
