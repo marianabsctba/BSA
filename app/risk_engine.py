@@ -35,6 +35,25 @@ def cpe_product(cpe: str | None) -> tuple[str|None,str|None]:
     p=c[5:].split(":")
     return (p[1] if len(p)>1 else None),(p[2] if len(p)>2 and p[2]!="*" else None)
 
+def assess_ctem_priority(finding: Finding, asset: Asset | None) -> dict:
+    """Return a deterministic CTEM priority breakdown using vulnerability intelligence and exposure context."""
+    risk=assess_risk(finding,asset)
+    exploitability=risk.exploitability
+    exposure=risk.exposure
+    business=risk.business_criticality
+    confidence=risk.confidence
+    priority=min(100,round(exploitability*0.35+exposure*0.25+business*0.25+confidence*0.15))
+    action="immediate" if priority>=85 else "expedite" if priority>=70 else "plan" if priority>=45 else "monitor"
+    return {
+        "priority":priority,
+        "action":action,
+        "drivers":risk.drivers,
+        "exploitability":exploitability,
+        "exposure":exposure,
+        "business_criticality":business,
+        "confidence":confidence,
+    }
+
 def assess_risk(finding: Finding, asset: Asset | None) -> RiskAssessment:
     cvss=(finding.cvss or 0)*10
     epss=(finding.epss or 0)*100
