@@ -72,15 +72,17 @@ async def security_headers(request: Request, call_next):
 
 @app.post("/api/v1/auth/logout")
 def auth_logout(request: Request):
-    principal=require(request,"assets:read")
+    principal=current_principal(request)
     auth=request.headers.get("Authorization","")
-    token=auth.split(" ",1)[1] if auth.lower().startswith("bearer ") else ""
+    token=auth.split(" ",1)[1] if auth.lower().startswith("bearer ") else request.cookies.get("bsa_session","")
     try:
         claims=__import__("app.auth",fromlist=["_decode"])._decode(token)
         revoke_session(principal,claims.get("jti"))
     except Exception:
         revoke_session(principal)
-    return {"ok":True}
+    response=JSONResponse({"ok":True})
+    response.delete_cookie("bsa_session",path="/")
+    return response
 
 @app.get("/health")
 def health():
@@ -510,10 +512,11 @@ def tenant_scope(principal, assets, findings):
 
 def current_principal(request: Request):
     header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
+    token = header[7:] if header.startswith("Bearer ") else request.cookies.get("bsa_session", "")
+    if not token:
         raise HTTPException(status_code=401, detail="authentication required")
     try:
-        return principal_from_token(header[7:])
+        return principal_from_token(token)
     except Exception as exc:
         raise HTTPException(status_code=401, detail="invalid or expired token") from exc
 
@@ -532,7 +535,10 @@ def login(payload: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="invalid credentials")
     principal = principal_from_token(token)
     audit(principal, "login", "session")
-    return {"access_token": token, "token_type": "bearer", "expires_in": 28800, "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}}
+    response = JSONResponse({"token_type": "bearer", "expires_in": 28800,
+                             "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}})
+    response.set_cookie("bsa_session", token, httponly=True, secure=True, samesite="lax", max_age=28800, path="/")
+    return response
 
 
 @app.get("/api/v1/auth/me")
