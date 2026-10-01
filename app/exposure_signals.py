@@ -42,7 +42,6 @@ def cloud_signals(values):
 def takeover_signals(http_values):
     out=[]
     seen=set()
-    seen=set()
     for value in http_values:
         text=str(value)
         low=text.lower()
