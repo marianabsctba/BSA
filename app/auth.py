@@ -14,6 +14,7 @@ JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
 MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
 _LOGIN_ATTEMPTS = {}
+_IP_LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
 ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
@@ -116,21 +117,28 @@ def bootstrap():
     conn.commit()
     conn.close()
 
-def authenticate(email: str, password: str) -> str | None:
+def authenticate(email: str, password: str, client_ip: str = "") -> str | None:
     now=time.time()
     key=email.strip().lower()
+    ipkey=client_ip.strip() or "unknown"
     attempts=_LOGIN_ATTEMPTS.get(key, {"count":0,"until":0})
-    if attempts["until"] > now: return None
+    ip_attempts=_IP_LOGIN_ATTEMPTS.get(ipkey, {"count":0,"until":0})
+    if attempts["until"] > now or ip_attempts["until"] > now: return None
     conn = _db()
     row = conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1", (email,)).fetchone()
     conn.close()
     if not row or not _verify(password, row["password_hash"]):
         attempts["count"]+=1
+        ip_attempts["count"]+=1
         if attempts["count"]>=5:
             attempts={"count":attempts["count"],"until":now+300}
         _LOGIN_ATTEMPTS[key]=attempts
+        if ip_attempts["count"]>=20:
+            ip_attempts={"count":ip_attempts["count"],"until":now+900}
+        _IP_LOGIN_ATTEMPTS[ipkey]=ip_attempts
         return None
     _LOGIN_ATTEMPTS.pop(key,None)
+    _IP_LOGIN_ATTEMPTS.pop(ipkey,None)
     now = int(time.time())
     jti=secrets.token_urlsafe(24)
     exp=now + TOKEN_TTL
