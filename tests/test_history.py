@@ -188,3 +188,16 @@ def test_materialize_ctem_carries_remediation_leverage(tmp_path, monkeypatch):
     assert out[0]["paths_affected"] == 3
     assert out[0]["risk_reduction_percent"] == 62
     assert "alto potencial de redução de risco" in out[0]["drivers"]
+
+def test_ctem_leverage_summary_ignores_verified_and_aggregates_active_items():
+    from app.history import ctem_leverage_summary
+    items=[
+      {"state":"new","leverage_score":90,"paths_affected":3,"risk_reduction_percent":60},
+      {"state":"in_progress","leverage_score":70,"paths_affected":1,"risk_reduction_percent":20},
+      {"state":"verified","leverage_score":100,"paths_affected":9,"risk_reduction_percent":90},
+    ]
+    out=ctem_leverage_summary(items)
+    assert out["active_items"] == 2
+    assert out["high_leverage_items"] == 1
+    assert out["paths_affected"] == 4
+    assert out["weighted_risk_reduction"] == 50
