@@ -13,7 +13,7 @@ from .collectors.ports import PortCollector
 from .collectors.rdap import RDAPCollector
 from .collectors.ip_intel import IPIntelCollector
 from .correlation import correlate_evidence
-from .asset_identity import evidence_reference
+from .asset_identity import evidence_reference, provenance_confidence
 from .security import validate_external_target, resolve_public
 from .local_ai import prioritize_collection
 from .collectors.http import discover_web_surface, contextual_surface_paths
