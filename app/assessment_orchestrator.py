@@ -83,6 +83,51 @@ def _cloud_intelligence(findings: list[dict]) -> list[dict]:
 
 
 
+def _finding_key(row: dict) -> tuple:
+    evidence = row.get("evidence") or {}
+    classification = evidence.get("classification") if isinstance(evidence, dict) else {}
+    classification = classification if isinstance(classification, dict) else {}
+    vulnerability_id = (
+        evidence.get("vulnerability_id")
+        or evidence.get("cve")
+        or classification.get("cve-id")
+        or classification.get("cve_id")
+    )
+    relationship = evidence.get("relationship") if isinstance(evidence, dict) else None
+    return (
+        str(row.get("asset") or "").strip().lower().rstrip("."),
+        str(row.get("category") or ""),
+        str(row.get("title") or ""),
+        str(vulnerability_id or ""),
+        str(relationship or ""),
+    )
+
+
+def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
+    merged: dict[tuple, dict] = {}
+    duplicates = 0
+    for row in findings:
+        key = _finding_key(row)
+        if key not in merged:
+            item = dict(row)
+            item["evidence"] = dict(row.get("evidence") or {})
+            item["evidence"]["corroboration_count"] = 1
+            merged[key] = item
+            continue
+        duplicates += 1
+        current = merged[key]
+        evidence = current.get("evidence") or {}
+        count = int(evidence.get("corroboration_count", 1)) + 1
+        evidence["corroboration_count"] = count
+        evidence["corroborated"] = True
+        current["evidence"] = evidence
+        current["confidence"] = min(
+            100,
+            max(int(current.get("confidence", 0)), int(row.get("confidence", 0))) + min(10, (count - 1) * 3),
+        )
+    return list(merged.values()), duplicates
+
+
 def run_assessment(
     target: str,
     *,
@@ -164,6 +209,10 @@ def run_assessment(
                     )
 
     public = engine.export_public()
+    raw_finding_count = public["finding_count"]
+    deduped, duplicate_count = _deduplicate_findings(public.get("findings", []))
+    public["findings"] = deduped
+    public["finding_count"] = len(deduped)
     cloud = _cloud_intelligence(public.get("findings", []))
     if cloud:
         public["findings"].extend(cloud)
@@ -176,6 +225,8 @@ def run_assessment(
             "coverage": {
                 "requested_capabilities": len(PROFILE_CAPABILITIES[profile]),
                 "evidence_count": public["finding_count"],
+                "raw_evidence_count": raw_finding_count,
+                "deduplicated_evidence": duplicate_count,
                 "followup_targets": len(internal["followup_targets"]),
                 "scope_filtered": internal["scope_filtered"],
             },
