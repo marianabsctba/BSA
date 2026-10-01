@@ -40,7 +40,7 @@ services:
     depends_on:
       - api
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     read_only: true
     tmpfs:
       - /var/cache/nginx:size=32m
