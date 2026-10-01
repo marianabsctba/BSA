@@ -305,6 +305,17 @@ def explain_attack_path_api(payload: dict, request: Request):
     result["ai"]={"enabled":True,"provider":"ollama-local","model":OLLAMA_MODEL,"grounded":True}
     return result
 
+@app.get("/api/v1/risk/remediation-options")
+def risk_remediation_options(request: Request):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    graph=build_risk_graph(f"tenant:{principal.tenant_id}",assets,[],source_assets=assets,findings=findings)
+    nodes={n["id"]:type("Node",(),n)() for n in graph["nodes"]}
+    edges=[type("Edge",(),e)() for e in graph["edges"]]
+    from .graph import remediation_options
+    options=remediation_options(nodes,edges,graph.get("top_risk_paths",[]))
+    return {"summary":{"options":len(options),"total_risk_reduction":sum(x["risk_reduction"] for x in options)},"options":options}
+
 @app.get("/api/v1/risk/attack-paths")
 def risk_attack_paths(request: Request):
     principal=require(request,"assets:read")
