@@ -199,7 +199,7 @@ async def update_risk_policy(request: Request):
     base=policy_for(principal.tenant_id)
     allowed={"likelihood_weight","impact_weight","confidence_weight","internet_multiplier","production_multiplier","remote_access_multiplier","compensating_control_reduction","stale_evidence_days","stale_confidence_penalty","name"}
     values={k:body[k] for k in allowed if k in body}
-    candidate=TenantRiskPolicy(tenant_id=principal.tenant_id,version=base.version+1,**{**base.__dict__,**values})
+    candidate=TenantRiskPolicy(**{**base.__dict__,**values,"tenant_id":principal.tenant_id,"version":base.version+1})
     errors=validate_policy(candidate)
     if errors: raise HTTPException(status_code=400,detail={"errors":errors})
     audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
