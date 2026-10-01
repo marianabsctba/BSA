@@ -984,7 +984,7 @@ def discovery_changes(target: str, request: Request):
     principal = require(request, "assets:read")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     record_observations(assets)
@@ -1007,7 +1007,7 @@ def discovery_graph(target: str, request: Request):
     principal = require(request, "assets:read")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     return build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
@@ -1017,7 +1017,7 @@ def discovery_correlation(target: str, request: Request):
     principal = require(request, "assets:read")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     """Return normalized asset identities for an explicit discovery target."""
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
@@ -1108,7 +1108,7 @@ def easm_overview(request: Request):
 @app.get("/api/v1/exposure")
 def exposure(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     items = []
     for asset in ASSETS:
         item = exposure_breakdown(asset, FINDINGS)
@@ -1133,7 +1133,7 @@ def exposure(request: Request):
 @app.get("/api/v1/dashboard", response_model=Dashboard)
 def dashboard(request: Request):
     principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     changes = seed_changes(ASSETS)
     ownership = [ownership_confidence(a) for a in ASSETS]
     score = exposure_score(FINDINGS, ASSETS)
@@ -1188,7 +1188,7 @@ def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "assets:read")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
     assets = correlate_evidence(data["target"], data["evidence"])
     graph = build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
@@ -1202,7 +1202,7 @@ def discovery_risk_paths(target: str, request: Request):
 @app.get("/api/v1/prioritization")
 def prioritization(request: Request):
     principal = require(request, "findings:read")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
@@ -1226,7 +1226,7 @@ def prioritization(request: Request):
 @app.get("/api/v1/remediation")
 def remediation(request: Request):
     principal = require(request, "remediation:write")
-    ASSETS, FINDINGS = tenant_scope(principal, ASSETS, FINDINGS)
+    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     asset_map = {a.id: a for a in ASSETS}
     result = []
     for finding in FINDINGS:
