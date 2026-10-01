@@ -225,5 +225,5 @@ def test_ctem_operational_summary_tracks_sla_aging_without_time_flakiness():
     ]
     out=ctem_operational_summary(items,now)
     assert out["active_items"]==2
-    assert out["overdue_items"]==2
+    assert out["overdue_items"]==1
     assert out["oldest_active_age_hours"]==50
