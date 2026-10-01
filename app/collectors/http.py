@@ -411,6 +411,11 @@ def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> lis
         evidence.append(Evidence("http",asset_url,"manifest_asset_analyzed",asset_url,88,{"bytes":len(js)}))
         evidence.extend(extract_js_surface_references(js,asset_url))
         evidence.extend(extract_js_literals(js,asset_url))
+        # Discover adjacent source maps referenced by analyzed chunks.
+        for sm in re.finditer(r"""["']([^"']+\.js\.map(?:\?[^"']*)?)["']""",js,re.I):
+            map_url=urljoin(origin,sm.group(1))
+            if urlparse(map_url).hostname == urlparse(origin).hostname:
+                evidence.append(Evidence("http",asset_url,"source_map_candidate",map_url,84,{"source":"javascript_chunk"}))
     return evidence
 
 def _artifact_evidence(url, headers, body):
