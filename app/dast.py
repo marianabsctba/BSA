@@ -36,8 +36,8 @@ def run_safe_web_assessment(target: str) -> dict:
     if 500 <= status <= 599: findings.append(DASTFinding("http_status","medium","server returned 5xx",str(status),85))
     if body:
         html=body.decode("utf-8","ignore")[:262144]
-        forms=len(re.findall(r"<form\\b",html,re.I))
-        scripts=len(re.findall(r"<script\\b",html,re.I))
+        forms=len(re.findall(r"<form\b",html,re.I))
+        scripts=len(re.findall(r"<script\b",html,re.I))
         if forms:
             findings.append(DASTFinding("surface_inventory","info",f"forms observed: {forms}",f"forms={forms}",95))
         if scripts:
@@ -87,7 +87,7 @@ def run_safe_web_assessment(target: str) -> dict:
                 discovered.append(absolute)
         if parsed.scheme == "https" and re.search(r"(?:src|href)=['\"]http://", html, re.I):
             findings.append(DASTFinding("mixed_content","medium","HTTPS page references HTTP resources","http:// resource",90))
-        forms=len(re.findall(r"<form\\b",html,re.I))
+        forms=len(re.findall(r"<form\b",html,re.I))
             ap = urlparse(urljoin(url, action))
             if parsed.scheme == "https" and ap.scheme == "http" and ap.hostname == parsed.hostname:
                 findings.append(DASTFinding("form_transport","medium","HTTPS page posts a form to HTTP","form action",94))
