@@ -58,3 +58,42 @@ def test_duplicate_evidence_is_corroborated_not_repeated():
     assert deduped[0]["confidence"] > 85
     assert deduped[0]["evidence"]["corroboration_count"] == 2
     assert deduped[0]["evidence"]["corroborated"] is True
+
+
+def test_same_cve_from_multiple_engines_is_one_finding():
+    rows = [
+        {
+            "asset": "api.example.local",
+            "category": "vulnerability_validation",
+            "title": "First engine title",
+            "severity": "high",
+            "confidence": 90,
+            "evidence": {
+                "asset": "api.example.local",
+                "vulnerability_id": "CVE-2026-1234",
+                "validation_state": "confirmed_evidence",
+                "reference": ["ref-a"],
+            },
+        },
+        {
+            "asset": "api.example.local",
+            "category": "web_assessment",
+            "title": "Different engine title",
+            "severity": "critical",
+            "confidence": 88,
+            "evidence": {
+                "asset": "api.example.local",
+                "vulnerability_id": "CVE-2026-1234",
+                "validation_state": "needs_validation",
+                "reference": ["ref-b"],
+            },
+        },
+    ]
+    deduped, duplicate_count = _deduplicate_findings(rows)
+    assert duplicate_count == 1
+    assert len(deduped) == 1
+    finding = deduped[0]
+    assert finding["severity"] == "critical"
+    assert finding["evidence"]["corroboration_count"] == 2
+    assert finding["evidence"]["validation_state"] == "confirmed_evidence"
+    assert len(finding["evidence"]["references"]) == 2
