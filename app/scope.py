@@ -96,3 +96,19 @@ def list_groups(principal: Principal):
     ensure_scope_schema(); conn=_db()
     rows=conn.execute("SELECT id,name,pattern,created_at FROM asset_groups WHERE tenant_id=? ORDER BY name",(principal.tenant_id,)).fetchall()
     conn.close(); return [dict(r) for r in rows]
+
+def list_user_scopes(principal: Principal, user_id: str):
+    if not (principal.role in {"superadmin","admin"} or user_id == principal.user_id):
+        raise PermissionError("scope read denied")
+    ensure_scope_schema(); conn=_db()
+    rows=conn.execute("""SELECT s.id,s.name,s.pattern,s.active,s.created_at
+        FROM scopes s JOIN user_scopes us ON us.scope_id=s.id
+        JOIN users u ON u.id=us.user_id
+        WHERE us.user_id=? AND u.tenant_id=? AND s.tenant_id=? ORDER BY s.name""",
+        (user_id,principal.tenant_id,principal.tenant_id)).fetchall()
+    conn.close(); return [dict(r) for r in rows]
+
+def assign_scope_to_user(principal: Principal, user_id: str, scope_id: str):
+    if principal.role not in {"superadmin","admin"}: raise PermissionError("users:write required")
+    assign_scope(principal,user_id,scope_id)
+    return {"user_id":user_id,"scope_id":scope_id,"active":True}
