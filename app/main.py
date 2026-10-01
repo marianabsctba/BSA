@@ -49,10 +49,15 @@ from .assessment_registry import registry
 bootstrap()
 bootstrap_scope()
 
+IS_PRODUCTION=os.getenv("BSA_ENV","development").lower() in {"production","prod"}
+
 app = FastAPI(
     title="BSA — Be Safe ASM API",
     version="0.3.0",
     description="Attack Surface Management defensivo, rastreável e orientado a evidências.",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
@@ -1485,7 +1490,7 @@ def discovery(request: DiscoveryRequest, http_request: Request):
 
 @app.get("/api/v1/discovery/{target}/changes")
 def discovery_changes(target: str, request: Request):
-    principal = require(request, "assets:read")
+    principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
@@ -1508,7 +1513,7 @@ def discovery_changes(target: str, request: Request):
 
 @app.get("/api/v1/discovery/{target}/graph")
 def discovery_graph(target: str, request: Request):
-    principal = require(request, "assets:read")
+    principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
@@ -1518,7 +1523,7 @@ def discovery_graph(target: str, request: Request):
 
 @app.get("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str, request: Request):
-    principal = require(request, "assets:read")
+    principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
@@ -1752,7 +1757,7 @@ def discovery_infrastructure(target: str, request: Request):
 
 @app.get("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
-    principal = require(request, "assets:read")
+    principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
