@@ -47,7 +47,7 @@ def _artifact_evidence(url, headers, body):
         # Extract only public references; no execution and no recursive fetching here.
         pattern = r"""https?://[^\s<>'"\\]+|(?:^|[\s"'(/])/[A-Za-z0-9._~:/?#[\]-]{2,}"""
         for match in re.finditer(pattern, text_body):
-            ref=match.group(0).strip(" \\"'()[]{}<>")
+            ref=match.group(0).strip()
             if ref:
                 evidence.append(Evidence("http",url,"artifact_reference",ref[:500],78,{"artifact_kind":kind}))
     return evidence
