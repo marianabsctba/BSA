@@ -7,6 +7,11 @@ from .base import Evidence
 from ..security import validate_external_target
 
 
+def classify_certificate_expiry(expiry: datetime, now: datetime | None = None) -> tuple[str,float]:
+    now=now or datetime.now(timezone.utc)
+    days=(expiry-now).total_seconds()/86400
+    return ("expired" if days < 0 else "expiring_soon" if days <= 30 else "valid", days)
+
 class TLSCollector:
     name = "tls"
 
@@ -42,12 +47,10 @@ class TLSCollector:
                 evidence.append(Evidence(self.name, target, "certificate_issuer", issuer["commonName"], 98))
             if not_after:
                 expiry = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-                now=datetime.now(timezone.utc)
-                days=(expiry-now).total_seconds()/86400
+                status,days=classify_certificate_expiry(expiry)
                 evidence.append(Evidence(self.name, target, "certificate_expires", expiry.isoformat(), 99,
-                                          {"days_remaining":round(days,1),"expired":days < 0}))
-                evidence.append(Evidence(self.name,target,"certificate_expiry_status",
-                                          "expired" if days < 0 else "expiring_soon" if days <= 30 else "valid",99,
+                                          {"days_remaining":round(days,1),"expired":status=="expired"}))
+                evidence.append(Evidence(self.name,target,"certificate_expiry_status",status,99,
                                           {"days_remaining":round(days,1)}))
 
         return evidence
