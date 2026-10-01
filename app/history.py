@@ -251,3 +251,30 @@ def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: s
         "removed": [{"fingerprint":fp,"value":previous_map[fp]["value"]} for fp in removed],
         "changed": changed,
     }
+
+def diff_risk_context(diff: dict, assets: list, findings: list) -> dict:
+    """Attach deterministic exposure/risk deltas to a discovery diff."""
+    from .exposure import exposure_breakdown
+    by_fp={getattr(a,"fingerprint",None):a for a in assets}
+    by_id={getattr(a,"id",None):a for a in assets}
+    result=dict(diff)
+    added=[]; removed=[]; changed=[]
+    for item in diff.get("added",[]):
+        a=by_fp.get(item.get("fingerprint"))
+        if a:
+            e=exposure_breakdown(a,findings)
+            added.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"rationale":e.rationale})
+        else: added.append(item)
+    for item in diff.get("removed",[]):
+        removed.append({**item,"state":"removed_from_latest_observation"})
+    for item in diff.get("changed",[]):
+        a=by_fp.get(item.get("fingerprint"))
+        if a:
+            e=exposure_breakdown(a,findings)
+            changed.append({**item,"exposure_score":e.score,"exposure_band":exposure_band(e.score),"rationale":e.rationale})
+        else: changed.append(item)
+    result["added"]=added; result["removed"]=removed; result["changed"]=changed
+    result["risk_context"]={"new_exposure":sum(x.get("exposure_score",0) for x in added),
+                            "changed_exposure":sum(x.get("exposure_score",0) for x in changed),
+                            "removed_count":len(removed)}
+    return result
