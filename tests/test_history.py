@@ -317,3 +317,14 @@ def test_ctem_queue_filter_combines_state_bucket_and_leverage():
     ]
     out=ctem_queue_filter(items,state="in_progress",bucket="critical",min_leverage=80)
     assert [x["item_id"] for x in out]==["a"]
+
+def test_ctem_queue_page_is_bounded_and_deterministic():
+    from app.history import ctem_queue_page
+    items=[{"item_id":str(i),"state":"new","priority":90-i,"leverage_score":i,
+            "created_at":"2026-10-01T10:00:00Z"} for i in range(5)]
+    out=ctem_queue_page(items,page=2,page_size=2)
+    assert out["page"]==2
+    assert out["page_size"]==2
+    assert out["total"]==5
+    assert out["total_pages"]==3
+    assert len(out["items"])==2
