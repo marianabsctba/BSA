@@ -23,6 +23,8 @@ def resolve_public(hostname: str) -> list[str]:
 def validate_external_target(target: str) -> tuple[str,str]:
     raw=target.strip()
     if not raw: raise ValueError("target vazio")
+    if ":" in raw.split("/")[0] and "://" not in raw:
+        raise ValueError("target inválido")
     candidate=raw if "://" in raw else "https://"+raw
     parsed=urlparse(candidate)
     if parsed.scheme not in {"http","https"} or not parsed.hostname:
