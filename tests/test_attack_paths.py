@@ -23,3 +23,26 @@ def test_attack_path_score_is_evidence_based():
     assert paths[0].nodes==("internet","app","service","identity")
     assert paths[0].confidence==70
     assert paths[0].score==83
+
+
+def test_paths_from_risk_graph_uses_only_evidence_backed_edges():
+    from app.attack_paths import paths_from_risk_graph
+    graph={
+        "nodes":[
+            {"id":"internet","kind":"internet","label":"Internet"},
+            {"id":"app","kind":"application","label":"app"},
+            {"id":"finding","kind":"finding","label":"CVE"},
+        ],
+        "edges":[
+            {"source_id":"internet","target_id":"app","kind":"internet_exposed","confidence":95,
+             "evidence_refs":["asset:e1"]},
+            {"source_id":"app","target_id":"finding","kind":"finding_observed","confidence":90,
+             "evidence_refs":["finding:e1"]},
+            {"source_id":"internet","target_id":"finding","kind":"invented","confidence":99,
+             "evidence_refs":[]},
+        ],
+    }
+    paths=paths_from_risk_graph(graph)
+    assert len(paths)==1
+    assert paths[0].confidence==90
+    assert all(edge.evidence_refs for edge in paths[0].edges)
