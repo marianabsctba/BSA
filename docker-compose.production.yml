@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - bsa_ollama:/root/.ollama
-    networks: [bsa_internal]
+    networks: [bsa_ai]
 
   api:
     build: .
@@ -15,6 +15,7 @@ services:
     environment:
       BSA_ENV: production
       BSA_AUTH_DB: /data/bsa_auth.db
+      BSA_HISTORY_DB: /data/bsa_history.db
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
@@ -29,7 +30,7 @@ services:
     cap_drop: [ALL]
     depends_on:
       - ollama
-    networks: [bsa_internal]
+    networks: [bsa_ai, bsa_app, bsa_egress]
 
   web:
     build:
@@ -48,13 +49,20 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    networks: [bsa_internal]
+    networks: [bsa_app, bsa_edge]
 
 volumes:
   bsa_ollama:
   bsa_data:
 
 networks:
-  bsa_internal:
+  bsa_ai:
     driver: bridge
     internal: true
+  bsa_app:
+    driver: bridge
+    internal: true
+  bsa_egress:
+    driver: bridge
+  bsa_edge:
+    driver: bridge
