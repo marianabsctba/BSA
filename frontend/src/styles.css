@@ -824,3 +824,35 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .investigation-section{margin-inline:16px}
  .investigation-actions{padding:12px 16px 16px}
 }
+
+
+/* CTEM CONTEXT FLOW */
+.ctem-context{margin-bottom:16px;padding:15px;border:1px solid #ff2d8438;border-radius:16px;background:linear-gradient(145deg,#160d14,#0d1219);box-shadow:0 16px 42px #0003,inset 0 1px #ffffff06}
+.ctem-context-main{display:flex;justify-content:space-between;gap:16px;align-items:center}
+.ctem-context-main strong{display:block;margin:6px 0 5px;font-size:17px;letter-spacing:-.02em;word-break:break-word}
+.ctem-context-main small{display:block;color:#8994a3;font:8px "DM Mono"}
+.ctem-context-score{min-width:78px;padding:10px 12px;border:1px solid #ff2d8442;border-radius:12px;background:#ff2d8408;text-align:center}
+.ctem-context-score b,.ctem-context-score span{display:block}
+.ctem-context-score b{font:800 24px "DM Mono";color:#ff69a5}
+.ctem-context-score span{margin-top:3px;font:800 6px "DM Mono";letter-spacing:.1em;color:#ff7daf}
+.ctem-context-score.low{border-color:#68e3a244;background:#68e3a208}.ctem-context-score.low b,.ctem-context-score.low span{color:#68e3a2}
+.ctem-context-score.medium{border-color:#f6c86b44;background:#f6c86b08}.ctem-context-score.medium b,.ctem-context-score.medium span{color:#f6c86b}
+.ctem-context-score.high{border-color:#ff9a6b55;background:#ff9a6b08}.ctem-context-score.high b,.ctem-context-score.high span{color:#ff9a6b}
+.ctem-context-meta{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;margin-top:13px;padding-top:12px;border-top:1px solid #ffffff09}
+.ctem-context-meta>span{font:700 7px "DM Mono";letter-spacing:.08em;color:#6d7888;text-transform:uppercase}
+.ctem-context-meta>b{font:800 8px "DM Mono";color:#f1f4f8}
+.ctem-context-meta>small{color:#7f8998;font-size:9px;line-height:1.45}
+.ctem-context-meta .secondary{display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.ctem-match{background:linear-gradient(90deg,#ff2d8414,#ff2d8404)!important;box-shadow:inset 3px 0 #ff2d84}
+.ctem-match td:first-child strong{color:#fff}
+.ctem-match td:first-child small{color:#ff73ac!important;font:700 6px "DM Mono";letter-spacing:.08em}
+@media(max-width:700px){
+ .ctem-context{padding:13px}
+ .ctem-context-main{align-items:flex-start}
+ .ctem-context-main strong{font-size:15px}
+ .ctem-context-score{min-width:66px}
+ .ctem-context-score b{font-size:20px}
+ .ctem-context-meta{grid-template-columns:1fr auto}
+ .ctem-context-meta>small{grid-column:1/-1}
+ .ctem-context-meta .secondary{grid-column:1/-1;width:100%}
+}
