@@ -162,6 +162,102 @@ class SubdomainProvider(CommandProvider):
         return out
 
 
+class AssetfinderProvider(CommandProvider):
+    name = "assetfinder"
+    binary = "assetfinder"
+    timeout = 75
+
+    def _command(self, target: str) -> list[str]:
+        return [self.binary, "--subs-only", target]
+
+    def parse(self, stdout: str, stderr: str, returncode: int) -> list[ProviderResult]:
+        seen = set()
+        out = []
+        for value in stdout.splitlines():
+            value = value.strip().lower()
+            if value and value not in seen and len(seen) < 500:
+                seen.add(value)
+                out.append(
+                    ProviderResult(
+                        "External asset discovered",
+                        "info",
+                        80,
+                        {"asset": value, "relationship": "subdomain"},
+                    )
+                )
+        return out
+
+
+class AlterXProvider(CommandProvider):
+    name = "alterx"
+    binary = "alterx"
+    timeout = 60
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        if not self.available():
+            return []
+        proc = subprocess.run(
+            [self.binary, "-l", target, "-silent"],
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        seen = set()
+        out = []
+        for value in (proc.stdout or "").splitlines():
+            value = value.strip().lower()
+            if value and value not in seen and len(seen) < 128:
+                seen.add(value)
+                out.append(
+                    ProviderResult(
+                        "Candidate asset generated",
+                        "info",
+                        55,
+                        {
+                            "asset": value,
+                            "relationship": "candidate-subdomain",
+                            "validation_required": True,
+                        },
+                    )
+                )
+        return out
+
+
+class PureDnsProvider(CommandProvider):
+    name = "puredns"
+    binary = "puredns"
+    timeout = 75
+
+    def available(self) -> bool:
+        return bool(shutil.which("puredns") and shutil.which("massdns"))
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        if not self.available():
+            return []
+        proc = subprocess.run(
+            [self.binary, "resolve", "-", "--quiet"],
+            input=target + "\n",
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        out = []
+        for value in (proc.stdout or "").splitlines():
+            value = value.strip().lower()
+            if value:
+                out.append(
+                    ProviderResult(
+                        "DNS candidate validated",
+                        "info",
+                        96,
+                        {"asset": value, "relationship": "dns-validated"},
+                    )
+                )
+        return out
+
+
 class NmapProvider(CommandProvider):
     name = "nmap"
     binary = "nmap"
