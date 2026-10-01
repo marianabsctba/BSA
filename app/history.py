@@ -441,7 +441,6 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
     """Return deterministic CTEM aging/SLA indicators for active work."""
     now=as_of or datetime.now(timezone.utc)
     active=[x for x in items if x.get("state") not in {"verified"}]
-    sla_hours={85:24,70:72,45:168}
     overdue=0
     oldest_age_hours=0
     for item in active:
@@ -452,7 +451,7 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             age=0
         oldest_age_hours=max(oldest_age_hours,int(age))
         p=int(item.get("priority",0) or 0)
-        threshold=24 if p>=85 else 72 if p>=70 else 168 if p>=45 else None
+        threshold=24 if p>=85 else 48 if p>=70 else 168 if p>=45 else None
         if threshold is not None and age>threshold:
             overdue+=1
     return {**ctem_leverage_summary(items),
