@@ -294,3 +294,16 @@ def test_ctem_audit_outcome_requires_explicit_verified_pass_and_evidence():
     assert out["latest_result"]=="passed"
     assert out["verified"] is True
     assert out["evidence_complete"] is True
+
+def test_ctem_queue_view_is_deterministic_and_groups_priority():
+    from app.history import ctem_queue_view
+    items=[
+      {"item_id":"b","state":"new","priority":70,"leverage_score":90,"created_at":"2026-10-01T11:00:00Z"},
+      {"item_id":"a","state":"new","priority":85,"leverage_score":60,"created_at":"2026-10-01T12:00:00Z"},
+      {"item_id":"c","state":"verified","priority":100,"leverage_score":100,"created_at":"2026-10-01T09:00:00Z"},
+    ]
+    out=ctem_queue_view(items)
+    assert out["total_active"]==2
+    assert [x["item_id"] for x in out["ordered_items"]]==["a","b"]
+    assert out["buckets"]["critical"]["count"]==1
+    assert out["buckets"]["high"]["count"]==1
