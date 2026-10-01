@@ -1556,7 +1556,8 @@ def ctem_verify(item_id: str, request: Request, payload: dict):
             str(payload.get("result","")),
             list(payload.get("evidence_refs") or []),
             str(payload.get("notes","")),
-        )        audit(principal,"ctem_verification","ctem",item_id,{"result":str(payload.get("result","")),"evidence_count":len(list(payload.get("evidence_refs") or []))})
+        )
+        audit(principal,"ctem_verification","ctem",item_id,{"result":str(payload.get("result","")),"evidence_count":len(list(payload.get("evidence_refs") or []))})
         return result
 
     except KeyError:
