@@ -204,7 +204,7 @@ def asset_detail_view(asset_id: str, request: Request):
 
 @app.get("/api/v1/discovery/ip-intelligence/{target}")
 def discovery_ip_intelligence(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct","ports","rdap","ip_intel"])
@@ -232,7 +232,7 @@ def discovery_ai_attack_paths(request: Request, payload: dict):
 
 @app.get("/api/v1/discovery/ai-identity/{target}")
 def discovery_ai_identity(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct","rdap"])
@@ -246,7 +246,7 @@ def discovery_ai_identity(target: str, request: Request):
 
 @app.get("/api/v1/discovery/ai-prioritize/{target}")
 def discovery_ai_prioritize(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
@@ -262,7 +262,7 @@ def discovery_ai_prioritize(target: str, request: Request):
 
 @app.get("/api/v1/discovery/ai-api-surface/{target}")
 def discovery_ai_api_surface(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["http"])
@@ -275,7 +275,7 @@ def discovery_ai_api_surface(target: str, request: Request):
 
 @app.get("/api/v1/discovery/ai-correlate/{target}")
 def discovery_ai_correlate(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
@@ -285,7 +285,7 @@ def discovery_ai_correlate(target: str, request: Request):
 
 @app.get("/api/v1/discovery/signals/{target}")
 def discovery_signals(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
@@ -296,7 +296,7 @@ def discovery_signals(target: str, request: Request):
 
 @app.get("/api/v1/discovery/ai-judge/{target}")
 def discovery_ai_judge(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
@@ -314,7 +314,7 @@ def discovery_ai_judge(target: str, request: Request):
     
 @app.get("/api/v1/discovery/ai-plan/{target}")
 def discovery_ai_plan(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
@@ -325,7 +325,7 @@ def discovery_ai_plan(target: str, request: Request):
 
 @app.get("/api/v1/technologies/intelligence/{target}")
 def technology_intelligence_api(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["http","tls"])
@@ -1234,17 +1234,17 @@ def discovery_correlation(target: str, request: Request):
 
 @app.get("/api/v1/easm/discover/{target}")
 def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets: int = 40):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     if max_depth < 0 or max_depth > 3 or max_assets < 1 or max_assets > 100:
         raise HTTPException(status_code=400,detail="invalid discovery bounds")
-    result=discover_surface(target,max_depth=max_depth,max_assets=max_assets)
+    result=discover_surface(target,max_depth=max_depth,max_assets=max_assets,scope_validator=lambda candidate: asset_in_scope(principal,candidate))
     return result
 
 @app.get("/api/v1/easm/lifecycle/{target}")
 def easm_lifecycle(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
@@ -1341,7 +1341,7 @@ def dashboard(request: Request):
 
 @app.get("/api/v1/discovery/{target}/infrastructure/graph")
 def discovery_infrastructure_graph(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
@@ -1356,7 +1356,7 @@ def discovery_infrastructure_graph(target: str, request: Request):
 
 @app.get("/api/v1/discovery/{target}/infrastructure")
 def discovery_infrastructure(target: str, request: Request):
-    principal=require(request,"assets:read")
+    principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     data=collect_target(target,["dns","http","tls","ct"])
