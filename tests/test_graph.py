@@ -16,3 +16,23 @@ def test_dynamic_graph_contains_evidence_backed_nodes_and_edges():
     assert '203.0.113.10' in labels
     assert 'resolves_to' in kinds
     assert 'certificate_observed' in kinds
+
+def test_remediation_leverage_prioritizes_path_coverage_and_risk_reduction():
+    from app.graph import remediation_leverage
+    from types import SimpleNamespace
+    nodes={
+      "f1":SimpleNamespace(kind="finding",label="CVE-1",risk_band="critical",confidence=95),
+      "f2":SimpleNamespace(kind="finding",label="CVE-2",risk_band="high",confidence=90),
+    }
+    edges=[]
+    paths=[
+      {"nodes":["internet","a","f1"],"score":90},
+      {"nodes":["internet","a","f1"],"score":85},
+      {"nodes":["internet","b","f2"],"score":70},
+    ]
+    # Finding f1 affects two paths; f2 affects one.
+    out=remediation_leverage(nodes,edges,paths)
+    assert out
+    assert out[0]["finding_node_id"] == "f1"
+    assert out[0]["paths_affected"] == 2
+    assert 0 <= out[0]["leverage_score"] <= 100
