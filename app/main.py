@@ -882,6 +882,8 @@ def users_active(user_id: str, request: Request, payload: UserActiveRequest):
 @app.post("/api/v1/users/{user_id}/reset-password")
 def users_reset_password(user_id: str, request: Request, payload: UserPasswordResetRequest):
     p=current_principal(request)
+    if not rate_limit_action("password-reset", p.user_id, limit=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="too many password reset attempts")
     try:
         result=reset_user_password(p,user_id,payload.password)
         audit(p,"reset_password","user",user_id)
