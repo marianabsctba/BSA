@@ -423,6 +423,20 @@ def ctem_leverage_summary(items: list[dict]) -> dict:
     }
 
 
+def ctem_remediation_coverage(items: list[dict]) -> dict:
+    """Measure how much active CTEM work has concrete remediation leverage."""
+    active=[x for x in items if x.get("state") not in {"verified"}]
+    with_leverage=[x for x in active if int(x.get("leverage_score",0) or 0)>0]
+    total_paths=sum(max(1,int(x.get("paths_affected",0) or 0)) for x in active)
+    covered_paths=sum(max(1,int(x.get("paths_affected",0) or 0)) for x in with_leverage)
+    return {
+        "active_items":len(active),
+        "items_with_remediation_leverage":len(with_leverage),
+        "remediation_coverage_percent":round(100*len(with_leverage)/max(1,len(active))),
+        "path_coverage_percent":round(100*covered_paths/max(1,total_paths)),
+    }
+
+
 def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -> dict:
     """Return deterministic CTEM aging/SLA indicators for active work."""
     now=as_of or datetime.now(timezone.utc)
