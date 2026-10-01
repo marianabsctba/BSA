@@ -10,6 +10,10 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -681,85 +685,176 @@ class ThreatFoxProvider(_ConfiguredJsonIntelProvider):
         )]
 
 
-class OpenVASProvider(_ConfiguredJsonIntelProvider):
+class OpenVASProvider:
     name = "openvas"
-    endpoint_env = "BSA_OPENVAS_URL"
-    token_env = "BSA_OPENVAS_TOKEN"
-    timeout = 120
+    timeout = 180
+
+    def available(self) -> bool:
+        return bool(shutil.which("gvm-cli"))
+
+    def _gmp(self, xml: str) -> ET.Element | None:
+        binary = shutil.which("gvm-cli")
+        if not binary:
+            return None
+        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
+        command = [binary, "socket", "--socketpath", socket_path]
+        username = os.getenv("BSA_GVM_USERNAME", "").strip()
+        password = os.getenv("BSA_GVM_PASSWORD", "").strip()
+        if username:
+            command += ["--gmp-username", username]
+        if password:
+            command += ["--gmp-password", password]
+        command += ["--xml", xml]
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout, check=False)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return None
+        try:
+            return ET.fromstring(proc.stdout)
+        except ET.ParseError:
+            return None
 
     def execute(self, target: str) -> list[ProviderResult]:
-        data = self._post({
-            "target": target,
-            "profile": "safe",
-            "max_findings": 250,
-        })
-        rows = data.get("findings") or data.get("results") or []
+        config_id = os.getenv("BSA_GVM_SCAN_CONFIG_ID", "").strip()
+        scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
+        if not config_id or not scanner_id:
+            return []
+        name = "bsa-" + str(abs(hash(target)))[:12]
+        created = self._gmp(
+            f"<create_target><name>{name}</name><hosts>{escape(target)}</hosts></create_target>"
+        )
+        target_id = created.attrib.get("id") if created is not None else None
+        if not target_id:
+            return []
+        task = self._gmp(
+            "<create_task>"
+            f"<name>{name}</name>"
+            f"<config id='{escape(config_id)}'/>"
+            f"<target id='{escape(target_id)}'/>"
+            f"<scanner id='{escape(scanner_id)}'/>"
+            "</create_task>"
+        )
+        task_id = task.attrib.get("id") if task is not None else None
+        if not task_id:
+            return []
+        started = self._gmp(f"<start_task task_id='{escape(task_id)}'/>")
+        report_id = started.findtext(".//report_id") if started is not None else None
+        if not report_id:
+            return []
+
+        deadline = time.time() + int(os.getenv("BSA_GVM_MAX_WAIT", "120"))
+        while time.time() < deadline:
+            status = self._gmp(f"<get_tasks task_id='{escape(task_id)}' details='1'/>")
+            state = (status.findtext(".//task/status") or "").strip().lower() if status is not None else ""
+            if state in {"done", "stopped", "interrupted"}:
+                break
+            time.sleep(3)
+
+        report = self._gmp(
+            f"<get_reports report_id='{escape(report_id)}' details='1' ignore_pagination='1'/>"
+        )
+        if report is None:
+            return []
+
         out = []
-        for row in rows[:250] if isinstance(rows, list) else []:
-            if not isinstance(row, dict):
-                continue
-            severity = str(row.get("severity") or "info").lower()
-            confidence = max(0, min(100, int(row.get("confidence", 85) or 85)))
-            evidence = {
-                "asset": row.get("asset") or target,
-                "vulnerability_id": row.get("cve") or row.get("vulnerability_id"),
-                "cvss": row.get("cvss"),
-                "port": row.get("port"),
-                "protocol": row.get("protocol"),
-                "summary": row.get("summary") or row.get("description"),
-                "relationship": "vulnerability-assessment",
-            }
+        for result in report.findall(".//result")[:250]:
+            name = (result.findtext("name") or "Vulnerability assessment finding").strip()
+            host = (result.findtext("host") or target).strip()
+            port = (result.findtext("port") or "").strip()
+            threat = (result.findtext("threat") or "Log").strip().lower()
+            raw_score = result.findtext("severity")
+            severity = {
+                "critical": "critical",
+                "high": "high",
+                "medium": "medium",
+                "low": "low",
+                "log": "info",
+            }.get(threat, "info")
+            cve = None
+            nvt = result.find("nvt")
+            if nvt is not None:
+                for ref in nvt.findall(".//ref"):
+                    if str(ref.attrib.get("type", "")).lower() == "cve":
+                        cve = ref.attrib.get("id")
+                        break
+            try:
+                cvss = float(raw_score) if raw_score else None
+            except ValueError:
+                cvss = None
             out.append(
                 ProviderResult(
-                    str(row.get("title") or "Vulnerability assessment finding"),
+                    name,
                     severity,
-                    confidence,
-                    evidence,
+                    90,
+                    {
+                        "asset": host,
+                        "port": port,
+                        "vulnerability_id": cve,
+                        "cvss": cvss,
+                        "relationship": "vulnerability-assessment",
+                    },
                 )
             )
         return out
 
 
-class ZAPProvider(_ConfiguredJsonIntelProvider):
+class ZAPProvider:
     name = "zap"
-    endpoint_env = "BSA_ZAP_URL"
-    token_env = "BSA_ZAP_TOKEN"
-    timeout = 120
+    timeout = 180
+
+    def available(self) -> bool:
+        return bool(shutil.which("zap-baseline.py") or shutil.which("zap-baseline"))
 
     def supports(self, target: str) -> bool:
         parsed = urlparse(target if "://" in target else f"https://{target}")
         return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
 
     def execute(self, target: str) -> list[ProviderResult]:
-        data = self._post({
-            "target": target,
-            "mode": "baseline",
-            "active_scan": False,
-            "max_findings": 250,
-        })
-        rows = data.get("findings") or data.get("alerts") or []
-        out = []
-        for row in rows[:250] if isinstance(rows, list) else []:
-            if not isinstance(row, dict):
-                continue
-            severity = str(row.get("severity") or row.get("risk") or "info").lower()
-            confidence = max(0, min(100, int(row.get("confidence", 80) or 80)))
-            evidence = {
-                "url": row.get("url") or target,
-                "parameter": row.get("parameter"),
-                "evidence": row.get("evidence"),
-                "cwe": row.get("cwe"),
-                "wasc": row.get("wasc"),
-                "relationship": "web-assessment",
-            }
-            out.append(
-                ProviderResult(
-                    str(row.get("title") or row.get("alert") or "Web assessment finding"),
-                    severity,
-                    confidence,
-                    evidence,
-                )
+        binary = shutil.which("zap-baseline.py") or shutil.which("zap-baseline")
+        if not binary:
+            return []
+        url = target if "://" in target else f"https://{target}"
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return []
+
+        with tempfile.TemporaryDirectory(prefix="bsa-zap-") as tmp:
+            report = os.path.join(tmp, "report.json")
+            proc = subprocess.run(
+                [binary, "-t", url, "-J", report, "-m", "2", "-I"],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=False,
             )
+            if not os.path.exists(report):
+                return []
+            try:
+                with open(report, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except (OSError, ValueError):
+                return []
+
+        out = []
+        severity_map = {"high": "high", "medium": "medium", "low": "low", "informational": "info", "info": "info"}
+        for site in data.get("site", [])[:25]:
+            for alert in site.get("alerts", [])[:250]:
+                risk = str(alert.get("riskdesc") or alert.get("risk") or "info").split()[0].lower()
+                instances = alert.get("instances") or []
+                first = instances[0] if instances else {}
+                out.append(
+                    ProviderResult(
+                        str(alert.get("name") or "Web assessment finding"),
+                        severity_map.get(risk, "info"),
+                        85,
+                        {
+                            "url": first.get("uri") or site.get("@name") or url,
+                            "parameter": first.get("param"),
+                            "cwe": alert.get("cweid"),
+                            "wasc": alert.get("wascid"),
+                            "relationship": "web-assessment",
+                        },
+                    )
+                )
         return out
 
 
