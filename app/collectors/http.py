@@ -152,6 +152,27 @@ def classify_surface_response(status: int | None, headers: dict, body: bytes) ->
         "likely_empty": length == 0,
     }
 
+
+def build_response_baseline(samples: list[dict]) -> dict:
+    """Build a deterministic baseline from observed negative/redirect responses."""
+    usable=[s for s in samples if s.get("status") in {403,404}]
+    hashes={}
+    for s in usable:
+        h=s.get("sha256")
+        if h: hashes[h]=hashes.get(h,0)+1
+    dominant=max(hashes,key=hashes.get) if hashes else None
+    return {"sample_count":len(usable),"dominant_hash":dominant,
+            "dominant_count":hashes.get(dominant,0) if dominant else 0,
+            "known_hashes":hashes}
+
+def compare_response_to_baseline(response: dict, baseline: dict) -> dict:
+    h=response.get("sha256")
+    known=set((baseline or {}).get("known_hashes",{}))
+    return {"is_known_negative": bool(h and h in known),
+            "same_as_dominant": bool(h and h==(baseline or {}).get("dominant_hash")),
+            "status":response.get("status"),
+            "length":response.get("length")}
+
 def discover_web_surface(url: str, max_paths: int = 40, max_js: int = 20) -> list[Evidence]:
     """Bounded same-origin web surface discovery: common files/directories + public JS references."""
     validate_external_target(url)
