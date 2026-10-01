@@ -27,7 +27,11 @@ def _history_db():
         action TEXT NOT NULL, title TEXT NOT NULL, drivers_json TEXT NOT NULL,
         evidence_refs_json TEXT NOT NULL, created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL, resolved_at TEXT, verified_at TEXT)""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_tenant_state ON ctem_items(tenant_id,state,priority)")\n    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_verifications(
+        verification_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
+        result TEXT NOT NULL, evidence_refs_json TEXT NOT NULL, notes TEXT NOT NULL,
+        verified_at TEXT NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_verification_tenant_item ON ctem_verifications(tenant_id,item_id,verified_at)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
@@ -383,3 +387,32 @@ def materialize_ctem_from_diff(diff: dict, assets, findings, tenant_id: str) -> 
         }
         created.append(upsert_ctem_item(item,tenant_id))
     return created
+
+def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: list[str], notes: str = "") -> dict:
+    """Close a CTEM item only with explicit verification evidence."""
+    import uuid
+    if result not in {"passed","failed"}:
+        raise ValueError("verification result must be passed or failed")
+    if not evidence_refs:
+        raise ValueError("verification evidence is required")
+    conn=_history_db()
+    row=conn.execute("SELECT * FROM ctem_items WHERE item_id=? AND tenant_id=?",(item_id,tenant_id)).fetchone()
+    if not row:
+        conn.close()
+        raise KeyError("CTEM item not found")
+    if row["state"] != "resolved":
+        conn.close()
+        raise ValueError("CTEM item must be resolved before verification")
+    now=datetime.now(timezone.utc).isoformat()
+    verification_id=str(uuid.uuid4())
+    conn.execute("INSERT INTO ctem_verifications(verification_id,tenant_id,item_id,result,evidence_refs_json,notes,verified_at) VALUES(?,?,?,?,?,?,?)",
+                 (verification_id,tenant_id,item_id,result,json.dumps(evidence_refs,ensure_ascii=False),notes,now))
+    new_state="verified" if result=="passed" else "in_progress"
+    conn.execute("UPDATE ctem_items SET state=?,updated_at=?,verified_at=? WHERE item_id=? AND tenant_id=?",
+                 (new_state,now,now if result=="passed" else None,item_id,tenant_id))
+    conn.commit()
+    out=dict(row)
+    out.update({"state":new_state,"verification_id":verification_id,"verification_result":result,
+                "verification_evidence_refs":evidence_refs,"verified_at":now if result=="passed" else None})
+    conn.close()
+    return out
