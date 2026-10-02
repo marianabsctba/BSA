@@ -7,6 +7,8 @@ from app.api import dependencies as api_dependencies
 from app.api.routers import vulnerabilities as vulnerabilities_router
 from app.api.routers import ctem as ctem_router
 from app.api.routers import operations as operations_router
+from app.api.routers import reporting as reporting_router
+from app.api.routers import discovery_execution as discovery_execution_router
 from app import history, worker, job_queue
 
 
@@ -28,16 +30,17 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_HISTORY_DB",str(tmp_path/"history.db"))
     monkeypatch.setenv("BSA_JOBS_DB",str(tmp_path/"jobs.db"))
 
-    monkeypatch.setattr(main,"require",lambda request,permission:principal)
-    monkeypatch.setattr(main,"current_principal",lambda request:principal)
+    monkeypatch.setattr(reporting_router,"require",lambda request,permission:principal)
+    monkeypatch.setattr(discovery_execution_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(api_dependencies,"require",lambda request,permission:principal)
     monkeypatch.setattr(vulnerabilities_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(ctem_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(operations_router,"require",lambda request,permission:principal)
-    monkeypatch.setattr(main,"asset_in_scope",lambda p,target:True)
+    monkeypatch.setattr(reporting_router,"asset_in_scope",lambda p,target:True)
+    monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(api_dependencies,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
-    monkeypatch.setattr(main,"govern_active_scan",lambda request,p,target,authorization_ref=None:"development")
+    monkeypatch.setattr(discovery_execution_router,"queue_active_operation",lambda request,p,target,operation,payload=None,authorization_ref=None: __import__("fastapi").responses.JSONResponse(status_code=202,content={"job_id":job_queue.enqueue_operation(p,target,operation,authorization_ref or "development",payload or {})["job_id"],"status":"queued","target":target,"operation":operation}))
     monkeypatch.setattr(
         main,
         "collect_target",
@@ -52,7 +55,7 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        main,
+        reporting_router,
         "public_engine_health",
         lambda:{
             "profiles":{
@@ -138,18 +141,17 @@ def test_pilot_ctem_retest_closes_verified_with_full_evidence(tmp_path, monkeypa
     monkeypatch.setenv("BSA_JOBS_DB",str(tmp_path/"jobs.db"))
 
     tenant_assets=[
-        asset for asset in main.STORE_ASSETS
+        asset for asset in discovery_execution_router.STORE_ASSETS
         if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
     ]
     assert tenant_assets
     asset=tenant_assets[0]
 
-    monkeypatch.setattr(main,"require",lambda request,permission:principal)
-    monkeypatch.setattr(main,"current_principal",lambda request:principal)
+    monkeypatch.setattr(reporting_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(ctem_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(ctem_router,"tenant_scope",lambda p,assets,findings:(assets,findings))
     monkeypatch.setattr(ctem_router,"govern_active_scan",lambda request,p,target,authorization_ref=None:"AUTH-PILOT")
-    monkeypatch.setattr(main,"asset_in_scope",lambda p,target:True)
+    monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
     monkeypatch.setattr(main,"govern_active_scan",lambda request,p,target,authorization_ref=None:"AUTH-PILOT")
 
