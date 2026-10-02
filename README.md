@@ -236,11 +236,14 @@ As plataformas líderes atuais enfatizam descoberta contínua, visibilidade Inte
 
 O BSA pode usar **Ollama no próprio servidor** para interpretar evidências do Exposure Graph sem enviar dados do tenant para uma API externa.
 
-Variáveis:
+Variáveis de produção:
 - `BSA_AI_ENABLED=1`
-- `BSA_OLLAMA_URL=http://ollama:11434`
+- `BSA_OLLAMA_URL=http://ai-proxy:11435`
+- `BSA_OLLAMA_PROXY_TOKEN=<segredo aleatório com 32+ caracteres>`
 - `BSA_OLLAMA_MODEL=qwen2.5:7b`
 - `BSA_AI_TIMEOUT=15`
+
+Em produção, a API não acessa o Ollama diretamente. O tráfego passa por um proxy interno autenticado e o Ollama fica isolado em uma rede dedicada.
 
 Após subir o stack, baixe o modelo no servidor:
 
@@ -305,14 +308,16 @@ Para distribuição externa, não use o perfil de desenvolvimento. O piloto deve
 3. Use uma senha administrativa longa e exclusiva; nunca reutilize a senha de demonstração.
 4. Configure BSA_ALLOWED_ORIGINS e BSA_ALLOWED_HOSTS somente para os domínios usados pelo piloto.
 5. Mantenha BSA_DEMO_DATA=0 em produção.
-6. Cadastre os domínios/hosts autorizados no Scope e no Scan Scope do tenant.
-7. Crie grants temporários de autorização para scans ativos, com authorization_ref, alvo/pattern, usuário e expiração.
-8. Configure a política de retenção da tenant e execute primeiro o dry-run antes de qualquer limpeza.
-9. Consulte /api/v1/operations/release-readiness e não libere o piloto enquanto houver required_failures.
-10. Prefira docker-compose.production.yml, que mantém API e Ollama na rede interna e não publica a porta da API diretamente.
-11. Faça backup do volume bsa_data antes de atualizar o piloto.
-12. Instale o modelo local do Ollama antes de isolar a rede interna.
-13. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
+6. Cadastre os domínios/hosts autorizados no Scope do tenant.
+7. Antes de criar um Scan Scope de domínio em produção, conclua a prova de posse por DNS TXT ou `.well-known`.
+8. Só depois da prova validada, crie o Scan Scope e atribua-o ao usuário operador.
+9. Crie grants temporários de autorização para scans ativos, com `authorization_ref`, alvo/pattern, usuário e expiração. O criador do grant não pode ser o beneficiário.
+10. Configure a política de retenção da tenant e execute primeiro o dry-run antes de qualquer limpeza.
+11. Consulte /api/v1/operations/release-readiness e não libere o piloto enquanto houver required_failures.
+12. Prefira docker-compose.production.yml, que mantém API, proxy de IA e Ollama em redes internas separadas e não publica a porta da API diretamente.
+13. Faça backup do volume bsa_data antes de atualizar o piloto.
+14. Instale o modelo local do Ollama antes de isolar a rede interna.
+15. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
 
 ### Backup, restore e upgrade do piloto
 
@@ -348,6 +353,22 @@ Após upgrade ou restore, confirme:
 5. um scan controlado de validação antes de reabrir a operação normal.
 
 O `docker-compose.production.yml` possui healthcheck da API e do worker. O worker só fica saudável quando o heartbeat persistido estiver recente.
+
+
+### Prova de posse para Scan Scope ativo
+
+Em produção, um domínio só pode virar Scan Scope ativo depois de uma prova de posse válida.
+
+Fluxo:
+
+1. `POST /api/v1/domain-ownership/proofs` com o domínio e método `dns_txt` ou `well_known`;
+2. publique exatamente o challenge retornado:
+   - DNS TXT em `_bsa-verify.<domínio>`; ou
+   - conteúdo do challenge em `https://<domínio>/.well-known/be-safe-asm-verification`;
+3. chame `POST /api/v1/domain-ownership/proofs/{proof_id}/verify`;
+4. somente depois da confirmação crie o Scan Scope ativo.
+
+A verificação `.well-known` reaplica validação de destino público e evita seguir redirects. O mesmo domínio registrável não pode ficar ativo em tenants diferentes sem aprovação de superadmin.
 
 ### Segurança de discovery
 
