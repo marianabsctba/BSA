@@ -97,3 +97,35 @@ def test_observability_identity_is_not_taken_from_unvalidated_token(monkeypatch)
     assert response.status_code==200
     assert captured[-1]["tenant_id"] is None
     assert captured[-1]["user_id"] is None
+
+
+def test_runtime_health_checks_postgres_when_repository_backend_is_postgres(monkeypatch):
+    import psycopg
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def execute(self,sql): assert sql=="SELECT 1"
+        def fetchone(self): return (1,)
+
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def cursor(self): return Cursor()
+
+    monkeypatch.setenv("BSA_ENV","production")
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","postgres")
+    monkeypatch.setenv("BSA_DATABASE_URL","postgresql://safe-redacted/db")
+    monkeypatch.setattr(psycopg,"connect",lambda dsn,connect_timeout=2: Connection())
+    monkeypatch.setattr(runtime_health.auth,"DB_PATH","/data/auth.db")
+    monkeypatch.setattr(runtime_health,"_sqlite_readable",lambda path: {"status":"healthy"})
+    monkeypatch.setattr(runtime_health,"queue_health",lambda: {"status":"healthy","queued":0,"running":0})
+    monkeypatch.setattr(runtime_health,"worker_health",lambda: {"status":"healthy","active_workers":1})
+
+    data=runtime_health.runtime_health()
+
+    assert data["status"]=="healthy"
+    assert data["components"]["asset_store"]=={
+        "status":"healthy",
+        "backend":"postgres",
+    }
