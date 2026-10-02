@@ -185,6 +185,13 @@ def list_user_scan_scopes(principal: Principal,user_id:str):
     if not (principal.role in {"superadmin","admin"} or user_id==principal.user_id):
         raise PermissionError("scan scope read denied")
     ensure_scope_schema(); conn=_db()
+    user=conn.execute(
+        "SELECT id FROM users WHERE id=? AND tenant_id=?",
+        (user_id,principal.tenant_id),
+    ).fetchone()
+    if not user:
+        conn.close()
+        raise ValueError("user not found")
     rows=conn.execute("""SELECT s.id,s.name,s.pattern,s.active,s.created_at
         FROM scan_scopes s JOIN user_scan_scopes us ON us.scope_id=s.id
         JOIN users u ON u.id=us.user_id
@@ -232,6 +239,13 @@ def list_user_scopes(principal: Principal, user_id: str):
     if not (principal.role in {"superadmin","admin"} or user_id == principal.user_id):
         raise PermissionError("scope read denied")
     ensure_scope_schema(); conn=_db()
+    user=conn.execute(
+        "SELECT id FROM users WHERE id=? AND tenant_id=?",
+        (user_id,principal.tenant_id),
+    ).fetchone()
+    if not user:
+        conn.close()
+        raise ValueError("user not found")
     rows=conn.execute("""SELECT s.id,s.name,s.pattern,s.active,s.created_at
         FROM scopes s JOIN user_scopes us ON us.scope_id=s.id
         JOIN users u ON u.id=us.user_id
