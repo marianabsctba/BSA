@@ -54,14 +54,14 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Estratégia de failover/HA.
 
 ### Operação e observabilidade
-- [ ] Logging estruturado JSON.
-- [ ] request_id/correlation_id.
-- [ ] tenant_id e user_id em contexto de log seguro.
+- [x] Logging estruturado JSON.
+- [x] request_id/correlation_id.
+- [x] tenant_id e user_id em contexto de log seguro.
 - [ ] Métricas de latência, fila, retries, erros e duração por motor.
 - [ ] Prometheus/OpenTelemetry.
 - [ ] Tracing.
 - [ ] Alertas básicos operacionais.
-- [ ] /health real para DB/fila/dependências essenciais.
+- [x] /health real para DB/fila/dependências essenciais.
 - [x] Backup SQLite online verificado.
 - [x] Teste automatizado de restauração.
 - [ ] Backup agendado e retenção operacional documentada.
