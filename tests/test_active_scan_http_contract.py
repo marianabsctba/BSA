@@ -2,12 +2,12 @@ from pathlib import Path
 
 
 ACTIVE_MARKERS = (
-    "govern_active_scan(",
     "collect_target(",
     "adaptive_discovery(",
     "discover_surface(",
     "run_safe_web_assessment(",
     "run_nuclei(",
+    "run_public_assessment(",
 )
 
 
@@ -36,6 +36,7 @@ def test_active_post_routes_queue_in_production():
         body = chunk.split("@app.", 1)[0]
         if not any(marker in body for marker in ACTIVE_MARKERS):
             continue
-        if "if IS_PRODUCTION:" not in body or "queue_active_operation(" not in body:
+        queued = "queue_active_operation(" in body or "enqueue_assessment(" in body
+        if "if IS_PRODUCTION:" not in body or not queued:
             offenders.append(header)
     assert offenders == [], f"active POST route executes synchronously in production: {offenders}"
