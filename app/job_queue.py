@@ -43,7 +43,10 @@ def _db():
         max_attempts INTEGER NOT NULL DEFAULT 3,
         lease_expires_at INTEGER,
         run_token TEXT,
-        materialization_started_at INTEGER
+        materialization_started_at INTEGER,
+        job_type TEXT NOT NULL DEFAULT 'assessment',
+        operation TEXT,
+        payload_json TEXT
     )""")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(assessment_jobs)").fetchall()}
     if "attempts" not in cols:
@@ -56,6 +59,12 @@ def _db():
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN run_token TEXT")
     if "materialization_started_at" not in cols:
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN materialization_started_at INTEGER")
+    if "job_type" not in cols:
+        conn.execute("ALTER TABLE assessment_jobs ADD COLUMN job_type TEXT NOT NULL DEFAULT 'assessment'")
+    if "operation" not in cols:
+        conn.execute("ALTER TABLE assessment_jobs ADD COLUMN operation TEXT")
+    if "payload_json" not in cols:
+        conn.execute("ALTER TABLE assessment_jobs ADD COLUMN payload_json TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_jobs_tenant_status ON assessment_jobs(tenant_id,status,created_at)")
     conn.execute("""CREATE TABLE IF NOT EXISTS worker_heartbeats(
         worker_id TEXT PRIMARY KEY,
@@ -117,12 +126,42 @@ def enqueue_assessment(principal,target:str,profile:str,authorization_ref:str)->
     return get_job(job_id,principal.tenant_id)
 
 
+def enqueue_operation(principal,target:str,operation:str,authorization_ref:str,payload:dict|None=None)->dict:
+    operation=str(operation or "").strip()
+    if not operation:
+        raise ValueError("operation required")
+    job_id=uuid.uuid4().hex
+    now=int(time.time())
+    conn=_db()
+    conn.execute(
+        """INSERT INTO assessment_jobs(
+           job_id,tenant_id,user_id,email,role,name,target,profile,authorization_ref,status,created_at,
+           job_type,operation,payload_json
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            job_id,principal.tenant_id,principal.user_id,principal.email,principal.role,principal.name,
+            target,f"operation:{operation}",authorization_ref,"queued",now,
+            "operation",operation,json.dumps(payload or {},ensure_ascii=False,separators=(",",":")),
+        ),
+    )
+    conn.commit(); conn.close()
+    return get_job(job_id,principal.tenant_id)
+
+
 def get_job(job_id:str,tenant_id:str)->dict|None:
     conn=_db()
     row=conn.execute("SELECT * FROM assessment_jobs WHERE job_id=? AND tenant_id=?",(job_id,tenant_id)).fetchone()
     conn.close()
     if not row: return None
     out=dict(row)
+    if out.get("payload_json"):
+        try:
+            out["payload"]=json.loads(out["payload_json"])
+        except (TypeError,json.JSONDecodeError):
+            out["payload"]={}
+    else:
+        out["payload"]={}
+    out.pop("payload_json",None)
     if out.get("result_json"):
         out["result"]=json.loads(out.pop("result_json"))
     else:
