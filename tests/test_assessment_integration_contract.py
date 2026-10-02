@@ -162,18 +162,29 @@ def test_distinct_web_findings_are_not_collapsed():
     assert len(deduped) == 2
 
 
-def test_profile_health_requires_full_backend_coverage(monkeypatch):
+def test_profile_health_requires_full_core_capability_coverage(monkeypatch):
     from app.engine_health import engine_health
 
     monkeypatch.setattr(
         "app.engine_health.registry.available",
         lambda name, target=None: name == "httpx",
     )
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {"name": "fingerprint", "operational": True},
+            {"name": "certificate_intelligence", "operational": False},
+            {"name": "vulnerability", "operational": False},
+        ] if capabilities == ("fingerprint", "certificate_intelligence", "vulnerability") else [
+            {"name": name, "operational": False} for name in (capabilities or ())
+        ],
+    )
     health = engine_health("example.com")
     rapid = health["profiles"]["rapid"]
 
     assert rapid["available_engines"] == 1
     assert rapid["requested_engines"] == 3
+    assert rapid["coverage_percent"] == 33
     assert rapid["state"] == "partial"
     assert rapid["ready"] is False
 
@@ -438,3 +449,32 @@ def test_balanced_core_coverage_ignores_optional_external_enrichment(monkeypatch
         "credential_exposure",
         "intelligence",
     ]
+
+
+
+def test_balanced_health_does_not_require_optional_external_enrichments(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setattr("app.engine_health.registry.available", lambda name, target=None: False)
+
+    def capability_health(target=None, capabilities=None):
+        rows = []
+        for name in capabilities or ():
+            rows.append(
+                {
+                    "name": name,
+                    "operational": name not in {"credential_exposure", "intelligence"},
+                }
+            )
+        return rows
+
+    monkeypatch.setattr("app.engine_health.registry.capability_health", capability_health)
+
+    health = engine_health("example.org")
+    balanced = health["profiles"]["balanced"]
+
+    assert balanced["ready"] is True
+    assert balanced["state"] == "ready"
+    assert balanced["coverage_percent"] == 100
+    assert balanced["optional_capabilities"] == 2
+    assert balanced["optional_operational_capabilities"] == 0
