@@ -121,3 +121,29 @@ def unified_siem_events(tenant_id: str, assets: list, findings: list, drp_events
         "event_types":sorted({x["event_type"] for x in page}),
         "events":page,
     }
+
+
+def audit_siem_events(audit_rows: list[dict], *, limit: int=500) -> list[dict]:
+    out=[]
+    for row in audit_rows:
+        created_at=int(row.get("created_at") or 0)
+        observed_at=datetime.fromtimestamp(created_at,tz=timezone.utc).isoformat() if created_at else datetime.now(timezone.utc).isoformat()
+        out.append({
+            "schema_version":"1.0",
+            "event_type":"audit."+str(row.get("action") or "event"),
+            "event_id":"audit:"+str(row.get("tenant_id") or "")+":"+str(row.get("id") or ""),
+            "observed_at":observed_at,
+            "tenant_id":row.get("tenant_id"),
+            "user_id":row.get("user_id"),
+            "action":row.get("action"),
+            "resource":row.get("resource"),
+            "resource_id":row.get("resource_id"),
+            "metadata":row.get("metadata"),
+            "integrity":{
+                "prev_hash":row.get("prev_hash") or "",
+                "entry_hash":row.get("entry_hash") or "",
+            },
+            "source":"be-safe-asm",
+        })
+    out.sort(key=lambda x:(x["observed_at"],x["event_id"]))
+    return out[:max(1,min(1000,int(limit or 500)))]
