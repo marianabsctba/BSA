@@ -1,6 +1,6 @@
 import pytest
 
-from app.application.services import operation_dispatcher
+from app.infrastructure.workers import operation_dispatcher
 
 
 def test_dispatcher_routes_migrated_discovery_operation(monkeypatch):
