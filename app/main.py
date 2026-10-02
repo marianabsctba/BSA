@@ -45,6 +45,8 @@ from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
 from .assessment_orchestrator import run_public_assessment
 from .engine_health import public_engine_health
 from .assessment_registry import registry
+from .job_queue import enqueue_assessment, get_job, mark_materialized
+from .auth import Principal
 
 bootstrap()
 bootstrap_scope()
@@ -1113,6 +1115,23 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
     if not rate_limit_action("exposure-assessment", principal.user_id, limit=8, window_seconds=300):
         raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
+
+    if IS_PRODUCTION:
+        job=enqueue_assessment(principal,payload.target,payload.profile,payload.authorization_ref)
+        audit(
+            principal,"queue","exposure_assessment",payload.target,
+            {"profile":payload.profile,"authorization_ref":payload.authorization_ref,"job_id":job["job_id"]},
+        )
+        return JSONResponse(
+            status_code=202,
+            content={
+                "job_id":job["job_id"],
+                "status":job["status"],
+                "target":job["target"],
+                "profile":job["profile"],
+            },
+        )
+
     try:
         result = run_public_assessment(
             payload.target,
@@ -1137,6 +1156,48 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
     )
     result["materialization"] = _materialize_assessment_result(principal, result)
     return result
+
+
+@app.get("/api/v1/exposure/assessment/jobs/{job_id}")
+def exposure_assessment_job(job_id: str, request: Request):
+    principal=require(request,"discovery:run")
+    job=get_job(job_id,principal.tenant_id)
+    if not job:
+        raise HTTPException(status_code=404,detail="assessment job not found")
+    result=job.get("result")
+    if job["status"]=="succeeded" and result is not None and not job.get("materialized"):
+        job_principal=Principal(
+            user_id=job["user_id"],
+            tenant_id=job["tenant_id"],
+            email=job["email"],
+            role=job["role"],
+            name=job["name"],
+        )
+        result["materialization"]=_materialize_assessment_result(job_principal,result)
+        mark_materialized(job_id,principal.tenant_id)
+        audit(
+            job_principal,"complete","exposure_assessment",job["target"],
+            {
+                "profile":job["profile"],
+                "authorization_ref":job["authorization_ref"],
+                "job_id":job_id,
+                "finding_count":result.get("finding_count",0),
+                "partial_coverage":result.get("partial_coverage",False),
+            },
+        )
+        job["materialized"]=True
+    return {
+        "job_id":job["job_id"],
+        "status":job["status"],
+        "target":job["target"],
+        "profile":job["profile"],
+        "created_at":job["created_at"],
+        "started_at":job.get("started_at"),
+        "completed_at":job.get("completed_at"),
+        "error":job.get("error"),
+        "materialized":bool(job.get("materialized")),
+        "result":result,
+    }
 
 
 
