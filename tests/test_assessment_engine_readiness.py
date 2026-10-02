@@ -306,6 +306,13 @@ def test_production_profile_blocks_without_recent_execution(monkeypatch):
             for name in capabilities
         ],
     )
+    monkeypatch.setattr(
+        "app.engine_health.capability_reliability",
+        lambda capabilities, window_hours=168, min_calls=3: [
+            {"name": name, "reliability_status": "insufficient_data"}
+            for name in capabilities
+        ],
+    )
 
     rapid = engine_health("example.com")["profiles"]["rapid"]
 
