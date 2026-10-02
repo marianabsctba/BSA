@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from .assessment_registry import registry
-from .assessment_orchestrator import PROFILES, PROFILE_CAPABILITIES, PROFILE_OPTIONAL_CAPABILITIES
+from .assessment_orchestrator import (
+    PROFILES,
+    PROFILE_CAPABILITIES,
+    PROFILE_COVERAGE_POLICY,
+    PROFILE_OPTIONAL_CAPABILITIES,
+)
 
 
 def engine_health(target: str | None = None) -> dict:
@@ -63,6 +68,28 @@ def engine_health(target: str | None = None) -> dict:
             100 * backend_available / max(1, backend_slots)
         )
 
+        policy = PROFILE_COVERAGE_POLICY.get(profile, {})
+        min_core_coverage = int(policy.get("min_core_coverage_percent", 100))
+        min_backend_coverage = int(policy.get("min_backend_coverage_percent", 0))
+        allow_degraded_core = bool(policy.get("allow_degraded_core", True))
+
+        readiness_blockers = []
+        if not core_requested or coverage_percent < min_core_coverage:
+            readiness_blockers.append("core_coverage")
+        if backend_coverage_percent < min_backend_coverage:
+            readiness_blockers.append("backend_coverage")
+        if degraded_core and not allow_degraded_core:
+            readiness_blockers.append("degraded_core")
+
+        policy_ready = not readiness_blockers
+        state = (
+            "ready"
+            if policy_ready
+            else "partial"
+            if core_operational
+            else "unavailable"
+        )
+
         profiles[profile] = {
             "available_engines": available_count,
             "requested_engines": requested_count,
@@ -77,8 +104,14 @@ def engine_health(target: str | None = None) -> dict:
             "degraded_capabilities": degraded_core,
             "optional_missing_capabilities": missing_optional,
             "optional_degraded_capabilities": degraded_optional,
-            "state": "ready" if core_requested and core_operational == core_requested else "partial" if core_operational else "unavailable",
-            "ready": bool(core_requested) and core_operational == core_requested,
+            "coverage_policy": {
+                "min_core_coverage_percent": min_core_coverage,
+                "min_backend_coverage_percent": min_backend_coverage,
+                "allow_degraded_core": allow_degraded_core,
+            },
+            "readiness_blockers": readiness_blockers,
+            "state": state,
+            "ready": policy_ready,
         }
 
     return {
