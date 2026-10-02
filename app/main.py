@@ -23,7 +23,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, record_ctem_retest, ctem_retest_for_job, complete_ctem_retest, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable, mfa_disable, issue_mfa_recovery_codes, generate_mfa_recovery_codes, tenant_mfa_policy, set_tenant_mfa_policy, TOKEN_TTL
+from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable, mfa_disable, set_tenant_mfa_required, tenant_mfa_required, mfa_required_for, mfa_enabled_for_user, mfa_disable, issue_mfa_recovery_codes, generate_mfa_recovery_codes, tenant_mfa_policy, set_tenant_mfa_policy, TOKEN_TTL
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .ctem_retest import reconcile_ctem_retest_job
 from .discovery_orchestrator import plan_candidate_collection
@@ -824,6 +824,8 @@ def require(request: Request, permission: str):
     principal = current_principal(request)
     if not can(principal, permission):
         raise HTTPException(status_code=403, detail="permission denied")
+    if mfa_required_for(principal,permission) and not mfa_enabled_for_user(principal.user_id):
+        raise HTTPException(status_code=403,detail="MFA required by tenant policy")
     return principal
 
 
@@ -834,6 +836,7 @@ def auth_mfa_status(request: Request):
 
 class MFAEnrollRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
+    current_code: str | None = Field(default=None, min_length=6, max_length=32)
     current_mfa_code: str | None = Field(default=None, min_length=6, max_length=64)
 
 @app.post("/api/v1/auth/mfa/enroll")
