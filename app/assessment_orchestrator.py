@@ -24,6 +24,7 @@ PROFILES = {
 DISCOVERY_PROVIDERS = {"subfinder", "amass", "assetfinder", "alterx"}
 FOLLOWUP_PROVIDERS = ("puredns", "dnsx", "httpx", "tlsx", "whatweb")
 VULN_FOLLOWUP_PROVIDERS = ("nuclei", "zap")
+DEFERRED_BALANCED_PROVIDERS = set(VULN_FOLLOWUP_PROVIDERS)
 MAX_FOLLOWUP_TARGETS = 32
 MAX_VULN_FOLLOWUP_TARGETS = 8
 
@@ -175,6 +176,7 @@ def run_assessment(
         "profile": profile,
         "attempted": [],
         "available": [],
+        "deferred": [],
         "errors": [],
         "followup_targets": [],
         "vulnerability_followup_targets": [],
@@ -185,6 +187,9 @@ def run_assessment(
 
     for provider_name in PROFILES[profile]:
         internal["attempted"].append(provider_name)
+        if profile == "balanced" and provider_name in DEFERRED_BALANCED_PROVIDERS:
+            internal["deferred"].append(provider_name)
+            continue
         try:
             if not registry.available(provider_name, target):
                 continue
@@ -204,6 +209,12 @@ def run_assessment(
                     internal["scope_filtered"] += 1
                     continue
                 engine.add_provider_result(provider_name, subject, payload)
+                if provider_name == "httpx":
+                    status = evidence.get("status_code")
+                    url = evidence.get("url") or subject
+                    if status is not None and str(url).startswith(("http://", "https://")):
+                        if url not in validated_web_subjects and len(validated_web_subjects) < MAX_VULN_FOLLOWUP_TARGETS:
+                            validated_web_subjects.append(str(url))
                 if provider_name in DISCOVERY_PROVIDERS and subject != target:
                     if subject not in discovered_subjects and len(discovered_subjects) < MAX_FOLLOWUP_TARGETS:
                         discovered_subjects.append(subject)
@@ -287,13 +298,23 @@ def run_assessment(
     if cloud:
         public["findings"].extend(cloud)
         public["finding_count"] = len(public["findings"])
+    capability_health = registry.capability_health(target, PROFILE_CAPABILITIES[profile])
+    operational_capabilities = sum(1 for row in capability_health if row.get("operational"))
+    requested_capabilities = len(PROFILE_CAPABILITIES[profile])
+    capability_coverage_percent = round(
+        100 * operational_capabilities / max(1, requested_capabilities)
+    )
+
     public.update(
         {
             "profile": profile,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
-            "partial_coverage": bool(internal["errors"]) or len(internal["available"]) < len(PROFILES[profile]),
+            "partial_coverage": bool(internal["errors"]) or operational_capabilities < requested_capabilities,
             "coverage": {
-                "requested_capabilities": len(PROFILE_CAPABILITIES[profile]),
+                "requested_capabilities": requested_capabilities,
+                "operational_capabilities": operational_capabilities,
+                "capability_coverage_percent": capability_coverage_percent,
+                "capability_status": capability_health,
                 "evidence_count": public["finding_count"],
                 "raw_evidence_count": raw_finding_count,
                 "deduplicated_evidence": duplicate_count,
