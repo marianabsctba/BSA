@@ -149,6 +149,103 @@ def change_summary(fingerprint: str, tenant_id: str) -> dict:
     }
 
 
+def recent_change_events(tenant_id: str, hours: int = 24, limit: int = 200) -> list[dict]:
+    """Build user-facing change events from persisted observation history."""
+    from datetime import timedelta
+
+    window=max(1,min(int(hours),24*90))
+    max_items=max(1,min(int(limit),1000))
+    cutoff=datetime.now(timezone.utc)-timedelta(hours=window)
+    conn=_history_db()
+    rows=conn.execute(
+        """SELECT fingerprint,observed_at,confidence,evidence_count,sources_json,tags_json,evidence_refs_json
+           FROM asset_observations
+           WHERE tenant_id=?
+           ORDER BY fingerprint,observed_at""",
+        (tenant_id,),
+    ).fetchall()
+    conn.close()
+
+    grouped: dict[str,list] = {}
+    for row in rows:
+        grouped.setdefault(row["fingerprint"],[]).append(row)
+
+    events=[]
+    for fingerprint,history in grouped.items():
+        previous=None
+        for row in history:
+            try:
+                observed=datetime.fromisoformat(str(row["observed_at"]).replace("Z","+00:00"))
+            except (TypeError,ValueError):
+                previous=row
+                continue
+            if observed.tzinfo is None:
+                observed=observed.replace(tzinfo=timezone.utc)
+            if observed<cutoff:
+                previous=row
+                continue
+
+            current_sources=set(json.loads(row["sources_json"] or "[]"))
+            current_tags=set(json.loads(row["tags_json"] or "[]"))
+            current_refs=list(json.loads(row["evidence_refs_json"] or "[]"))
+            if previous is None:
+                events.append({
+                    "id":f"{fingerprint}:{row['observed_at']}:new",
+                    "fingerprint":fingerprint,
+                    "kind":"new_asset",
+                    "summary":"Novo ativo observado",
+                    "observed_at":row["observed_at"],
+                    "confidence":int(row["confidence"]),
+                    "evidence_count":int(row["evidence_count"]),
+                    "evidence_refs":current_refs,
+                    "details":{"sources":sorted(current_sources),"tags":sorted(current_tags)},
+                })
+            else:
+                prev_sources=set(json.loads(previous["sources_json"] or "[]"))
+                prev_tags=set(json.loads(previous["tags_json"] or "[]"))
+                changes=[]
+                if int(previous["confidence"])!=int(row["confidence"]):
+                    changes.append({
+                        "field":"confidence",
+                        "from":int(previous["confidence"]),
+                        "to":int(row["confidence"]),
+                    })
+                if int(previous["evidence_count"])!=int(row["evidence_count"]):
+                    changes.append({
+                        "field":"evidence_count",
+                        "from":int(previous["evidence_count"]),
+                        "to":int(row["evidence_count"]),
+                    })
+                added_sources=sorted(current_sources-prev_sources)
+                removed_sources=sorted(prev_sources-current_sources)
+                added_tags=sorted(current_tags-prev_tags)
+                removed_tags=sorted(prev_tags-current_tags)
+                if added_sources:
+                    changes.append({"field":"sources_added","values":added_sources})
+                if removed_sources:
+                    changes.append({"field":"sources_removed","values":removed_sources})
+                if added_tags:
+                    changes.append({"field":"tags_added","values":added_tags})
+                if removed_tags:
+                    changes.append({"field":"tags_removed","values":removed_tags})
+                if changes:
+                    events.append({
+                        "id":f"{fingerprint}:{row['observed_at']}:changed",
+                        "fingerprint":fingerprint,
+                        "kind":"asset_changed",
+                        "summary":"Mudança observada em ativo",
+                        "observed_at":row["observed_at"],
+                        "confidence":int(row["confidence"]),
+                        "evidence_count":int(row["evidence_count"]),
+                        "evidence_refs":current_refs,
+                        "details":{"changes":changes},
+                    })
+            previous=row
+
+    events.sort(key=lambda x:x["observed_at"],reverse=True)
+    return events[:max_items]
+
+
 def exposure_snapshot(assets, findings):
     from .exposure import exposure_breakdown, exposure_band
     total = sum(exposure_breakdown(a, findings).score for a in assets)
