@@ -123,7 +123,6 @@ class AssessmentEngine:
             item.confidence,
             evidence,
         )
-        evidence["validation_state"] = evidence_state
         row = {
             "asset": item.asset,
             "category": item.category,
