@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: bsa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BSA_POSTGRES_DB:-bsa}
+      POSTGRES_USER: ${BSA_POSTGRES_USER:-bsa}
+      POSTGRES_PASSWORD: ${BSA_POSTGRES_PASSWORD:?set BSA_POSTGRES_PASSWORD}
+    volumes:
+      - bsa_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${BSA_POSTGRES_USER:-bsa} -d ${BSA_POSTGRES_DB:-bsa}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+      - /var/run/postgresql:size=16m,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [bsa_database]
+
+  api:
+    environment:
+      BSA_ASSET_REPOSITORY_BACKEND: postgres
+      BSA_DATABASE_URL: postgresql://${BSA_POSTGRES_USER:-bsa}:${BSA_POSTGRES_PASSWORD}@postgres:5432/${BSA_POSTGRES_DB:-bsa}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [bsa_ai_client, bsa_app, bsa_database]
+
+  worker:
+    environment:
+      BSA_ASSET_REPOSITORY_BACKEND: postgres
+      BSA_DATABASE_URL: postgresql://${BSA_POSTGRES_USER:-bsa}:${BSA_POSTGRES_PASSWORD}@postgres:5432/${BSA_POSTGRES_DB:-bsa}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [bsa_egress, bsa_database]
+
+volumes:
+  bsa_postgres:
+
+networks:
+  bsa_database:
+    driver: bridge
+    internal: true
