@@ -46,3 +46,40 @@ def test_custom_role_cannot_escalate_beyond_caller(tmp_path, monkeypatch):
     except PermissionError:
         return
     raise AssertionError("custom role escalation was accepted")
+
+
+def test_missing_user_still_runs_password_verification(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
+    calls=[]
+    original=auth._verify
+
+    def wrapped(password,encoded):
+        calls.append((password,encoded))
+        return original(password,encoded)
+
+    monkeypatch.setattr(auth,"_verify",wrapped)
+    token=auth.authenticate("missing@example.org","WrongPassword123!","198.51.100.10")
+
+    assert token is None
+    assert len(calls)==1
+    assert calls[0][1]==auth._DUMMY_PASSWORD_HASH
+
+
+def test_login_rate_limit_persists_in_database(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
+    identity="persistent@example.org"
+
+    for _ in range(5):
+        assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is True
+    assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is False
+
+    auth._LOGIN_ATTEMPTS.clear()
+    auth._IP_LOGIN_ATTEMPTS.clear()
+
+    assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is False
