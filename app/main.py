@@ -27,7 +27,7 @@ from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissi
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .ctem_retest import reconcile_ctem_retest_job
 from .discovery_orchestrator import plan_candidate_collection
-from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user
+from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user, create_domain_ownership_proof, verify_domain_ownership_proof
 from .asset_view import asset_detail
 from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
@@ -791,6 +791,10 @@ class ScopeAssignRequest(BaseModel):
     user_id: str
     scope_id: str
 
+class DomainOwnershipProofRequest(BaseModel):
+    domain: str = Field(min_length=3, max_length=253)
+    method: str = Field(default="dns_txt", pattern="^(dns_txt|well_known)$")
+
 class GroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     pattern: str = Field(min_length=1, max_length=253)
@@ -1023,6 +1027,34 @@ def scopes_assign(request: Request, payload: ScopeAssignRequest):
 def scan_scopes(request: Request):
     p=require(request,"users:read")
     return list_scan_scopes(p)
+
+@app.post("/api/v1/domain-ownership/proofs")
+def domain_ownership_proof_create(request: Request, payload: DomainOwnershipProofRequest):
+    p=current_principal(request)
+    try:
+        result=create_domain_ownership_proof(p,payload.domain,payload.method)
+        audit(p,"create","domain_ownership_proof",result["proof_id"],{
+            "domain":result["domain"],"method":result["method"],"expires_at":result["expires_at"],
+        })
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+@app.post("/api/v1/domain-ownership/proofs/{proof_id}/verify")
+def domain_ownership_proof_verify(proof_id: str, request: Request):
+    p=current_principal(request)
+    try:
+        result=verify_domain_ownership_proof(p,proof_id)
+        audit(p,"verify","domain_ownership_proof",proof_id,{
+            "domain":result["domain"],"method":result["method"],"verified":result["verified"],
+        })
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
 
 @app.post("/api/v1/scan-scopes")
 def scan_scopes_create(request: Request, payload: ScopeCreateRequest):
