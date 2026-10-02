@@ -1,5 +1,7 @@
 from app.auth import Principal, create_user, authenticate, principal_from_token
-from app.main import app, STORE_ASSETS, STORE_FINDINGS, tenant_scope
+from app.main import app
+from app.api.tenant_scope import tenant_scope
+from app.store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from app.scope import ensure_scope_schema, create_scope, assign_scope
 from fastapi.testclient import TestClient
 
