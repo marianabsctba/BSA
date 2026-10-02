@@ -109,3 +109,22 @@ def test_siem_integration_routes_live_outside_main():
     assert '@app.post("/api/v1/integrations/siem/syslog/test")' not in main_source
     assert '@app.post("/api/v1/integrations/siem/syslog/push")' not in main_source
     assert '@router.get("/api/v1/integrations/siem/export")' in router_source
+
+
+def test_admin_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/admin.py").read_text(encoding="utf-8")
+    assert "app.include_router(admin_router)" in main_source
+    for route in (
+        "/api/v1/tenants",
+        "/api/v1/users",
+        "/api/v1/rbac/custom-roles",
+        "/api/v1/users/{user_id}/scopes",
+        "/api/v1/users/{user_id}/scan-scopes",
+    ):
+        assert f'@app.get("{route}")' not in main_source
+        assert f'@app.post("{route}")' not in main_source
+    assert '@router.get("/api/v1/users")' in router_source
+    assert '@router.post("/api/v1/tenants")' in router_source
