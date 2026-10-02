@@ -814,11 +814,22 @@ def auth_mfa_status(request: Request):
     p=current_principal(request)
     return mfa_status(p)
 
+class MFAEnrollRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+
 @app.post("/api/v1/auth/mfa/enroll")
-def auth_mfa_enroll(request: Request):
+def auth_mfa_enroll(request: Request, payload: MFAEnrollRequest):
     p=current_principal(request)
-    try: return mfa_enroll(p)
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    if not rate_limit_action("mfa-enroll", p.user_id, limit=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="too many MFA enrollment attempts")
+    try:
+        result=mfa_enroll(p,payload.current_password)
+        audit(p,"enroll","mfa")
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
     
 class MFAEnableRequest(BaseModel):
     code: str = Field(min_length=6,max_length=6)
@@ -1496,6 +1507,8 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if not active_scan_in_scope(principal, payload.target):
+        raise HTTPException(status_code=403, detail="target outside active scan scope")
     if not rate_limit_action("exposure-assessment", principal.user_id, limit=8, window_seconds=300):
         raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
 
