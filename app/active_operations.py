@@ -5,6 +5,9 @@ from .correlation import correlate_evidence
 from .digital_risk import InfrastructureIndicator, build_infrastructure_graph, build_infrastructure_links
 from .discovery import adaptive_discovery, collect_target, discover_surface
 from .discovery_orchestrator import plan_candidate_collection
+from .dast import run_safe_web_assessment
+from .nuclei_engine import run_nuclei, normalize_findings
+from urllib.parse import urlparse
 from .exposure_signals import cloud_signals, summarize_signals, takeover_signals
 from .graph import build_risk_graph
 from .history import change_summary, record_lifecycle, record_observations
@@ -37,6 +40,17 @@ def _collect(target: str, checks: list[str]):
 
 def run_active_operation(operation: str, target: str, payload: dict, principal):
     payload=payload or {}
+
+    if operation=="dast.safe_web":
+        return run_safe_web_assessment(target)
+
+    if operation=="dast.nuclei":
+        profile=str(payload.get("profile") or "safe")
+        if profile not in {"safe","standard"}:
+            raise ValueError("unsupported DAST profile")
+        scan=run_nuclei(target,profile=profile)
+        scan["bsa_findings"]=normalize_findings(scan,asset_id=f"unresolved:{urlparse(target).hostname}")
+        return scan
 
     if operation=="discovery.basic":
         checks=list(dict.fromkeys(payload.get("checks") or ["dns","http","tls","ct"]))
