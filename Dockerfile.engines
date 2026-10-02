@@ -1,7 +1,5 @@
-ARG ZAP_EXPECTED_VERSION=2.17.0
 FROM ghcr.io/zaproxy/zaproxy:stable AS zap
-ARG ZAP_EXPECTED_VERSION
-RUN /zap/zap.sh -version 2>&1 | grep -F "$ZAP_EXPECTED_VERSION"
+RUN /zap/zap.sh -version 2>&1 | head -n 1 | tr -d '\r' > /zap/BSA_ZAP_CORE_VERSION
 
 FROM golang:1.26-bookworm AS engines
 
@@ -67,6 +65,7 @@ COPY --from=trufflehog /out/trufflehog /usr/local/bin/trufflehog
 COPY --from=massdns /out/massdns /usr/local/bin/massdns
 COPY --from=nuclei_templates /out/nuclei-templates /opt/nuclei-templates
 COPY --from=zap /zap/ /opt/zap/
+COPY --from=zap /zap/BSA_ZAP_CORE_VERSION /tmp/BSA_ZAP_CORE_VERSION
 
 RUN ln -s /opt/zap/zap-baseline.py /usr/local/bin/zap-baseline.py \
  && git clone --depth 1 --branch v3.2.4 https://github.com/drwetter/testssl.sh.git /opt/testssl.sh \
@@ -99,8 +98,10 @@ RUN mkdir -p /opt/bsa \
       'massdns=1.1.0' \
       'nuclei-templates=10.4.8' \
       'testssl=3.2.4' \
-      'zap-core=2.17.0' \
-      > /opt/bsa/engine-versions.txt
+      'zap-image=stable' \
+      > /opt/bsa/engine-versions.txt \
+ && printf 'zap-core=%s\n' "$(cat /tmp/BSA_ZAP_CORE_VERSION)" >> /opt/bsa/engine-versions.txt \
+ && rm -f /tmp/BSA_ZAP_CORE_VERSION
 
 ENV BSA_ENGINE_BUNDLE=full
 ENV BSA_NUCLEI_TEMPLATES=/opt/nuclei-templates
