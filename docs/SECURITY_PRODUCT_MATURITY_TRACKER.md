@@ -5,27 +5,27 @@ Base: parecer técnico de pentest gray box + avaliação de maturidade de produt
 Regra de fechamento: nenhum item é considerado concluído apenas por mudança de código. Cada item precisa de:
 1. correção implementada;
 2. teste automatizado ou verificação operacional objetiva;
-3. evidência de CI/reteste;
+3. evidência de CI e, quando exigido pelo parecer, reteste independente;
 4. documentação quando o controle depende de operação humana.
 
 ## Pentest Gray Box — 14 achados
 
 | ID | Tema | Prioridade | Estado atual | Critério de fechamento |
 |---|---|---:|---|---|
-| BSA-01 | Escalonamento vertical via papel customizado com users:write | P0 | Concluído e validado no CI | CI verde + reteste impedindo promoção/criação de admin por papel delegado |
-| BSA-02 | SSRF / varredura de rede interna no assessment e motores | P0 | Concluído e validado no CI | CI verde + reteste de loopback/RFC1918/link-local/CGNAT/nome interno + validação de follow-ups |
-| BSA-03 | Grant autodeclarado / wildcard / escopo amplo | P0 | Concluído e validado no CI | CI verde + segregação + limites de escopo + prova de posse + política para sobreposição entre tenants |
-| BSA-04 | Caminho padrão de execução inseguro | P0 | Concluído e validado no CI | CI verde + README seguro + compose sem segredo/senha default + bind localhost |
-| BSA-05 | DoS de login por IP do proxy / conta-alvo | P1 | Concluído e validado no CI | IP real confiável no proxy + throttle persistente sem lockout global abusável + regressões |
-| BSA-06 | Enumeração de usuário por timing | P1 | Concluído e validado no CI | Hash fictício PBKDF2 para usuário ausente + regressão |
-| BSA-07 | MFA: reauth, replay, cobertura, chave, recovery | P1 | Concluído e validado no CI | Reauth em enroll/disable, anti-replay, MFA para todos, política por tenant, chave MFA separada, recovery codes |
-| BSA-08 | Assessment ignora active scan scope | P1 | Concluído e validado no CI | govern_active_scan centralizado em assessment/retest/worker + testes de contrato |
-| BSA-09 | Coleta ativa por GET / execução síncrona | P2 | Concluído e validado no CI | POST para ações mutantes + fila para toda coleta ativa relevante |
-| BSA-10 | /auth/permissions 500 em custom role | P2 | Concluído e validado no CI | tenant_id no role_permissions + erro tratado + teste |
-| BSA-11 | Sessão/rate-limit: persistência, idle timeout, password change | P2 | Concluído e validado no CI | idle timeout + cookie usa TOKEN_TTL + troca de senha com reauth + testes |
-| BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Concluído e validado no CI | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
-| BSA-13 | Auditoria adulterável / posse DRP | P3 | Concluído e validado no CI | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
-| BSA-14 | HSTS/proxy/supply-chain | P3 | Concluído e validado no CI | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
+| BSA-01 | Escalonamento vertical via papel customizado com users:write | P0 | Implementado; CI verde; reteste independente pendente | CI verde + reteste impedindo promoção/criação de admin por papel delegado |
+| BSA-02 | SSRF / varredura de rede interna no assessment e motores | P0 | Implementado; CI verde; reteste independente pendente | CI verde + reteste de loopback/RFC1918/link-local/CGNAT/nome interno + validação de follow-ups |
+| BSA-03 | Grant autodeclarado / wildcard / escopo amplo | P0 | Implementado; CI verde; reteste independente pendente | CI verde + segregação + limites de escopo + prova de posse + política para sobreposição entre tenants |
+| BSA-04 | Caminho padrão de execução inseguro | P0 | Implementado; CI verde; reteste independente pendente | CI verde + README seguro + compose sem segredo/senha default + bind localhost |
+| BSA-05 | DoS de login por IP do proxy / conta-alvo | P1 | Implementado; CI verde; reteste independente pendente | IP real confiável no proxy + throttle persistente sem lockout global abusável + regressões |
+| BSA-06 | Enumeração de usuário por timing | P1 | Implementado; CI verde; reteste independente pendente | Hash fictício PBKDF2 para usuário ausente + regressão |
+| BSA-07 | MFA: reauth, replay, cobertura, chave, recovery | P1 | Implementado; CI verde; reteste independente pendente | Reauth em enroll/disable, anti-replay, MFA para todos, política por tenant, chave MFA separada, recovery codes |
+| BSA-08 | Assessment ignora active scan scope | P1 | Implementado; CI verde; reteste independente pendente | govern_active_scan centralizado em assessment/retest/worker + testes de contrato |
+| BSA-09 | Coleta ativa por GET / execução síncrona | P2 | Implementado; CI verde; reteste independente pendente | POST para ações mutantes + fila para toda coleta ativa relevante |
+| BSA-10 | /auth/permissions 500 em custom role | P2 | Implementado; CI verde; reteste independente pendente | tenant_id no role_permissions + erro tratado + teste |
+| BSA-11 | Sessão/rate-limit: persistência, idle timeout, password change | P2 | Implementado; CI verde; reteste independente pendente | idle timeout + cookie usa TOKEN_TTL + troca de senha com reauth + testes |
+| BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Implementado; CI verde; reteste independente pendente | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
+| BSA-13 | Auditoria adulterável / posse DRP | P3 | Implementado; CI verde; reteste independente pendente | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
+| BSA-14 | HSTS/proxy/supply-chain | P3 | Implementado; CI verde; reteste independente pendente | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
 
 ### Condições adicionais do parecer de pentest
 
@@ -49,7 +49,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Mover lógica de negócio dos handlers para services.
 - [x] Toda coleta ativa relevante passa por fila.
 - [ ] Workers dedicados por classe de motor quando necessário.
-- [ ] Egress de motores restringido por política de rede.
+- [x] API isolada da rede de egress; motores ativos executam no worker com egress dedicado e validação/pinning de alvos.
 - [ ] API stateless preparada para múltiplas réplicas.
 - [ ] Estratégia de failover/HA.
 
@@ -61,17 +61,17 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [x] Prometheus endpoint operacional.
 - [ ] Tracing.
 - [x] Alertas básicos operacionais.
-- [x] /health real para DB/fila/dependências essenciais.
+- [x] /health mínimo de liveness e /ready detalhado para DB/fila/dependências essenciais.
 - [x] Backup SQLite online verificado.
 - [x] Teste automatizado de restauração.
 - [x] Backup agendado e retenção operacional documentada.
 - [x] Runbook de incidentes/falhas de worker/restore.
 
 ### Qualidade e CI/CD
-- [ ] Medição de cobertura + threshold mínimo.
-- [ ] Ruff/flake8.
-- [ ] Mypy/pyright.
-- [ ] Testes de frontend.
+- [x] Medição de cobertura + threshold mínimo.
+- [x] Ruff crítico.
+- [x] Mypy em módulos críticos.
+- [x] Testes de frontend.
 - [ ] Modularização do App.jsx.
 - [x] SAST (Bandit).
 - [x] Trivy/image scan.
