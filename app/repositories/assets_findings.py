@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 
 from ..application.ports.asset_finding_repository import AssetFindingRepositoryPort
@@ -78,4 +79,19 @@ class AssetFindingRepository:
 
 
 def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepositoryPort:
-    return AssetFindingRepository(assets=assets, findings=findings)
+    if assets is not None or findings is not None:
+        return AssetFindingRepository(assets=assets, findings=findings)
+
+    backend=os.getenv("BSA_ASSET_REPOSITORY_BACKEND","legacy").strip().lower()
+    if backend in {"legacy","sqlite","memory"}:
+        return AssetFindingRepository()
+    if backend=="postgres":
+        dsn=os.getenv("BSA_DATABASE_URL","").strip()
+        if not dsn:
+            raise RuntimeError(
+                "BSA_DATABASE_URL is required when "
+                "BSA_ASSET_REPOSITORY_BACKEND=postgres"
+            )
+        from .postgres_assets_findings import PostgresAssetFindingRepository
+        return PostgresAssetFindingRepository(dsn)
+    raise RuntimeError(f"unsupported asset repository backend: {backend}")
