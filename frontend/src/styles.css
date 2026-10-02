@@ -1357,3 +1357,27 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 @media(max-width:1050px){
  .nav-group-label{margin-left:12px}
 }
+
+
+/* CTI / DRP MATURITY */
+.drp-kpis-extended{grid-template-columns:repeat(4,minmax(0,1fr))}
+.drp-top{margin:0 18px 16px;padding-top:12px;border-top:1px solid #ffffff09}
+.drp-top>.eyebrow{margin-bottom:8px}
+.drp-top-row{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:9px 10px;border:1px solid #ffffff08;border-radius:10px;background:#ffffff025
+}
+.drp-top-row+.drp-top-row{margin-top:7px}
+.drp-top-row strong,.drp-top-row span{display:block}
+.drp-top-row strong{color:#edf1f5;font-size:9px}
+.drp-top-row span{margin-top:4px;color:#788495;font:7px "DM Mono"}
+.drp-top-row>b{
+ min-width:42px;text-align:center;padding:5px 7px;border-radius:8px;
+ border:1px solid #364152;background:#0b1118;color:#c9d2dc;font:800 10px "DM Mono"
+}
+.drp-top-row>b.high{color:#ff9a6b;border-color:#ff9a6b33;background:#ff9a6b08}
+.drp-top-row>b.critical{color:#ff6b7a;border-color:#ff6b7a38;background:#ff6b7a09}
+.drp-top-row>b.medium{color:#f6c86b;border-color:#f6c86b33;background:#f6c86b08}
+.drp-top-row>b.low{color:#68e3a2;border-color:#68e3a233;background:#68e3a208}
+@media(max-width:900px){.drp-kpis-extended{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.drp-kpis-extended{grid-template-columns:1fr 1fr}.drp-top-row{align-items:flex-start}}
