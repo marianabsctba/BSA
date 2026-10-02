@@ -71,7 +71,7 @@ def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
 def test_ctem_audit_does_not_resolve_other_tenant_item(monkeypatch):
     principal=_principal("tenant-a")
     monkeypatch.setattr(ctem_router, "require", lambda request, permission: principal)
-    monkeypatch.setattr(main, "list_ctem_items", lambda tenant_id: [])
+    monkeypatch.setattr(ctem_router, "list_ctem_items", lambda tenant_id: [])
 
     with pytest.raises(ctem_router.HTTPException) as exc:
         ctem_router.ctem_audit("tenant-b-item",None)
