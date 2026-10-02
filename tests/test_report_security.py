@@ -13,7 +13,7 @@ def test_report_summary_is_curated_and_authenticated():
     response=client.get("/api/v1/reports/summary")
     assert response.status_code == 200
     body=response.json()
-    assert set(body) == {"executive","exposure","vulnerabilities"}
+    assert set(body) == {"executive","exposure","vulnerabilities","operations"}
     for row in body["exposure"]["items"]:
         assert set(row).issubset({"id","value","type","state","confidence","evidence_count"})
     for row in body["vulnerabilities"]["items"]:
