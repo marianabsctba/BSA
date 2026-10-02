@@ -168,7 +168,10 @@ def _db():
         conn.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
     if "entry_hash" not in audit_cols:
         conn.execute("ALTER TABLE audit_log ADD COLUMN entry_hash TEXT")
-    _backfill_audit_chain(conn)
+    conn.execute("""CREATE TABLE IF NOT EXISTS schema_migrations(
+        name TEXT PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+    )""")
     conn.commit()
     return conn
 
@@ -207,6 +210,7 @@ def _decode(token: str) -> dict:
 def bootstrap():
     _require_security_config()
     conn = _db()
+    _run_one_time_migrations(conn)
     conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)", ("tenant-demo", "Be Safe Demo"))
     email = os.getenv("BSA_ADMIN_EMAIL", "admin@besafe.local").lower()
     password = os.getenv("BSA_ADMIN_PASSWORD", "")
@@ -907,6 +911,22 @@ def _backfill_audit_chain(conn) -> None:
             else:
                 current=row["entry_hash"]
             prev=current
+
+def _run_one_time_migrations(conn) -> None:
+    migration_name="audit_chain_v1"
+    applied=conn.execute(
+        "SELECT 1 FROM schema_migrations WHERE name=?",
+        (migration_name,),
+    ).fetchone()
+    if applied:
+        return
+    _backfill_audit_chain(conn)
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations(name,applied_at) VALUES(?,?)",
+        (migration_name,int(time.time())),
+    )
+    conn.commit()
+
 
 def verify_audit_chain(principal: Principal) -> dict:
     if not can(principal,"audit:read"):
