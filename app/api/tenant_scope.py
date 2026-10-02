@@ -1,21 +1,17 @@
+from ..repositories.assets_findings import asset_finding_repository
 from ..scope import asset_in_scope
-from ..store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 
 
 def tenant_scope(principal, assets=None, findings=None):
-    source_assets=STORE_ASSETS if assets is None else assets
-    source_findings=STORE_FINDINGS if findings is None else findings
+    repository=asset_finding_repository(assets=assets,findings=findings)
     scoped_assets=[
         asset
-        for asset in source_assets
-        if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
-        and asset_in_scope(principal,asset.value)
+        for asset in repository.list_assets(principal.tenant_id)
+        if asset_in_scope(principal,asset.value)
     ]
     scoped_ids={asset.id for asset in scoped_assets}
-    scoped_findings=[
-        finding
-        for finding in source_findings
-        if getattr(finding,"tenant_id","tenant-demo")==principal.tenant_id
-        and finding.asset_id in scoped_ids
-    ]
+    scoped_findings=repository.list_findings(
+        principal.tenant_id,
+        scoped_ids,
+    )
     return scoped_assets,scoped_findings
