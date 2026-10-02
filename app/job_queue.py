@@ -127,6 +127,69 @@ def queue_metrics(tenant_id:str)->dict:
     }
 
 
+
+def queue_health(tenant_id:str|None=None, now:int|None=None,
+                 stale_materialization_seconds:int=900)->dict:
+    """Expose queue health without mutating worker state."""
+    now=int(now or time.time())
+    conn=_db()
+    where="WHERE tenant_id=?" if tenant_id else ""
+    params=(tenant_id,) if tenant_id else ()
+    rows=conn.execute(
+        f"""SELECT status,attempts,max_attempts,created_at,started_at,completed_at,
+                   lease_expires_at,materialized,materialization_started_at
+            FROM assessment_jobs {where}""",
+        params,
+    ).fetchall()
+    conn.close()
+
+    queued=[r for r in rows if r["status"]=="queued"]
+    running=[r for r in rows if r["status"]=="running"]
+    oldest_queued_age=max(
+        [max(0,now-int(r["created_at"])) for r in queued] or [0]
+    )
+    expired_leases=sum(
+        1 for r in running
+        if r["lease_expires_at"] is not None and int(r["lease_expires_at"])<now
+    )
+    exhausted_running=sum(
+        1 for r in running
+        if int(r["attempts"] or 0)>=int(r["max_attempts"] or 0)
+    )
+    stale_materializations=sum(
+        1 for r in rows
+        if r["status"]=="succeeded"
+        and int(r["materialized"] or 0)==2
+        and r["materialization_started_at"] is not None
+        and int(r["materialization_started_at"]) < now-max(60,int(stale_materialization_seconds))
+    )
+    retry_pressure=sum(
+        1 for r in rows
+        if r["status"] in {"queued","running"}
+        and int(r["attempts"] or 0)>0
+    )
+
+    if expired_leases or stale_materializations or exhausted_running:
+        status="degraded"
+    elif oldest_queued_age>900 or retry_pressure:
+        status="warn"
+    else:
+        status="healthy"
+
+    return {
+        "status":status,
+        "tenant_id":tenant_id,
+        "total_jobs":len(rows),
+        "queued":len(queued),
+        "running":len(running),
+        "oldest_queued_age_seconds":oldest_queued_age,
+        "expired_running_leases":expired_leases,
+        "stale_materializations":stale_materializations,
+        "retry_pressure_jobs":retry_pressure,
+        "retry_exhausted_running":exhausted_running,
+    }
+
+
 def recover_stale_jobs(now:int|None=None)->dict:
     now=int(now or time.time())
     conn=_db()
