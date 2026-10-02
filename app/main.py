@@ -2115,6 +2115,11 @@ def report_summary(request: Request):
     vuln_rows.sort(key=lambda x:x["priority"],reverse=True)
 
     states=[state(a) for a in assets]
+    engine_profiles=public_engine_health().get("profiles",{})
+    ctem_items=list_ctem_items(principal.tenant_id)
+    ctem_summary=ctem_operational_summary(ctem_items)
+    ctem_queue=ctem_queue_view(ctem_items)
+    queue_summary=queue_metrics(principal.tenant_id)
     return {
         "executive":{
             "total_assets":len(assets),
@@ -2130,6 +2135,22 @@ def report_summary(request: Request):
         },
         "exposure":{"summary":{"total_assets":len(assets),"exposed_assets":sum(1 for a in assets if a.type.value in {"service","application","ip","domain","subdomain"}),"approved":sum(x=="approved" for x in states),"candidates":sum(x=="candidate" for x in states)},"items":exposure_rows},
         "vulnerabilities":{"summary":{"findings":len(vuln_rows),"critical":sum(x["band"]=="critical" for x in vuln_rows),"high":sum(x["band"]=="high" for x in vuln_rows),"data_quality_gaps":sum(x["data_quality_gap"] for x in vuln_rows)},"items":vuln_rows[:40]},
+        "operations":{
+            "queue":queue_summary,
+            "coverage":{
+                "rapid":{"state":engine_profiles.get("rapid",{}).get("state","unknown"),"coverage_percent":engine_profiles.get("rapid",{}).get("coverage_percent",0)},
+                "balanced":{"state":engine_profiles.get("balanced",{}).get("state","unknown"),"coverage_percent":engine_profiles.get("balanced",{}).get("coverage_percent",0)},
+            },
+            "ctem":{
+                "active_items":ctem_summary.get("active_items",0),
+                "overdue_items":ctem_summary.get("overdue_items",0),
+                "oldest_active_age_hours":ctem_summary.get("oldest_active_age_hours",0),
+                "critical":ctem_queue.get("buckets",{}).get("critical",{}).get("count",0),
+                "high":ctem_queue.get("buckets",{}).get("high",{}).get("count",0),
+                "retest":sum(1 for x in ctem_items if x.get("state")=="resolved"),
+                "regressions":sum(1 for x in ctem_items if x.get("state")=="in_progress" and x.get("verified_at") is None and x.get("resolved_at") is None),
+            },
+        },
     }
 
 @app.get("/api/v1/dashboard", response_model=Dashboard)
