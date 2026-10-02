@@ -347,36 +347,19 @@ def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_a
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.adaptive",{"max_rounds":max_rounds,"max_assets":max_assets})
-    govern_active_scan(request,principal,target)
-    result=adaptive_discovery(target,max_rounds=max_rounds,max_assets=max_assets)
-    candidates=[{"kind":"hostname","value":x["value"],"confidence":x["confidence"],
-                 "evidence_refs":x["evidence_refs"],"reasons":x["reasons"]} for x in result.get("candidates",[])]
-    plans=plan_candidate_collection(candidates, max_jobs=max_assets)
-    authorized=[p for p in plans if asset_in_scope(principal,p.target)]
-    return {"target":result["seed"],"rounds":result["rounds"],"candidates":candidates,
-            "collection_plan":[{"collector":p.collector,"target_kind":p.target_kind,"target":p.target,
-                                "priority":p.priority,"reason":p.reason} for p in authorized],
-            "summary":{"candidate_count":len(candidates),"planned_jobs":len(authorized),
-                       "max_assets":max_assets,"scope_filtered_jobs":len(plans)-len(authorized)}}
+    if max_rounds < 1 or max_rounds > 3 or max_assets < 1 or max_assets > 100:
+        raise HTTPException(status_code=400,detail="invalid discovery bounds")
+    return queue_active_operation(
+        request,principal,target,"discovery.adaptive",
+        {"max_rounds":max_rounds,"max_assets":max_assets},
+    )
 
 @app.post("/api/v1/discovery/ip-intelligence/{target}")
 def discovery_ip_intelligence(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ip_intelligence",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct","ports","rdap","ip_intel"])
-    ips=sorted({str(e.get("value")) for e in data["evidence"] if e.get("kind") in {"a_record","aaaa"}})
-    return {"target":data["target"],"ips":[ip_exposure_signal(x) for x in ips],
-            "evidence_count":data["evidence_count"]}
-
-
-
-
+    return queue_active_operation(request,principal,target,"discovery.ip_intelligence")
 
 @app.post("/api/v1/discovery/ai-attack-paths")
 def discovery_ai_attack_paths(request: Request, payload: dict):
@@ -397,137 +380,56 @@ def discovery_ai_identity(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_identity",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct","rdap"])
-    assets=correlate_evidence(target,data["evidence"])
-    payload=[{"fingerprint":a.fingerprint,"value":a.value,"asset_type":a.asset_type,
-              "confidence":a.confidence,"sources":list(a.sources),"evidence_count":a.evidence_count,
-              "tags":list(a.tags)} for a in assets]
-    result=validate_asset_identity(payload,data["evidence"])
-    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "assets":payload,"evidence_count":data["evidence_count"],"identity_validation":result}
+    return queue_active_operation(request,principal,target,"discovery.ai_identity")
 
 @app.post("/api/v1/discovery/ai-prioritize/{target}")
 def discovery_ai_prioritize(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_prioritize",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct"])
-    signals=[]
-    for e in data["evidence"]:
-        if e.get("kind") in {"http_status","certificate_name","a_record","aaaa","openapi_endpoint"}:
-            signals.append({"kind":e.get("kind"),"value":e.get("value"),"confidence":e.get("confidence")})
-    candidate_checks=["dns","http","tls","ct","ports","rdap","ip_intel"]
-    result=prioritize_collection(target,data["evidence"],signals,candidate_checks)
-    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "evidence_count":data["evidence_count"],"candidate_checks":candidate_checks,
-            "prioritization":result,"fallback":"deterministic collector order" if result is None else None}
+    return queue_active_operation(request,principal,target,"discovery.ai_prioritize")
 
 @app.post("/api/v1/discovery/ai-api-surface/{target}")
 def discovery_ai_api_surface(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_api_surface",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["http"])
-    endpoints=[e for e in data["evidence"] if e.get("kind")=="openapi_endpoint"]
-    technologies=[e for e in data["evidence"] if str(e.get("kind","")).startswith("technology:")]
-    result=analyze_api_surface(target,endpoints,technologies)
-    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "endpoint_count":len(endpoints),"evidence_count":data["evidence_count"],
-            "analysis":result,"fallback":"deterministic evidence only" if result is None else None}
+    return queue_active_operation(request,principal,target,"discovery.ai_api_surface")
 
 @app.post("/api/v1/discovery/ai-correlate/{target}")
 def discovery_ai_correlate(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_correlate",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
-    result=correlate_exposure(target,data["evidence"])
-    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "evidence_count":data["evidence_count"],"correlation":result}
+    return queue_active_operation(request,principal,target,"discovery.ai_correlate")
 
 @app.post("/api/v1/discovery/signals/{target}")
 def discovery_signals(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.signals",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
-    values=[str(e.get("value","")) for e in data["evidence"]]
-    http_values=[str(e.get("value","")) for e in data["evidence"] if str(e.get("kind","")).startswith("http_") or str(e.get("kind","")).startswith("page_")]
-    signals=cloud_signals(values)+takeover_signals(http_values)
-    return {"target":data["target"],"evidence_count":data["evidence_count"],**summarize_signals(signals)}
+    return queue_active_operation(request,principal,target,"discovery.signals")
 
 @app.post("/api/v1/discovery/ai-judge/{target}")
 def discovery_ai_judge(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_judge",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
-    grouped={}
-    for e in data["evidence"]:
-        subject=str(e.get("subject",target))
-        grouped.setdefault(subject,[]).append(e)
-    decisions=[]
-    for subject,items in grouped.items():
-        if len(items)<2: continue
-        decision=judge_correlation(subject,items)
-        if decision: decisions.append({"subject":subject,"decision":decision})
-    return {"target":data["target"],"evidence_count":data["evidence_count"],"ai_enabled":local_ai_enabled(),
-            "model":OLLAMA_MODEL if local_ai_enabled() else None,"decisions":decisions}
-    
+    return queue_active_operation(request,principal,target,"discovery.ai_judge")
+
 @app.post("/api/v1/discovery/ai-plan/{target}")
 def discovery_ai_plan(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.ai_plan",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct"])
-    plan=plan_discovery(target,data)
-    return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "evidence_count":data["evidence_count"],"plan":plan,
-            "fallback":"deterministic discovery only" if plan is None else None}
+    return queue_active_operation(request,principal,target,"discovery.ai_plan")
 
 @app.post("/api/v1/technologies/intelligence/{target}")
 def technology_intelligence_api(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"technology.intelligence",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["http","tls"])
-    observations=extract_technologies(data["evidence"])
-    fingerprints=fingerprint_technology(data["evidence"])
-    items=[]
-    for o in observations:
-        item={"product":o.product,"version":o.version,"confidence":o.confidence,"source":o.source,
-              "evidence":o.evidence,"version_confirmed":o.version_confirmed}
-        item["matching"]=technology_match_quality(o)
-        items.append(item)
-    return {"target":data["target"],"technologies":items,"fingerprints":fingerprints,
-            "summary":{"products":len(items),"version_confirmed":sum(x["version_confirmed"] for x in items),
-                       "product_only":sum(not x["version_confirmed"] for x in items),
-                       "fingerprint_candidates":len(fingerprints),
-                       "cve_matching":sum(x["matching"]["matching_allowed"] for x in items)}}
+    return queue_active_operation(request,principal,target,"technology.intelligence")
 
 @app.post("/api/v1/vulnerabilities/correlate")
 async def correlate_vulnerabilities(request: Request):
@@ -2225,147 +2127,63 @@ def score(request: Request):
 
 @app.post("/api/v1/dast/nuclei")
 def dast_nuclei(payload: DASTRequest, request: Request):
-    principal=require(request, "discovery:run")
+    principal=require(request,"discovery:run")
     if not payload.authorization_ref.strip():
-        raise HTTPException(status_code=400, detail="authorization_ref is required")
-    if payload.profile not in {"safe", "standard"}:
-        raise HTTPException(status_code=400, detail="unsupported DAST profile")
-    if not asset_in_scope(principal, payload.target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(
-            request,principal,payload.target,"dast.nuclei",
-            {"profile":payload.profile},payload.authorization_ref,
-        )
-    govern_active_scan(request,principal,payload.target,payload.authorization_ref)
-    try:
-        scan = run_nuclei(payload.target, profile=payload.profile)
-        scan["bsa_findings"] = normalize_findings(scan, asset_id=f"unresolved:{urlparse(payload.target).hostname}")
-        return scan
-    except NucleiEngineError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400,detail="authorization_ref is required")
+    if payload.profile not in {"safe","standard"}:
+        raise HTTPException(status_code=400,detail="unsupported DAST profile")
+    if not asset_in_scope(principal,payload.target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(
+        request,principal,payload.target,"dast.nuclei",
+        {"profile":payload.profile},payload.authorization_ref,
+    )
 
 @app.post("/api/v1/dast/safe-web")
 def dast_safe_web(payload: DASTRequest, request: Request):
-    principal=require(request, "discovery:run")
+    principal=require(request,"discovery:run")
     if not payload.authorization_ref.strip():
-        raise HTTPException(status_code=400, detail="authorization_ref is required")
-    if not asset_in_scope(principal, payload.target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(
-            request,principal,payload.target,"dast.safe_web",
-            {},payload.authorization_ref,
-        )
-    govern_active_scan(request,principal,payload.target,payload.authorization_ref)
-    try:
-        return run_safe_web_assessment(payload.target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+        raise HTTPException(status_code=400,detail="authorization_ref is required")
+    if not asset_in_scope(principal,payload.target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(
+        request,principal,payload.target,"dast.safe_web",{},payload.authorization_ref,
+    )
 
 @app.post("/api/v1/discovery")
 def discovery(request: DiscoveryRequest, http_request: Request):
-    principal=require(http_request, "discovery:run")
-    if not asset_in_scope(principal, request.target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    allowed = {"dns", "http", "tls", "ct"}
-    checks = list(dict.fromkeys(request.checks))
+    principal=require(http_request,"discovery:run")
+    if not asset_in_scope(principal,request.target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    checks=list(dict.fromkeys(request.checks))
+    allowed={"dns","http","tls","ct"}
     if not checks or any(check not in allowed for check in checks):
-        raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http, tls e ct")
-    if IS_PRODUCTION:
-        return queue_active_operation(
-            http_request,principal,request.target,"discovery.basic",
-            {"checks":checks},request.authorization_ref,
-        )
-    govern_active_scan(http_request,principal,request.target,request.authorization_ref)
-    try:
-        return collect_target(request.target, checks)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+        raise HTTPException(status_code=400,detail="checks deve conter apenas dns, http, tls e ct")
+    return queue_active_operation(
+        http_request,principal,request.target,"discovery.basic",
+        {"checks":checks},request.authorization_ref,
+    )
 
 @app.post("/api/v1/discovery/{target}/changes")
 def discovery_changes(target: str, request: Request):
-    principal = require(request, "discovery:run")
-    if not asset_in_scope(principal, target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.changes",{})
-    govern_active_scan(request,principal,target)
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    data = collect_target(target, ["dns", "http", "tls", "ct"])
-    assets = correlate_evidence(data["target"], data["evidence"])
-    record_observations(assets, principal.tenant_id)
-    return {
-        "target": data["target"],
-        "changes": [
-            {
-                "fingerprint": asset.fingerprint,
-                "asset": asset.value,
-                "type": asset.asset_type,
-                "change": change_summary(asset.fingerprint, principal.tenant_id),
-            }
-            for asset in assets
-        ],
-    }
-
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(request,principal,target,"discovery.changes")
 
 @app.post("/api/v1/discovery/{target}/graph")
 def discovery_graph(target: str, request: Request):
-    principal = require(request, "discovery:run")
-    if not asset_in_scope(principal, target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.graph",{})
-    govern_active_scan(request,principal,target)
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    data = collect_target(target, ["dns", "http", "tls", "ct"])
-    assets = correlate_evidence(data["target"], data["evidence"])
-    return build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(request,principal,target,"discovery.graph")
 
 @app.post("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str, request: Request):
-    principal = require(request, "discovery:run")
-    if not asset_in_scope(principal, target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.correlation",{})
-    govern_active_scan(request,principal,target)
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    """Return normalized asset identities for an explicit discovery target."""
-    data = collect_target(target, ["dns", "http", "tls", "ct"])
-    assets = correlate_evidence(data["target"], data["evidence"])
-    observations = record_observations(assets, principal.tenant_id)
-    return {
-        "target": data["target"],
-        "evidence_count": data["evidence_count"],
-        "confidence": data["confidence"],
-        "assets": [
-            {
-                "fingerprint": asset.fingerprint,
-                "value": asset.value,
-                "type": asset.asset_type,
-                "confidence": asset.confidence,
-                "sources": list(asset.sources),
-                "evidence_count": asset.evidence_count,
-                "tags": list(asset.tags),
-                "evidence_refs": list(asset.evidence_refs),
-                "independent_source_count": len(asset.sources),
-                "identity_quality": (
-                    "corroborated" if len(asset.sources) >= 2 and asset.evidence_count >= 2
-                    else "single-source" if len(asset.sources) == 1
-                    else "unverified"
-                ),
-                "history": change_summary(asset.fingerprint, principal.tenant_id),
-            }
-            for asset in assets
-        ],
-        "observation_count": len(observations),
-    }
-
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(request,principal,target,"discovery.correlation")
 
 @app.post("/api/v1/easm/discover/{target}")
 def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets: int = 40):
@@ -2374,34 +2192,17 @@ def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets:
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     if max_depth < 0 or max_depth > 3 or max_assets < 1 or max_assets > 100:
         raise HTTPException(status_code=400,detail="invalid discovery bounds")
-    if IS_PRODUCTION:
-        return queue_active_operation(
-            request,principal,target,"easm.discover",
-            {"max_depth":max_depth,"max_assets":max_assets},
-        )
-    govern_active_scan(request,principal,target)
-    result=discover_surface(target,max_depth=max_depth,max_assets=max_assets,scope_validator=lambda candidate: asset_in_scope(principal,candidate))
-    return result
+    return queue_active_operation(
+        request,principal,target,"easm.discover",
+        {"max_depth":max_depth,"max_assets":max_assets},
+    )
 
 @app.post("/api/v1/easm/lifecycle/{target}")
 def easm_lifecycle(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"easm.lifecycle",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct"])
-    assets=correlate_evidence(data["target"],data["evidence"])
-    lifecycle=record_lifecycle(assets,data["evidence"],principal.tenant_id)
-    changed=[x for x in lifecycle if x["state"]=="changed"]
-    new=[x for x in lifecycle if x["state"]=="new"]
-    return {
-        "target":data["target"],"observed_at":datetime.now(timezone.utc).isoformat(),
-        "summary":{"assets":len(lifecycle),"new":len(new),"changed":len(changed),"stable":len(lifecycle)-len(new)-len(changed),
-                   "evidence":data["evidence_count"],"confidence":data["confidence"]},
-        "assets":lifecycle,
-    }
+    return queue_active_operation(request,principal,target,"easm.lifecycle")
 
 @app.get("/api/v1/easm/lifecycle/{target}/{fingerprint}")
 def easm_asset_lifecycle(target: str, fingerprint: str, request: Request):
@@ -2574,58 +2375,21 @@ def discovery_infrastructure_graph(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.infrastructure_graph",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct"])
-    item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
-    for e in data["evidence"]:
-        kind=e.get("kind",""); value=e.get("value")
-        if kind=="a_record" and not item.ip: item.ip=value
-        elif kind=="certificate_name" and value and value!=data["target"]: item.related_domains.append(value)
-    graph=build_infrastructure_graph(item)
-    graph["discovery"]={"target":data["target"],"evidence_count":data["evidence_count"],"confidence":data["confidence"]}
-    return graph
+    return queue_active_operation(request,principal,target,"discovery.infrastructure_graph")
 
 @app.post("/api/v1/discovery/{target}/infrastructure")
 def discovery_infrastructure(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.infrastructure",{})
-    govern_active_scan(request,principal,target)
-    data=collect_target(target,["dns","http","tls","ct"])
-    item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
-    for e in data["evidence"]:
-        kind=e.get("kind",""); value=e.get("value")
-        if kind=="a_record" and not item.ip: item.ip=value
-        elif kind=="certificate_cn" and not item.certificate_sha256: item.certificate_sha256=value
-        elif kind=="certificate_name" and value and value!=data["target"]: item.related_domains.append(value)
-        elif kind=="http_header:server": item.registrar=value
-    result=build_infrastructure_links(item)
-    result["discovery"]={"target":data["target"],"evidence_count":data["evidence_count"],"confidence":data["confidence"]}
-    result["evidence"]=data["evidence"]
-    return result
+    return queue_active_operation(request,principal,target,"discovery.infrastructure")
 
 @app.post("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
-    principal = require(request, "discovery:run")
-    if not asset_in_scope(principal, target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.risk_paths",{})
-    govern_active_scan(request,principal,target)
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    data = collect_target(target, ["dns", "http", "tls", "ct"])
-    assets = correlate_evidence(data["target"], data["evidence"])
-    graph = build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
-    return {
-        "target": data["target"],
-        "paths": graph["top_risk_paths"],
-        "summary": graph["risk_summary"],
-    }
-
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
+    return queue_active_operation(request,principal,target,"discovery.risk_paths")
 
 @app.get("/api/v1/ctem/operations")
 def ctem_operations(request: Request):
