@@ -63,3 +63,35 @@ def test_dispatcher_routes_discovery_intelligence_operation(monkeypatch):
 
     assert result=={"source":"intel"}
     assert calls==[("intel","discovery.correlation","example.com")]
+
+
+def test_dispatcher_routes_assessment_operation(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(operation_dispatcher,"supports_assessment_operation",lambda operation: operation=="dast.safe_web")
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_intelligence_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_technology_operation",lambda operation: False)
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "run_assessment_operation",
+        lambda operation,target,payload,principal: calls.append(("assessment",operation,target)) or {"source":"assessment"},
+    )
+    result=operation_dispatcher.run_operation("dast.safe_web","https://example.com",{},object())
+    assert result=={"source":"assessment"}
+    assert calls==[("assessment","dast.safe_web","https://example.com")]
+
+
+def test_dispatcher_routes_technology_operation(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(operation_dispatcher,"supports_assessment_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_intelligence_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_technology_operation",lambda operation: operation=="technology.intelligence")
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "run_technology_operation",
+        lambda operation,target,payload,principal: calls.append(("technology",operation,target)) or {"source":"technology"},
+    )
+    result=operation_dispatcher.run_operation("technology.intelligence","example.com",{},object())
+    assert result=={"source":"technology"}
+    assert calls==[("technology","technology.intelligence","example.com")]
