@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from datetime import datetime, timezone
 
 import app.auth as auth
 import app.history as history
@@ -45,9 +46,10 @@ def test_tenant_purge_is_scoped_and_preserves_audit_by_default(tmp_path, monkeyp
     jb=job_queue.enqueue_assessment(pb,"b.example.org","surface","AUTH-B")
     assert ja and jb
 
+    now=datetime.now(timezone.utc).isoformat()
     store.ASSETS[:]=[
-        Asset(tenant_id="tenant-a",id="a1",value="a.example.org",type=AssetType.DOMAIN),
-        Asset(tenant_id="tenant-b",id="b1",value="b.example.org",type=AssetType.DOMAIN),
+        Asset(tenant_id="tenant-a",id="a1",value="a.example.org",type=AssetType.DOMAIN,first_seen=now,last_seen=now),
+        Asset(tenant_id="tenant-b",id="b1",value="b.example.org",type=AssetType.DOMAIN,first_seen=now,last_seen=now),
     ]
     store.FINDINGS[:]=[
         Finding(tenant_id="tenant-a",id="fa",asset_id="a1",title="A",severity=Severity.LOW),
@@ -99,7 +101,8 @@ def test_retire_revokes_sessions_and_deactivates_users(tmp_path, monkeypatch):
 
 def test_persisted_store_survives_restart_simulation(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_STORE_DB",str(tmp_path/"store.db"))
-    asset=Asset(tenant_id="tenant-a",id="a1",value="api.example.org",type=AssetType.DOMAIN)
+    now=datetime.now(timezone.utc).isoformat()
+    asset=Asset(tenant_id="tenant-a",id="a1",value="api.example.org",type=AssetType.DOMAIN,first_seen=now,last_seen=now)
     finding=Finding(tenant_id="tenant-a",id="f1",asset_id="a1",title="Exposure",severity=Severity.HIGH)
     store.persist_state([asset],[finding])
 
