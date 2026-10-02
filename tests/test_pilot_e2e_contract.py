@@ -138,7 +138,6 @@ def test_pilot_ctem_retest_closes_verified_with_full_evidence(tmp_path, monkeypa
     monkeypatch.setattr(ctem_router,"tenant_scope",lambda p,assets,findings:(assets,findings))
     monkeypatch.setattr(ctem_router,"govern_active_scan",lambda request,p,target,authorization_ref=None:"AUTH-PILOT")
     monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
-    monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
 
     item=history.upsert_ctem_item(
         {
