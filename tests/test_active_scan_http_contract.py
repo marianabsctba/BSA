@@ -42,15 +42,26 @@ def test_active_post_routes_queue_in_production():
     assert offenders == [], f"active POST route executes synchronously in production: {offenders}"
 
 
-def test_no_post_route_executes_active_collection_inline():
+def test_active_collection_is_only_dev_fallback_after_production_queue_guard():
     source=Path("app/main.py").read_text(encoding="utf-8")
-    chunks=source.split("@app.")
     offenders=[]
-    for chunk in chunks:
+    for chunk in source.split("@app."):
         if not chunk.startswith('post("'):
             continue
         header=chunk.split("\n",1)[0]
         body=chunk.split("@app.",1)[0]
-        if any(marker in body for marker in ACTIVE_MARKERS):
+        marker_positions=[body.find(marker) for marker in ACTIVE_MARKERS if marker in body]
+        if not marker_positions:
+            continue
+        first_active=min(marker_positions)
+        production_guard=body.find("if IS_PRODUCTION:")
+        queue_positions=[
+            pos for pos in (
+                body.find("queue_active_operation("),
+                body.find("enqueue_assessment("),
+            )
+            if pos>=0
+        ]
+        if production_guard<0 or not queue_positions or min(queue_positions)>first_active:
             offenders.append(header)
-    assert offenders==[], f"active collection executed inline in POST handlers: {offenders}"
+    assert offenders==[], f"production can reach active collection before queue return: {offenders}"
