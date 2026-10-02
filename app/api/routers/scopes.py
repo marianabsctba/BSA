@@ -42,6 +42,7 @@ class DomainOwnershipProofRequest(BaseModel):
 
 class IPOwnershipApprovalRequest(BaseModel):
     ip: str = Field(min_length=3, max_length=64)
+    tenant_id: str | None = Field(default=None, min_length=1, max_length=128)
     authorization_ref: str = Field(min_length=3, max_length=200)
     evidence_type: str = Field(default="contract", pattern="^(contract|rdap|whois|asn|ptr)$")
     ttl_seconds: int = Field(default=86400, ge=300, le=2592000)
@@ -146,6 +147,7 @@ def ip_ownership_approval_create(request: Request, payload: IPOwnershipApprovalR
             payload.authorization_ref,
             payload.evidence_type,
             payload.ttl_seconds,
+            payload.tenant_id,
         )
         audit(
             principal,
@@ -154,6 +156,7 @@ def ip_ownership_approval_create(request: Request, payload: IPOwnershipApprovalR
             result["approval_id"],
             {
                 "ip":result["ip"],
+                "tenant_id":result["tenant_id"],
                 "authorization_ref":result["authorization_ref"],
                 "evidence_type":result["evidence_type"],
                 "expires_at":result["expires_at"],
