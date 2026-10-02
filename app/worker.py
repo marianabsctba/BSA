@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import json
 
 from .auth import current_principal_for_user, can, audit
 from .assessment_orchestrator import run_public_assessment
@@ -8,6 +9,7 @@ from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbea
 from .scope import active_scan_in_scope
 from .scan_authorization import authorization_grant_valid
 from .ctem_retest import reconcile_ctem_retest_job
+from .active_operations import run_active_operation
 
 
 def _heartbeat(job_id:str,run_token:str,stop:threading.Event):
@@ -46,19 +48,36 @@ def run_once()->bool:
     heartbeat=threading.Thread(target=_heartbeat,args=(job["job_id"],run_token,stop),daemon=True)
     heartbeat.start()
     try:
-        result=run_public_assessment(
-            job["target"],
-            profile=job["profile"],
-            authorize=lambda target: (
-                active_scan_in_scope(principal,target)
-                and (
-                    os.getenv("BSA_ENV","development").lower() not in {"production","prod"}
-                    or authorization_grant_valid(principal,job["authorization_ref"],target)
-                )
-            ),
-        )
+        if str(job.get("job_type") or "assessment")=="operation":
+            payload=json.loads(job.get("payload_json") or "{}")
+            result=run_active_operation(
+                str(job.get("operation") or ""),
+                job["target"],
+                payload,
+                principal,
+            )
+        else:
+            result=run_public_assessment(
+                job["target"],
+                profile=job["profile"],
+                authorize=lambda target: (
+                    active_scan_in_scope(principal,target)
+                    and (
+                        os.getenv("BSA_ENV","development").lower() not in {"production","prod"}
+                        or authorization_grant_valid(principal,job["authorization_ref"],target)
+                    )
+                ),
+            )
         completed=complete_job(job["job_id"],result,run_token=run_token)
-        if completed:
+        if completed and str(job.get("job_type") or "assessment")=="operation":
+            audit(
+                principal,
+                "complete",
+                "active_operation",
+                job["target"],
+                {"job_id":job["job_id"],"operation":job.get("operation")},
+            )
+        elif completed:
             try:
                 reconcile_ctem_retest_job(principal,job,result,audit)
             except Exception as exc:
