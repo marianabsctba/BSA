@@ -183,13 +183,18 @@ def _record_capability_call(
             provider_row["errors"] += 1
 
 
-def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str], set[str]]:
-    """Privately defer unstable backends only when healthy redundancy preserves capability coverage."""
+def _adaptive_execution_policy(
+    profile: str,
+    target: str,
+    *,
+    recovery_cooldown_seconds: int = 1800,
+) -> tuple[set[str], set[str], set[str]]:
+    """Defer unstable redundant backends, but allow half-open recovery probes after cooldown."""
     providers = tuple(PROFILES[profile])
     try:
         reliability = provider_reliability(providers, window_hours=168, min_calls=3)
     except Exception:
-        return set(), set()
+        return set(), set(), set()
 
     unstable = {
         name
@@ -198,6 +203,7 @@ def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str],
     }
     suppressed: set[str] = set()
     protected_capabilities: set[str] = set()
+    recovery_probes: set[str] = set()
 
     for provider in unstable:
         capabilities = [
@@ -229,11 +235,25 @@ def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str],
                 fully_redundant = False
                 break
 
-        if fully_redundant:
-            suppressed.add(provider)
-            protected_capabilities.update(capabilities)
+        if not fully_redundant:
+            continue
 
-    return suppressed, protected_capabilities
+        state = reliability.get(provider, {})
+        age = state.get("last_observed_age_seconds")
+        if age is not None and int(age) >= max(60, int(recovery_cooldown_seconds)):
+            recovery_probes.add(provider)
+            protected_capabilities.update(capabilities)
+            continue
+
+        suppressed.add(provider)
+        protected_capabilities.update(capabilities)
+
+    return suppressed, protected_capabilities, recovery_probes
+
+
+def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str], set[str]]:
+    suppressed, protected, _ = _adaptive_execution_policy(profile, target)
+    return suppressed, protected
 
 
 def _capability_telemetry_public(telemetry: dict[str, dict]) -> list[dict]:
@@ -393,7 +413,7 @@ def run_assessment(
     }
     discovered_subjects: list[str] = []
     validated_web_subjects: list[str] = []
-    adaptive_suppressed, protected_capabilities = _adaptive_suppressed_providers(
+    adaptive_suppressed, protected_capabilities, recovery_probes = _adaptive_execution_policy(
         profile,
         target,
     )
@@ -648,8 +668,9 @@ def run_assessment(
                 "provider_calls": internal["provider_calls"],
                 "adaptive_degradation": {
                     "deferred_backend_count": len(internal["adaptive_deferred"]),
+                    "recovery_probe_count": len(recovery_probes),
                     "protected_capabilities": sorted(protected_capabilities),
-                    "coverage_preserved": bool(internal["adaptive_deferred"]),
+                    "coverage_preserved": bool(internal["adaptive_deferred"] or recovery_probes),
                 },
                 "capability_metrics": capability_metrics,
             },
