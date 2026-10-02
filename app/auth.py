@@ -151,6 +151,24 @@ def _db():
         mfa_required_roles TEXT NOT NULL DEFAULT '[]',
         updated_at INTEGER NOT NULL
     )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        resource_id TEXT,
+        metadata TEXT,
+        created_at INTEGER NOT NULL,
+        prev_hash TEXT,
+        entry_hash TEXT
+    )""")
+    audit_cols={r["name"] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()}
+    if "prev_hash" not in audit_cols:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
+    if "entry_hash" not in audit_cols:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN entry_hash TEXT")
+    _backfill_audit_chain(conn)
     conn.commit()
     return conn
 
@@ -851,14 +869,92 @@ def list_tenants(principal: Principal) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _audit_entry_hash(tenant_id: str, user_id: str, action: str, resource: str, resource_id: str | None,
+                      metadata_text: str, created_at: int, prev_hash: str) -> str:
+    body=json.dumps({
+        "tenant_id":tenant_id,
+        "user_id":user_id,
+        "action":action,
+        "resource":resource,
+        "resource_id":resource_id,
+        "metadata":metadata_text,
+        "created_at":int(created_at),
+        "prev_hash":prev_hash,
+    },sort_keys=True,separators=(",",":"),ensure_ascii=False)
+    return hashlib.sha256(body.encode()).hexdigest()
+
+def _backfill_audit_chain(conn) -> None:
+    tenants=conn.execute("SELECT DISTINCT tenant_id FROM audit_log ORDER BY tenant_id").fetchall()
+    for tenant in tenants:
+        tenant_id=tenant["tenant_id"]
+        prev=""
+        rows=conn.execute(
+            "SELECT id,user_id,action,resource,resource_id,metadata,created_at,prev_hash,entry_hash FROM audit_log WHERE tenant_id=? ORDER BY id",
+            (tenant_id,),
+        ).fetchall()
+        for row in rows:
+            metadata_text=row["metadata"] or "{}"
+            expected=_audit_entry_hash(
+                tenant_id,row["user_id"],row["action"],row["resource"],row["resource_id"],
+                metadata_text,int(row["created_at"]),prev,
+            )
+            if not row["entry_hash"]:
+                conn.execute(
+                    "UPDATE audit_log SET prev_hash=?,entry_hash=? WHERE id=?",
+                    (prev,expected,row["id"]),
+                )
+                current=expected
+            else:
+                current=row["entry_hash"]
+            prev=current
+
+def verify_audit_chain(principal: Principal) -> dict:
+    if not can(principal,"audit:read"):
+        raise PermissionError("audit:read required")
+    conn=_db()
+    if principal.role=="superadmin":
+        tenant_ids=[r["tenant_id"] for r in conn.execute("SELECT DISTINCT tenant_id FROM audit_log ORDER BY tenant_id").fetchall()]
+    else:
+        tenant_ids=[principal.tenant_id]
+    checked=0
+    for tenant_id in tenant_ids:
+        prev=""
+        rows=conn.execute(
+            "SELECT id,user_id,action,resource,resource_id,metadata,created_at,prev_hash,entry_hash FROM audit_log WHERE tenant_id=? ORDER BY id",
+            (tenant_id,),
+        ).fetchall()
+        for row in rows:
+            expected=_audit_entry_hash(
+                tenant_id,row["user_id"],row["action"],row["resource"],row["resource_id"],
+                row["metadata"] or "{}",int(row["created_at"]),prev,
+            )
+            if (row["prev_hash"] or "")!=prev or not hmac.compare_digest(str(row["entry_hash"] or ""),expected):
+                conn.close()
+                return {"valid":False,"checked":checked,"tenant_id":tenant_id,"broken_id":row["id"]}
+            prev=row["entry_hash"]
+            checked+=1
+    conn.close()
+    return {"valid":True,"checked":checked,"tenant_count":len(tenant_ids)}
+
 def audit(principal: Principal, action: str, resource: str, resource_id: str | None = None, metadata: dict | None = None) -> None:
-    conn = _db()
-    conn.execute("""CREATE TABLE IF NOT EXISTS audit_log(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
-        action TEXT NOT NULL, resource TEXT NOT NULL, resource_id TEXT, metadata TEXT,
-        created_at INTEGER NOT NULL)""")
-    conn.execute("INSERT INTO audit_log(tenant_id,user_id,action,resource,resource_id,metadata,created_at) VALUES(?,?,?,?,?,?,?)",
-                 (principal.tenant_id, principal.user_id, action, resource, resource_id, json.dumps(metadata or {}, separators=(",", ":")), int(time.time())))
+    conn=_db()
+    metadata_text=json.dumps(metadata or {},sort_keys=True,separators=(",",":"),ensure_ascii=False)
+    created_at=int(time.time())
+    row=conn.execute(
+        "SELECT entry_hash FROM audit_log WHERE tenant_id=? ORDER BY id DESC LIMIT 1",
+        (principal.tenant_id,),
+    ).fetchone()
+    prev_hash=str(row["entry_hash"] or "") if row else ""
+    entry_hash=_audit_entry_hash(
+        principal.tenant_id,principal.user_id,action,resource,resource_id,
+        metadata_text,created_at,prev_hash,
+    )
+    conn.execute(
+        """INSERT INTO audit_log(
+           tenant_id,user_id,action,resource,resource_id,metadata,created_at,prev_hash,entry_hash
+           ) VALUES(?,?,?,?,?,?,?,?,?)""",
+        (principal.tenant_id,principal.user_id,action,resource,resource_id,metadata_text,created_at,prev_hash,entry_hash),
+    )
     conn.commit(); conn.close()
 
 
