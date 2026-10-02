@@ -158,3 +158,36 @@ def test_distinct_web_findings_are_not_collapsed():
     deduped, duplicate_count = _deduplicate_findings(rows)
     assert duplicate_count == 0
     assert len(deduped) == 2
+
+
+def test_profile_health_requires_full_backend_coverage(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setattr(
+        "app.engine_health.registry.available",
+        lambda name, target=None: name == "httpx",
+    )
+    health = engine_health("example.com")
+    rapid = health["profiles"]["rapid"]
+
+    assert rapid["available_engines"] == 1
+    assert rapid["requested_engines"] == 3
+    assert rapid["state"] == "partial"
+    assert rapid["ready"] is False
+
+
+def test_partial_coverage_is_true_when_provider_errors(monkeypatch):
+    from app.assessment_orchestrator import run_assessment
+
+    monkeypatch.setattr("app.assessment_orchestrator.PROFILES", {"rapid": ("httpx",)})
+    monkeypatch.setattr("app.assessment_orchestrator.PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr("app.assessment_orchestrator.registry.available", lambda name, target=None: True)
+
+    def boom(name, *, target):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.assessment_orchestrator.registry.execute", boom)
+
+    result = run_assessment("example.com", profile="rapid")
+    assert result["public"]["partial_coverage"] is True
+    assert result["internal"]["errors"]
