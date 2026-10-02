@@ -38,7 +38,7 @@ from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_p
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
-from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, analyze_brand_impersonation, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns
+from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
@@ -1620,10 +1620,47 @@ def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
 def digital_risk(request: Request, category: str|None=None):
     principal=require(request,"assets:read")
     events=list_events(principal.tenant_id,category)
-    by={}
-    for e in events: by[e["category"]]=by.get(e["category"],0)+1
-    return {"events":events,"summary":{"total":len(events),"by_category":by,"critical":sum(1 for e in events if e.get("severity")=="critical"),
-        "open":sum(1 for e in events if e.get("status")=="open"),"takedown_candidates":sum(1 for e in events if e.get("category") in {"phishing","brand_abuse","fake_profile","fake_app","malware"} and e.get("status")=="open")}}
+    takedowns=list_takedowns(principal.tenant_id)
+    ordered=sorted(
+        events,
+        key=lambda e:(int(e.get("risk_score",0)),int(e.get("confidence",0))),
+        reverse=True,
+    )
+    return {
+        "events":ordered,
+        "summary":summarize_events(events,takedowns),
+        "top_risk":ordered[:10],
+    }
+
+@app.post("/api/v1/digital-risk/leaks")
+def digital_risk_leak_ingest(payload: LeakSignal, request: Request):
+    principal=require(request,"assets:write")
+    analyzed=analyze_leak_signal(payload)
+    assets,_=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    asset=None
+    if analyzed.get("asset_id"):
+        asset=next((a for a in assets if a.id==analyzed["asset_id"]),None)
+        if asset is None:
+            raise HTTPException(status_code=404,detail="asset not found")
+    elif payload.domain:
+        domain=payload.domain.lower().strip()
+        asset=next((a for a in assets if str(a.value).lower()==domain or str(a.value).lower().endswith("."+domain)),None)
+        if asset:
+            analyzed["asset_id"]=asset.id
+    analyzed["title"]=(
+        f"Credential exposure linked to {asset.value if asset else payload.domain or payload.indicator}"
+        if analyzed["category"]=="credential_leak"
+        else f"External leak signal for {asset.value if asset else payload.domain or payload.indicator}"
+    )
+    item=upsert_event(principal.tenant_id,analyzed)
+    audit(principal,"create","digital_risk.leak",item["event_id"],{
+        "category":item["category"],
+        "asset_id":item.get("asset_id"),
+        "risk_score":item.get("risk_score"),
+        "account_count":item.get("account_count",0),
+        "secret_count":item.get("secret_count",0),
+    })
+    return item
 
 @app.post("/api/v1/digital-risk/events")
 def digital_risk_ingest(payload: DigitalRiskEvent, request: Request):
