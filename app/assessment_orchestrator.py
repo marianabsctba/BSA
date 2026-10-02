@@ -13,7 +13,7 @@ import time
 from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
 from .exposure_signals import cloud_signals, summarize_signals
-from .history import record_capability_execution
+from .history import provider_reliability, record_capability_execution, record_provider_execution
 from .vulnerability_evidence import vulnerability_identity_key
 from .security import validate_external_target, validated_external_binding
 
@@ -160,6 +160,7 @@ def _record_capability_call(
     elapsed_ms: int,
     result_count: int = 0,
     error: bool = False,
+    provider_telemetry: dict[str, dict] | None = None,
 ) -> None:
     for capability in _provider_capabilities(provider_name):
         row = telemetry.setdefault(
@@ -171,6 +172,68 @@ def _record_capability_call(
         row["raw_results"] += max(0, int(result_count))
         if error:
             row["errors"] += 1
+
+    if provider_telemetry is not None:
+        provider_row = provider_telemetry.setdefault(
+            provider_name,
+            {"calls": 0, "errors": 0},
+        )
+        provider_row["calls"] += 1
+        if error:
+            provider_row["errors"] += 1
+
+
+def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str], set[str]]:
+    """Privately defer unstable backends only when healthy redundancy preserves capability coverage."""
+    providers = tuple(PROFILES[profile])
+    try:
+        reliability = provider_reliability(providers, window_hours=168, min_calls=3)
+    except Exception:
+        return set(), set()
+
+    unstable = {
+        name
+        for name, state in reliability.items()
+        if state.get("status") in {"unreliable", "flapping"}
+    }
+    suppressed: set[str] = set()
+    protected_capabilities: set[str] = set()
+
+    for provider in unstable:
+        capabilities = [
+            capability
+            for capability in PROFILE_CAPABILITIES[profile]
+            if provider in registry.CAPABILITY_PROVIDERS.get(capability, ())
+        ]
+        if not capabilities:
+            continue
+
+        fully_redundant = True
+        for capability in capabilities:
+            alternates = [
+                candidate
+                for candidate in registry.CAPABILITY_PROVIDERS.get(capability, ())
+                if candidate != provider
+                and candidate in providers
+                and candidate not in unstable
+            ]
+            healthy_alternate = False
+            for candidate in alternates:
+                try:
+                    if registry.available(candidate, target):
+                        healthy_alternate = True
+                        break
+                except Exception:
+                    continue
+            if not healthy_alternate:
+                fully_redundant = False
+                break
+
+        if fully_redundant:
+            suppressed.add(provider)
+            protected_capabilities.update(capabilities)
+
+    return suppressed, protected_capabilities
 
 
 def _capability_telemetry_public(telemetry: dict[str, dict]) -> list[dict]:
@@ -317,6 +380,8 @@ def run_assessment(
         "execution_ms": 0,
         "provider_calls": 0,
         "capability_telemetry": {},
+        "provider_telemetry": {},
+        "adaptive_deferred": [],
         "attempted": [],
         "available": [],
         "deferred": [],
@@ -328,6 +393,10 @@ def run_assessment(
     }
     discovered_subjects: list[str] = []
     validated_web_subjects: list[str] = []
+    adaptive_suppressed, protected_capabilities = _adaptive_suppressed_providers(
+        profile,
+        target,
+    )
 
     def budget_available() -> bool:
         if time.monotonic() >= deadline:
@@ -342,6 +411,9 @@ def run_assessment(
         if not budget_available():
             break
         internal["attempted"].append(provider_name)
+        if provider_name in adaptive_suppressed:
+            internal["adaptive_deferred"].append(provider_name)
+            continue
         if profile == "balanced" and provider_name in DEFERRED_BALANCED_PROVIDERS:
             internal["deferred"].append(provider_name)
             continue
@@ -361,6 +433,7 @@ def run_assessment(
                 provider_name,
                 elapsed_ms=round((time.monotonic() - call_started) * 1000),
                 result_count=len(results),
+                provider_telemetry=internal["provider_telemetry"],
             )
             for result in results:
                 payload = asdict(result)
@@ -391,6 +464,7 @@ def run_assessment(
                 provider_name,
                 elapsed_ms=0,
                 error=True,
+                provider_telemetry=internal["provider_telemetry"],
             )
             internal["errors"].append(
                 {
@@ -539,6 +613,7 @@ def run_assessment(
         internal["capability_telemetry"]
     )
     record_capability_execution(capability_metrics)
+    record_provider_execution(internal["provider_telemetry"])
 
     public.update(
         {
@@ -563,6 +638,11 @@ def run_assessment(
                 "budget_exhausted": internal["budget_exhausted"],
                 "execution_ms": internal["execution_ms"],
                 "provider_calls": internal["provider_calls"],
+                "adaptive_degradation": {
+                    "deferred_backend_count": len(internal["adaptive_deferred"]),
+                    "protected_capabilities": sorted(protected_capabilities),
+                    "coverage_preserved": bool(internal["adaptive_deferred"]),
+                },
                 "capability_metrics": capability_metrics,
             },
         }
