@@ -43,7 +43,7 @@ CUSTOM_ROLE_PREFIX = "custom:"
 PERMISSION_CATALOG = ["assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write","audit:read","tenant:manage"]
 PERMISSIONS = {
     "superadmin": {"*"},
-    "admin": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write"},
+    "admin": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read","users:write","audit:read"},
     "manager": {"assets:read","assets:write","findings:read","findings:write","discovery:run","remediation:write","users:read"},
     "analyst": {"assets:read","findings:read","findings:write","discovery:run","remediation:write"},
     "viewer": {"assets:read","findings:read"},
@@ -85,8 +85,19 @@ def _db():
         name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
         active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS custom_roles(
-        name TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL)
+        name TEXT NOT NULL, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL,
+        PRIMARY KEY(tenant_id,name))
     """)
+    role_info=conn.execute("PRAGMA table_info(custom_roles)").fetchall()
+    role_pk=[r["name"] for r in role_info if r["pk"]]
+    if role_pk==["name"]:
+        conn.execute("""CREATE TABLE custom_roles_v2(
+            name TEXT NOT NULL, tenant_id TEXT NOT NULL, permissions TEXT NOT NULL, created_at INTEGER NOT NULL,
+            PRIMARY KEY(tenant_id,name))""")
+        conn.execute("""INSERT INTO custom_roles_v2(name,tenant_id,permissions,created_at)
+            SELECT name,tenant_id,permissions,created_at FROM custom_roles""")
+        conn.execute("DROP TABLE custom_roles")
+        conn.execute("ALTER TABLE custom_roles_v2 RENAME TO custom_roles")
     conn.execute("""CREATE TABLE IF NOT EXISTS users_mfa(
         user_id TEXT PRIMARY KEY, secret TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)
     """)
@@ -486,8 +497,8 @@ def audit(principal: Principal, action: str, resource: str, resource_id: str | N
 
 
 def list_audit(principal: Principal, limit: int = 100) -> list[dict]:
-    if not can(principal, "users:write"):
-        raise PermissionError("users:write required")
+    if not can(principal, "audit:read"):
+        raise PermissionError("audit:read required")
     conn = _db()
     if principal.role == "superadmin":
         rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (min(limit, 500),)).fetchall()
