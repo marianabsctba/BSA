@@ -89,3 +89,32 @@ def test_login_rate_limit_persists_in_database(tmp_path, monkeypatch):
     assert row is not None
     assert int(row["blocked_until"])>0
     assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is False
+
+
+def test_auth_permissions_support_custom_role_tenant_scope(tmp_path, monkeypatch):
+    from app import auth
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","j"*48)
+    monkeypatch.setattr(auth,"MFA_KEY","m"*48)
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-x","Tenant X"))
+    conn.execute(
+        "INSERT INTO custom_roles(name,tenant_id,permissions,created_at) VALUES(?,?,?,?)",
+        ("custom:auditor","tenant-x",'["assets:read","findings:read"]',1),
+    )
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("u-custom","tenant-x","custom@example.org","Custom",auth._hash("CorrectHorseBattery1!"),"custom:auditor",1),
+    )
+    conn.commit(); conn.close()
+
+    token=auth.authenticate("custom@example.org","CorrectHorseBattery1!","198.51.100.50")
+    assert token
+    client=TestClient(app,cookies={"bsa_session":token})
+    response=client.get("/api/v1/auth/permissions")
+    assert response.status_code==200
+    assert response.json()["role"]=="custom:auditor"
+    assert response.json()["permissions"]==["assets:read","findings:read"]
