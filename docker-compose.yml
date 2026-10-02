@@ -11,17 +11,17 @@ services:
     container_name: bsa-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       BSA_ENV: development
-      BSA_JWT_SECRET: "${BSA_JWT_SECRET:-dev-only-jwt-secret-change-before-production-123456}"
+      BSA_JWT_SECRET: "${BSA_JWT_SECRET:?set BSA_JWT_SECRET}"
       BSA_ADMIN_EMAIL: "${BSA_ADMIN_EMAIL:-admin@besafe.local}"
-      BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:-Bsa-Dev-Only-2026!ChangeMe}"
+      BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:?set BSA_ADMIN_PASSWORD}"
       BSA_AUTH_DB: /data/bsa_auth.db
       BSA_HISTORY_DB: /data/bsa_history.db
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
-      BSA_DEMO_DATA: "1"
+      BSA_DEMO_DATA: "${BSA_DEMO_DATA:-0}"
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: "http://ollama:11434"
       BSA_OLLAMA_MODEL: "qwen2.5:7b"
@@ -57,17 +57,17 @@ services:
     container_name: bsa-api-full
     restart: unless-stopped
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     environment:
       BSA_ENV: development
-      BSA_JWT_SECRET: "${BSA_JWT_SECRET:-dev-only-jwt-secret-change-before-production-123456}"
+      BSA_JWT_SECRET: "${BSA_JWT_SECRET:?set BSA_JWT_SECRET}"
       BSA_ADMIN_EMAIL: "${BSA_ADMIN_EMAIL:-admin@besafe.local}"
-      BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:-Bsa-Dev-Only-2026!ChangeMe}"
+      BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:?set BSA_ADMIN_PASSWORD}"
       BSA_AUTH_DB: /data/bsa_auth.db
       BSA_HISTORY_DB: /data/bsa_history.db
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
-      BSA_DEMO_DATA: "1"
+      BSA_DEMO_DATA: "${BSA_DEMO_DATA:-0}"
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: "http://ollama:11434"
       BSA_OLLAMA_MODEL: "qwen2.5:7b"
@@ -93,7 +93,7 @@ services:
     depends_on:
       - api
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
 
 volumes:
   bsa_ollama:
