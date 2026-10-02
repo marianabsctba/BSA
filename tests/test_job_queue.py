@@ -459,3 +459,20 @@ def test_worker_restart_reclaims_expired_job_and_preserves_retry_budget(tmp_path
     assert final["status"]=="succeeded"
     assert final["attempts"]==2
     assert final["result"]["finding_count"]==0
+
+
+def test_worker_health_reports_active_and_stale_instances(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+
+    job_queue.touch_worker("worker-a",now=100)
+    healthy=job_queue.worker_health(now=150,stale_seconds=120)
+    assert healthy["status"]=="healthy"
+    assert healthy["workers"]==1
+    assert healthy["active_workers"]==1
+    assert healthy["stale_workers"]==0
+
+    stale=job_queue.worker_health(now=400,stale_seconds=120)
+    assert stale["status"]=="degraded"
+    assert stale["active_workers"]==0
+    assert stale["stale_workers"]==1
+    assert stale["last_seen_age_seconds"]==300
