@@ -154,3 +154,99 @@ def test_profile_health_exposes_missing_and_degraded_capabilities(monkeypatch):
     assert rapid["missing_capabilities"]==["vulnerability"]
     assert rapid["degraded_capabilities"]==["certificate_intelligence"]
     assert rapid["ready"] is False
+
+
+
+def test_profile_policy_blocks_ready_when_backend_coverage_is_below_threshold(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setattr(
+        "app.engine_health.registry.available",
+        lambda name,target=None: True,
+    )
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None,capabilities=None: [
+            {
+                "name":"fingerprint",
+                "operational":True,
+                "status":"ready",
+                "available_backends":1,
+                "backend_count":1,
+            },
+            {
+                "name":"certificate_intelligence",
+                "operational":True,
+                "status":"degraded",
+                "available_backends":1,
+                "backend_count":2,
+            },
+            {
+                "name":"vulnerability",
+                "operational":True,
+                "status":"ready",
+                "available_backends":1,
+                "backend_count":1,
+            },
+        ] if capabilities==(
+            "fingerprint",
+            "certificate_intelligence",
+            "vulnerability",
+        ) else [
+            {
+                "name":name,
+                "operational":True,
+                "status":"ready",
+                "available_backends":1,
+                "backend_count":1,
+            }
+            for name in (capabilities or ())
+        ],
+    )
+
+    rapid=engine_health("example.com")["profiles"]["rapid"]
+
+    assert rapid["coverage_percent"]==100
+    assert rapid["backend_coverage_percent"]==75
+    assert rapid["missing_capabilities"]==[]
+    assert rapid["readiness_blockers"]==["backend_coverage"]
+    assert rapid["state"]=="partial"
+    assert rapid["ready"] is False
+    assert "httpx" not in str(rapid)
+    assert "tlsx" not in str(rapid)
+
+
+def test_profile_policy_is_exposed_without_internal_provider_identities(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setattr(
+        "app.engine_health.registry.available",
+        lambda name,target=None: True,
+    )
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None,capabilities=None: [
+            {
+                "name":name,
+                "operational":True,
+                "status":"ready",
+                "available_backends":1,
+                "backend_count":1,
+            }
+            for name in (capabilities or ())
+        ],
+    )
+
+    rapid=engine_health("example.com")["profiles"]["rapid"]
+
+    assert rapid["ready"] is True
+    assert rapid["readiness_blockers"]==[]
+    assert rapid["coverage_policy"]=={
+        "min_core_coverage_percent":100,
+        "min_backend_coverage_percent":100,
+        "allow_degraded_core":True,
+    }
+    serialized=str(rapid)
+    assert "nuclei" not in serialized
+    assert "httpx" not in serialized
+    assert "tlsx" not in serialized
