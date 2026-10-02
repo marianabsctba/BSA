@@ -36,5 +36,5 @@ def test_active_operation_queue_has_worker_dispatch():
     assert '=="operation"' in worker
     assert "run_operation(" in worker
     assert "def run_operation(" in dispatcher
-    assert "run_legacy_operation" in dispatcher
+    assert "unsupported active operation" in dispatcher
     assert "def run_active_operation(" in legacy
