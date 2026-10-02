@@ -22,6 +22,15 @@ def _persistent_path(value: str | None) -> bool:
     return not str(path).startswith("/tmp/")
 
 
+def _asset_store_persistent() -> bool:
+    backend=os.getenv("BSA_ASSET_REPOSITORY_BACKEND","legacy").strip().lower()
+    if backend in {"legacy","sqlite","memory"}:
+        return _persistent_path(_store_path())
+    if backend=="postgres":
+        return bool(os.getenv("BSA_DATABASE_URL","").strip())
+    return False
+
+
 def release_readiness() -> dict:
     env = os.getenv("BSA_ENV", "development").lower()
     production = env in {"production", "prod"}
@@ -47,7 +56,7 @@ def release_readiness() -> dict:
         },
         {
             "name": "persistent_asset_store",
-            "status": "pass" if _persistent_path(_store_path()) else "fail",
+            "status": "pass" if _asset_store_persistent() else "fail",
             "required": True,
         },
         {
