@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import shutil
@@ -13,13 +14,24 @@ class NucleiEngineError(RuntimeError):
     pass
 
 
-def _normalized_target(target: str) -> str:
-    validate_external_target(target)
+def validate_nuclei_target(target: str) -> str:
     value = target if "://" in target else f"https://{target}"
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("invalid web target")
+    if os.getenv("BSA_ENV","development").lower() in {"production","prod"}:
+        try:
+            ipaddress.ip_address(parsed.hostname)
+        except ValueError as exc:
+            raise ValueError(
+                "nuclei hostname targets are disabled in production; use an explicit public IP"
+            ) from exc
+    validate_external_target(value)
     return value
+
+
+def _normalized_target(target: str) -> str:
+    return validate_nuclei_target(target)
 
 
 def _result(item: dict) -> dict:
