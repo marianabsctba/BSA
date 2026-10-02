@@ -14,13 +14,22 @@ def test_main_routes_policy_use_cases_through_application_layer():
 
 
 def test_application_layer_does_not_import_infrastructure():
+    import ast
     from pathlib import Path
 
     offenders=[]
     for path in Path("app/application").rglob("*.py"):
-        source=path.read_text(encoding="utf-8")
-        if "infrastructure" in source:
-            offenders.append(str(path))
+        tree=ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node,ast.Import):
+                modules=[alias.name for alias in node.names]
+            elif isinstance(node,ast.ImportFrom):
+                modules=[node.module or ""]
+            else:
+                continue
+            if any("infrastructure" in module.split(".") for module in modules):
+                offenders.append(str(path))
+                break
     assert offenders==[], f"application layer imports infrastructure: {offenders}"
 
 
