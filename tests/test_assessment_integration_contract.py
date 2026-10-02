@@ -494,3 +494,100 @@ def test_credentialed_external_providers_never_define_core_readiness():
     for profile, capabilities in PROFILE_CAPABILITIES.items():
         optional = set(PROFILE_OPTIONAL_CAPABILITIES.get(profile, ()))
         assert credentialed_capabilities.intersection(capabilities) <= optional
+
+
+
+def test_capability_metrics_are_public_safe_and_aggregate_engine_activity(monkeypatch):
+    from app.assessment_orchestrator import run_assessment
+    from app.assessment_providers import ProviderResult
+
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILES",
+        {"rapid": ("httpx", "nuclei")},
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILE_CAPABILITIES",
+        {"rapid": ("fingerprint", "vulnerability")},
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILE_OPTIONAL_CAPABILITIES",
+        {"rapid": ()},
+    )
+    monkeypatch.setattr("app.assessment_orchestrator.registry.available", lambda name, target=None: True)
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {"name": "fingerprint", "operational": True, "status": "ready"},
+            {"name": "vulnerability", "operational": True, "status": "ready"},
+        ],
+    )
+
+    def execute(name, *, target):
+        if name == "httpx":
+            return [
+                ProviderResult(
+                    "HTTP observed",
+                    "info",
+                    90,
+                    {"url": "https://example.org", "status_code": 200},
+                )
+            ]
+        if name == "nuclei":
+            return [
+                ProviderResult(
+                    "Exposure",
+                    "high",
+                    92,
+                    {
+                        "url": target,
+                        "vulnerability_id": "CVE-2026-8080",
+                        "validation_state": "confirmed_evidence",
+                    },
+                )
+            ]
+        return []
+
+    monkeypatch.setattr("app.assessment_orchestrator.registry.execute", execute)
+
+    result = run_assessment("example.org", profile="rapid")
+    metrics = result["public"]["coverage"]["capability_metrics"]
+
+    assert {row["name"] for row in metrics} == {"fingerprint", "vulnerability"}
+    assert all(row["calls"] >= 1 for row in metrics)
+    assert all(row["execution_ms"] >= 0 for row in metrics)
+    assert all("provider" not in row for row in metrics)
+    assert "httpx" not in str(metrics)
+    assert "nuclei" not in str(metrics)
+
+
+def test_capability_metrics_count_execution_errors_without_leaking_provider(monkeypatch):
+    from app.assessment_orchestrator import run_assessment
+
+    monkeypatch.setattr("app.assessment_orchestrator.PROFILES", {"rapid": ("httpx",)})
+    monkeypatch.setattr("app.assessment_orchestrator.PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr("app.assessment_orchestrator.PROFILE_OPTIONAL_CAPABILITIES", {"rapid": ()})
+    monkeypatch.setattr("app.assessment_orchestrator.registry.available", lambda name, target=None: True)
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {"name": "fingerprint", "operational": True, "status": "ready"}
+        ],
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.registry.execute",
+        lambda name, *, target: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    result = run_assessment("example.org", profile="rapid")
+    metrics = result["public"]["coverage"]["capability_metrics"]
+
+    assert metrics == [
+        {
+            "name": "fingerprint",
+            "calls": 1,
+            "execution_ms": 0,
+            "raw_results": 0,
+            "errors": 1,
+        }
+    ]
+    assert "httpx" not in str(metrics)
