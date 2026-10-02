@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
-DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
-JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
+DB_PATH = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if ENVIRONMENT in {"production","prod"} else str(Path("/tmp") / "bsa_auth.db"))
+JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
 _LOGIN_ATTEMPTS = {}
 _IP_LOGIN_ATTEMPTS = {}
