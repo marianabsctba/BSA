@@ -20,10 +20,10 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 | BSA-06 | Enumeração de usuário por timing | P1 | Concluído e validado no CI | Hash fictício PBKDF2 para usuário ausente + regressão |
 | BSA-07 | MFA: reauth, replay, cobertura, chave, recovery | P1 | Concluído e validado no CI | Reauth em enroll/disable, anti-replay, MFA para todos, política por tenant, chave MFA separada, recovery codes |
 | BSA-08 | Assessment ignora active scan scope | P1 | Concluído e validado no CI | govern_active_scan centralizado em assessment/retest/worker + testes de contrato |
-| BSA-09 | Coleta ativa por GET / execução síncrona | P2 | Aberto/parcial | POST para ações mutantes + fila para toda coleta ativa relevante |
-| BSA-10 | /auth/permissions 500 em custom role | P2 | Aberto | tenant_id no role_permissions + erro tratado + teste |
+| BSA-09 | Coleta ativa por GET / execução síncrona | P2 | GET ativo eliminado e validado no CI; fila ampla ainda pendente | POST para ações mutantes + fila para toda coleta ativa relevante |
+| BSA-10 | /auth/permissions 500 em custom role | P2 | Concluído e validado no CI | tenant_id no role_permissions + erro tratado + teste |
 | BSA-11 | Sessão/rate-limit: persistência, idle timeout, password change | P2 | Quase concluído: persistência, idle timeout e password change validados no CI | idle timeout + cookie usa TOKEN_TTL + troca de senha com reauth + testes |
-| BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Parcial | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
+| BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Prompt hardening implementado; autenticação/proxy do Ollama ainda pendente | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
 | BSA-13 | Auditoria adulterável / posse DRP | P3 | Parcial | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
 | BSA-14 | HSTS/proxy/supply-chain | P3 | Parcial | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
 
