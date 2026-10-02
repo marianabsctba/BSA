@@ -103,6 +103,32 @@ services:
       start_period: 20s
     networks: [bsa_egress]
 
+  backup:
+    build: .
+    container_name: bsa-backup
+    restart: unless-stopped
+    command: ["python", "-m", "app.backup_scheduler"]
+    env_file: .env
+    environment:
+      BSA_ENV: production
+      BSA_AUTH_DB: /data/bsa_auth.db
+      BSA_HISTORY_DB: /data/bsa_history.db
+      BSA_STORE_DB: /data/bsa_store.db
+      BSA_JOBS_DB: /data/bsa_jobs.db
+      BSA_BACKUP_DIR: /backups
+      BSA_BACKUP_INTERVAL_SECONDS: ${BSA_BACKUP_INTERVAL_SECONDS:-86400}
+      BSA_BACKUP_RETENTION_DAYS: ${BSA_BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - bsa_data:/data
+      - bsa_backups:/backups
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [bsa_app]
+
   web:
     build:
       context: ./frontend
@@ -125,6 +151,7 @@ services:
 volumes:
   bsa_ollama:
   bsa_data:
+  bsa_backups:
 
 networks:
   bsa_ai_backend:
