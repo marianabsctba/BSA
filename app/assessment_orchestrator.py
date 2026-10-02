@@ -7,6 +7,8 @@ product-safe payload.
 
 from dataclasses import asdict
 from typing import Callable
+import os
+import time
 
 from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
@@ -27,6 +29,28 @@ VULN_FOLLOWUP_PROVIDERS = ("nuclei", "zap")
 DEFERRED_BALANCED_PROVIDERS = set(VULN_FOLLOWUP_PROVIDERS)
 MAX_FOLLOWUP_TARGETS = 32
 MAX_VULN_FOLLOWUP_TARGETS = 8
+
+
+def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _runtime_budget() -> dict:
+    return {
+        "max_seconds": _bounded_env_int("BSA_ASSESSMENT_BUDGET_SECONDS", 480, 30, 3600),
+        "max_followup_targets": _bounded_env_int(
+            "BSA_ASSESSMENT_MAX_FOLLOWUPS", MAX_FOLLOWUP_TARGETS, 1, MAX_FOLLOWUP_TARGETS
+        ),
+        "max_vulnerability_followup_targets": _bounded_env_int(
+            "BSA_ASSESSMENT_MAX_VULN_FOLLOWUPS", MAX_VULN_FOLLOWUP_TARGETS, 1, MAX_VULN_FOLLOWUP_TARGETS
+        ),
+        "max_findings": _bounded_env_int("BSA_ASSESSMENT_MAX_FINDINGS", 2000, 50, 10000),
+    }
+
 
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
@@ -171,9 +195,16 @@ def run_assessment(
     if authorize is not None and not authorize(target):
         raise PermissionError("target outside authorized scope")
 
+    budget = _runtime_budget()
+    started = time.monotonic()
+    deadline = started + budget["max_seconds"]
     engine = AssessmentEngine()
     internal = {
         "profile": profile,
+        "budget": dict(budget),
+        "budget_exhausted": False,
+        "execution_ms": 0,
+        "provider_calls": 0,
         "attempted": [],
         "available": [],
         "deferred": [],
@@ -185,7 +216,18 @@ def run_assessment(
     discovered_subjects: list[str] = []
     validated_web_subjects: list[str] = []
 
+    def budget_available() -> bool:
+        if time.monotonic() >= deadline:
+            internal["budget_exhausted"] = True
+            return False
+        if len(engine.findings) >= budget["max_findings"]:
+            internal["budget_exhausted"] = True
+            return False
+        return True
+
     for provider_name in PROFILES[profile]:
+        if not budget_available():
+            break
         internal["attempted"].append(provider_name)
         if profile == "balanced" and provider_name in DEFERRED_BALANCED_PROVIDERS:
             internal["deferred"].append(provider_name)
@@ -194,6 +236,7 @@ def run_assessment(
             if not registry.available(provider_name, target):
                 continue
             internal["available"].append(provider_name)
+            internal["provider_calls"] += 1
             results = registry.execute(provider_name, target=target)
             for result in results:
                 payload = asdict(result)
@@ -213,10 +256,10 @@ def run_assessment(
                     status = evidence.get("status_code")
                     url = evidence.get("url") or subject
                     if status is not None and str(url).startswith(("http://", "https://")):
-                        if url not in validated_web_subjects and len(validated_web_subjects) < MAX_VULN_FOLLOWUP_TARGETS:
+                        if url not in validated_web_subjects and len(validated_web_subjects) < budget["max_vulnerability_followup_targets"]:
                             validated_web_subjects.append(str(url))
                 if provider_name in DISCOVERY_PROVIDERS and subject != target:
-                    if subject not in discovered_subjects and len(discovered_subjects) < MAX_FOLLOWUP_TARGETS:
+                    if subject not in discovered_subjects and len(discovered_subjects) < budget["max_followup_targets"]:
                         discovered_subjects.append(subject)
         except Exception as exc:
             internal["errors"].append(
@@ -228,11 +271,16 @@ def run_assessment(
 
     if profile in {"surface", "balanced"}:
         for child in discovered_subjects:
+            if not budget_available():
+                break
             internal["followup_targets"].append(child)
             for provider_name in FOLLOWUP_PROVIDERS:
+                if not budget_available():
+                    break
                 try:
                     if not registry.available(provider_name, child):
                         continue
+                    internal["provider_calls"] += 1
                     results = registry.execute(provider_name, target=child)
                     for result in results:
                         payload = asdict(result)
@@ -251,7 +299,7 @@ def run_assessment(
                             status = evidence.get("status_code")
                             url = evidence.get("url") or subject
                             if status is not None and str(url).startswith(("http://", "https://")):
-                                if url not in validated_web_subjects and len(validated_web_subjects) < MAX_VULN_FOLLOWUP_TARGETS:
+                                if url not in validated_web_subjects and len(validated_web_subjects) < budget["max_vulnerability_followup_targets"]:
                                     validated_web_subjects.append(str(url))
                 except Exception as exc:
                     internal["errors"].append(
@@ -259,15 +307,20 @@ def run_assessment(
                     )
 
     if profile == "balanced":
-        for child in validated_web_subjects[:MAX_VULN_FOLLOWUP_TARGETS]:
+        for child in validated_web_subjects[:budget["max_vulnerability_followup_targets"]]:
+            if not budget_available():
+                break
             internal["vulnerability_followup_targets"].append(child)
             for provider_name in VULN_FOLLOWUP_PROVIDERS:
+                if not budget_available():
+                    break
                 try:
                     if authorize is not None and not authorize(child):
                         internal["scope_filtered"] += 1
                         continue
                     if not registry.available(provider_name, child):
                         continue
+                    internal["provider_calls"] += 1
                     results = registry.execute(provider_name, target=child)
                     for result in results:
                         payload = asdict(result)
@@ -288,6 +341,7 @@ def run_assessment(
                     )
 
 
+    internal["execution_ms"] = round((time.monotonic() - started) * 1000)
     public = engine.export_public()
     orchestration_rows = engine.export_orchestration_rows()
     raw_finding_count = len(orchestration_rows)
@@ -309,7 +363,7 @@ def run_assessment(
         {
             "profile": profile,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
-            "partial_coverage": bool(internal["errors"]) or operational_capabilities < requested_capabilities,
+            "partial_coverage": bool(internal["errors"]) or internal["budget_exhausted"] or operational_capabilities < requested_capabilities,
             "coverage": {
                 "requested_capabilities": requested_capabilities,
                 "operational_capabilities": operational_capabilities,
@@ -321,6 +375,9 @@ def run_assessment(
                 "followup_targets": len(internal["followup_targets"]),
                 "vulnerability_followup_targets": len(internal["vulnerability_followup_targets"]),
                 "scope_filtered": internal["scope_filtered"],
+                "budget_exhausted": internal["budget_exhausted"],
+                "execution_ms": internal["execution_ms"],
+                "provider_calls": internal["provider_calls"],
             },
         }
     )
