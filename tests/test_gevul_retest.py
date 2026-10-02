@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from app.auth import Principal
 from app.models import Asset, AssetType
 from app.history import upsert_ctem_item, update_ctem_state
-import app.main as main
+from app.api.routers import ctem as ctem_router
 
 
 def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
@@ -26,12 +26,12 @@ def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
         first_seen=now,
         last_seen=now,
     )
-    monkeypatch.setattr(main, "STORE_ASSETS", [asset])
-    monkeypatch.setattr(main, "STORE_FINDINGS", [])
-    monkeypatch.setattr(main, "tenant_scope", lambda principal, assets, findings: ([asset], []))
-    monkeypatch.setattr(main, "require", lambda request, permission: principal)
-    monkeypatch.setattr(main, "govern_active_scan", lambda request, principal, target, authorization_ref=None: "AUTH-RETEST")
-    monkeypatch.setattr(main, "audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ctem_router, "STORE_ASSETS", [asset])
+    monkeypatch.setattr(ctem_router, "STORE_FINDINGS", [])
+    monkeypatch.setattr(ctem_router, "tenant_scope", lambda principal, assets, findings: ([asset], []))
+    monkeypatch.setattr(ctem_router, "require", lambda request, permission: principal)
+    monkeypatch.setattr(ctem_router, "govern_active_scan", lambda request, principal, target, authorization_ref=None: "AUTH-RETEST")
+    monkeypatch.setattr(ctem_router, "audit", lambda *args, **kwargs: None)
 
     item = upsert_ctem_item(
         {
@@ -64,14 +64,14 @@ def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
             "profile": profile,
         }
 
-    monkeypatch.setattr(main, "enqueue_assessment", enqueue)
+    monkeypatch.setattr(ctem_router, "enqueue_assessment", enqueue)
 
     request = SimpleNamespace(
         headers={"X-Authorization-Ref": "AUTH-RETEST"},
         method="POST",
         url=SimpleNamespace(path=f"/api/v1/ctem/{item['item_id']}/retest"),
     )
-    response = main.ctem_retest(
+    response = ctem_router.ctem_retest(
         item["item_id"],
         request,
         {"profile": "rapid", "authorization_ref": "AUTH-RETEST"},
