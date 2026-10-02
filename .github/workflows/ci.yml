@@ -85,6 +85,15 @@ jobs:
           grep -qi '<div id="root"></div>' /tmp/bsa-web-index.html
           curl --fail --silent --show-error http://127.0.0.1:18080/index.html >/dev/null
 
+          asset_path="$(grep -oE '/assets/[^"]+' /tmp/bsa-web-index.html | head -n1)"
+          test -n "$asset_path"
+          for path in "/" "/index.html" "$asset_path"; do
+            headers="$(curl --fail --silent --show-error -D - -o /dev/null "http://127.0.0.1:18080${path}" | tr -d '\r')"
+            for header in Content-Security-Policy Strict-Transport-Security X-Frame-Options X-Content-Type-Options; do
+              echo "$headers" | grep -qi "^${header}:"
+            done
+          done
+
       - name: Dependency audit
         run: |
           python -m pip install pip-audit
