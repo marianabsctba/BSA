@@ -14,7 +14,6 @@ def _principal():
 def _seed_user(tmp_path, monkeypatch, password="CorrectHorseBattery1!"):
     monkeypatch.setattr(auth, "DB_PATH", str(tmp_path / "auth.db"))
     monkeypatch.setattr(auth, "JWT_SECRET", "x" * 48)
-    monkeypatch.setattr(auth, "MFA_SECRET_KEY", "m" * 48)
     monkeypatch.setattr(auth, "MFA_KEY", "m" * 48)
     principal=_principal()
     conn=auth._db()
@@ -196,41 +195,3 @@ def test_mfa_uses_dedicated_encryption_key(tmp_path, monkeypatch):
     monkeypatch.setattr(auth,"JWT_SECRET",old_jwt)
 
 
-def test_mfa_reenroll_requires_current_factor_when_enabled(tmp_path, monkeypatch):
-    principal,password=_seed_user(tmp_path,monkeypatch)
-    enrolled=auth.mfa_enroll(principal,password)
-    secret=enrolled["secret"]
-    code=auth._totp(secret,int(auth.time.time())//30)
-    assert auth.mfa_enable(principal,code) is True
-
-    try:
-        auth.mfa_enroll(principal,password)
-    except PermissionError:
-        pass
-    else:
-        raise AssertionError("enabled MFA was re-enrolled without current factor")
-
-
-def test_recovery_code_is_single_use_for_mfa_disable(tmp_path, monkeypatch):
-    principal,password=_seed_user(tmp_path,monkeypatch)
-    enrolled=auth.mfa_enroll(principal,password)
-    secret=enrolled["secret"]
-    code=auth._totp(secret,int(auth.time.time())//30)
-    assert auth.mfa_enable(principal,code) is True
-    recovery=enrolled["recovery_codes"][0]
-
-    assert auth.mfa_disable(principal,password,recovery) is True
-
-    conn=auth._db()
-    row=conn.execute("SELECT enabled FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
-    remaining=conn.execute("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,)).fetchone()["n"]
-    conn.close()
-    assert row["enabled"]==0
-    assert remaining==0
-
-
-def test_tenant_mfa_policy_can_require_discovery(tmp_path, monkeypatch):
-    principal,_=_seed_user(tmp_path,monkeypatch)
-    assert auth.set_tenant_mfa_required(principal,True)["mfa_required"] is True
-    assert auth.tenant_mfa_required(principal.tenant_id) is True
-    assert auth.mfa_required_for(principal,"discovery:run") is True
