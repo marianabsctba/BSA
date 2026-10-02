@@ -171,3 +171,24 @@ def test_operations_routes_live_outside_main():
         assert f'@app.get("{route}")' not in main_source
     assert '@router.get("/ready")' in router_source
     assert '@router.get("/api/v1/operations/release-readiness")' in router_source
+
+
+def test_scope_authorization_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/scopes.py").read_text(encoding="utf-8")
+    assert "app.include_router(scopes_router)" in main_source
+    for route in (
+        "/api/v1/scopes",
+        "/api/v1/scopes/assign",
+        "/api/v1/scan-scopes",
+        "/api/v1/scan-scopes/assign",
+        "/api/v1/domain-ownership/proofs",
+        "/api/v1/ip-ownership/approvals",
+        "/api/v1/scan-authorizations",
+    ):
+        assert f'@app.get("{route}")' not in main_source
+        assert f'@app.post("{route}")' not in main_source
+    assert '@router.post("/api/v1/ip-ownership/approvals")' in router_source
+    assert '@router.post("/api/v1/scan-authorizations")' in router_source
