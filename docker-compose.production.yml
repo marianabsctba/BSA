@@ -19,6 +19,7 @@ services:
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
       BSA_DEMO_DATA: "0"
+      BSA_TRUST_PROXY_HEADERS: "1"
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
