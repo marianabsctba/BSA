@@ -314,3 +314,74 @@ def test_production_profile_blocks_without_recent_execution(monkeypatch):
     assert rapid["readiness_blockers"] == ["execution_validation"]
     assert rapid["execution_validation"]["verified_percent"] == 67
     assert rapid["execution_validation"]["unverified_capabilities"] == ["vulnerability"]
+
+
+
+def test_capability_reliability_detects_flapping_and_unreliable(tmp_path, monkeypatch):
+    from app import history
+
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "reliability.db"))
+
+    for row in [
+        {"name":"fingerprint","calls":1,"errors":0,"execution_ms":1,"raw_results":0},
+        {"name":"fingerprint","calls":1,"errors":1,"execution_ms":1,"raw_results":0},
+        {"name":"fingerprint","calls":1,"errors":0,"execution_ms":1,"raw_results":0},
+        {"name":"fingerprint","calls":1,"errors":1,"execution_ms":1,"raw_results":0},
+        {"name":"fingerprint","calls":1,"errors":0,"execution_ms":1,"raw_results":0},
+    ]:
+        history.record_capability_execution([row])
+
+    for row in [
+        {"name":"vulnerability","calls":1,"errors":0,"execution_ms":1,"raw_results":0},
+        {"name":"vulnerability","calls":1,"errors":1,"execution_ms":1,"raw_results":0},
+        {"name":"vulnerability","calls":1,"errors":1,"execution_ms":1,"raw_results":0},
+    ]:
+        history.record_capability_execution([row])
+
+    rows=history.capability_reliability(
+        ("fingerprint","vulnerability","certificate_intelligence"),
+        window_hours=168,
+        min_calls=3,
+    )
+    by_name={row["name"]:row for row in rows}
+
+    assert by_name["fingerprint"]["reliability_status"]=="flapping"
+    assert by_name["fingerprint"]["state_transitions"]==4
+    assert by_name["vulnerability"]["reliability_status"]=="unreliable"
+    assert by_name["vulnerability"]["consecutive_failures"]==2
+    assert by_name["certificate_intelligence"]["reliability_status"]=="insufficient_data"
+
+
+def test_production_profile_blocks_historically_unreliable_capability(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setenv("BSA_ENV","production")
+    monkeypatch.setattr("app.engine_health.registry.available",lambda name,target=None: True)
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None,capabilities=None: [
+            {"name":name,"operational":True,"status":"ready","available_backends":1,"backend_count":1}
+            for name in (capabilities or ())
+        ],
+    )
+    monkeypatch.setattr(
+        "app.engine_health.recent_capability_execution_health",
+        lambda capabilities,max_age_minutes=1440: [
+            {"name":name,"execution_status":"verified","recent_calls":1,"recent_successful_calls":1,
+             "recent_errors":0,"last_execution_age_seconds":10}
+            for name in capabilities
+        ],
+    )
+    monkeypatch.setattr(
+        "app.engine_health.capability_reliability",
+        lambda capabilities,window_hours=168,min_calls=3: [
+            {"name":name,"reliability_status":"unreliable" if name=="vulnerability" else "stable"}
+            for name in capabilities
+        ],
+    )
+
+    rapid=engine_health("example.com")["profiles"]["rapid"]
+
+    assert rapid["ready"] is False
+    assert rapid["readiness_blockers"]==["historical_reliability"]
+    assert rapid["historical_reliability"]["unreliable_capabilities"]==["vulnerability"]
