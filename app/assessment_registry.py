@@ -45,6 +45,15 @@ class EngineCapability:
     enabled: bool = True
 
 
+EXTERNAL_CREDENTIAL_PROVIDERS = frozenset({
+    "cti",
+    "threatfox",
+    "hibp",
+    "hudsonrock",
+    "leak",
+})
+
+
 class AssessmentRegistry:
     def __init__(self):
         self.providers: Dict[str, Type[AssessmentProvider]] = {}
