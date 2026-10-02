@@ -3,8 +3,8 @@ from app.api.routers import graph_assessment as graph_assessment_router
 
 
 def test_same_cve_retains_multiple_observed_locations(monkeypatch):
-    monkeypatch.setattr(main, "STORE_ASSETS", [])
-    monkeypatch.setattr(main, "STORE_FINDINGS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_ASSETS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_FINDINGS", [])
     monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
     monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
     monkeypatch.setattr(graph_assessment_router, "enrich_finding", lambda finding: finding)
