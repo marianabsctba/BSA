@@ -19,8 +19,7 @@ services:
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
       BSA_DEMO_DATA: "0"
-      BSA_AI_ENABLED: "1"
-      BSA_OLLAMA_URL: http://ollama:11434
+      BSA_AI_ENABLED: "0"
     volumes:
       - bsa_data:/data
     expose:
@@ -65,15 +64,13 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    depends_on:
-      - ollama
     healthcheck:
       test: ["CMD", "python", "-c", "from app.job_queue import worker_health; import sys; sys.exit(0 if worker_health().get('status') == 'healthy' else 1)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-    networks: [bsa_ai, bsa_egress]
+    networks: [bsa_egress]
 
   web:
     build:
