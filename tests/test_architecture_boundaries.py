@@ -258,3 +258,19 @@ def test_reporting_routes_live_outside_main():
     assert '@app.get("/api/v1/dashboard"' not in main_source
     assert '@router.get("/api/v1/reports/summary")' in router_source
     assert '@router.get("/api/v1/dashboard",response_model=Dashboard)' in router_source
+
+
+def test_main_is_composition_root_only():
+    from pathlib import Path
+
+    source=Path("app/main.py").read_text(encoding="utf-8")
+    assert "@app.get(" not in source
+    assert "@app.post(" not in source
+    assert "@app.put(" not in source
+    assert "@app.patch(" not in source
+    assert "@app.delete(" not in source
+    assert "def tenant_scope(" not in source
+    assert "def current_principal(" not in source
+    assert "def require(" not in source
+    assert "def queue_active_operation(" not in source
+    assert source.count("app.include_router(") >= 18
