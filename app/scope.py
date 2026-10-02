@@ -137,6 +137,27 @@ def validate_active_scope_pattern(pattern: str) -> str:
     return ("*." if raw.startswith("*.") else "")+normalized
 
 
+def _validate_active_pattern(pattern: str) -> str:
+    raw=str(pattern or "").strip().rstrip(".").lower()
+    if not raw or raw=="*" or ("*" in raw and not raw.startswith("*.")):
+        raise ValueError("invalid active scan pattern")
+    wildcard=raw.startswith("*.")
+    candidate=raw[2:] if wildcard else raw
+    normalized=_normalize_scope_hostname(candidate)
+    try:
+        ip=ipaddress.ip_address(normalized)
+        if wildcard or not ip.is_global:
+            raise ValueError("active scan IP must be public and exact")
+        return normalized
+    except ValueError as exc:
+        if "active scan IP" in str(exc):
+            raise
+    extracted=_TLD_EXTRACT(normalized)
+    if not extracted.domain or not extracted.suffix:
+        raise ValueError("active scan pattern must contain a registrable domain")
+    return "*."+normalized if wildcard else normalized
+
+
 def _scope_pattern_matches(hostname: str, pattern: str) -> bool:
     try:
         normalized=_normalize_scope_hostname(hostname)
