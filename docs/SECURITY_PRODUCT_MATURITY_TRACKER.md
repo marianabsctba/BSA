@@ -57,10 +57,10 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [x] Logging estruturado JSON.
 - [x] request_id/correlation_id.
 - [x] tenant_id e user_id em contexto de log seguro.
-- [ ] Métricas de latência, fila, retries, erros e duração por motor.
-- [ ] Prometheus/OpenTelemetry.
+- [x] Métricas de latência, fila, retries, erros e duração por motor.
+- [x] Prometheus endpoint operacional.
 - [ ] Tracing.
-- [ ] Alertas básicos operacionais.
+- [x] Alertas básicos operacionais.
 - [x] /health real para DB/fila/dependências essenciais.
 - [x] Backup SQLite online verificado.
 - [x] Teste automatizado de restauração.
