@@ -21,12 +21,15 @@ def engine_health(target: str | None = None) -> dict:
     profiles = {}
     for profile, providers in PROFILES.items():
         available_count = sum(1 for name in providers if by_name.get(name, False))
+        requested_count = len(providers)
+        coverage_percent = round(100 * available_count / max(1, requested_count))
         profiles[profile] = {
             "available_engines": available_count,
-            "requested_engines": len(providers),
-            "coverage_percent": round(100 * available_count / max(1, len(providers))),
+            "requested_engines": requested_count,
+            "coverage_percent": coverage_percent,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
-            "ready": available_count > 0,
+            "state": "ready" if available_count == requested_count else "partial" if available_count else "unavailable",
+            "ready": available_count == requested_count,
         }
 
     return {
