@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from dataclasses import asdict
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -57,6 +57,7 @@ from .integration_export import siem_events, unified_siem_events, audit_siem_eve
 from .syslog_export import config_from_env, send_event, send_events
 from .observability import request_id_from_header, identity_from_request, log_http_event, monotonic_ms
 from .runtime_health import runtime_health
+from .metrics import record_http_metric, prometheus_metrics, operational_alerts
 
 bootstrap()
 bootstrap_scope()
@@ -99,15 +100,18 @@ async def request_observability(request: Request, call_next):
         return response
     finally:
         duration_ms=max(0,monotonic_ms()-started)
+        route_obj=request.scope.get("route")
+        route_path=getattr(route_obj,"path",None) or request.url.path
         log_http_event(
             request_id=request_id,
             method=request.method,
-            path=request.url.path,
+            path=route_path,
             status_code=status_code,
             duration_ms=duration_ms,
             tenant_id=tenant_id,
             user_id=user_id,
         )
+        record_http_metric(request.method,route_path,status_code,duration_ms)
         if "response" in locals():
             response.headers["X-Request-ID"]=request_id
 
@@ -245,6 +249,25 @@ def health():
         "version":"0.3.0",
         "powered_by":"Mariana BS",
     }
+
+
+@app.get("/metrics")
+def metrics(request: Request):
+    principal=require(request,"assets:read")
+    tenant_id=None if principal.role=="superadmin" else principal.tenant_id
+    return Response(
+        content=prometheus_metrics(tenant_id),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
+@app.get("/api/v1/operations/alerts")
+def operations_alerts(request: Request):
+    principal=require(request,"assets:read")
+    if principal.role not in {"superadmin","admin","manager"}:
+        raise HTTPException(status_code=403,detail="manager role required")
+    tenant_id=None if principal.role=="superadmin" else principal.tenant_id
+    return operational_alerts(tenant_id)
 
 
 @app.get("/api/v1/exposure/engines/health")
