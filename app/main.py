@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -1065,6 +1065,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
     created_assets = 0
     created_findings = 0
     created_ctem = 0
+    regressions_reopened = 0
+    ctem_regressions_reopened = 0
     skipped_out_of_scope = 0
 
     scoped_assets, _ = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
@@ -1137,6 +1139,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         finding_digest = sha256(finding_identity.encode()).hexdigest()[:16]
         finding_id = f"fdg-{finding_digest}"
         finding = next((x for x in STORE_FINDINGS if x.tenant_id == principal.tenant_id and x.id == finding_id), None)
+        regression_reopened = False
 
         if finding is None:
             finding = Finding(
@@ -1164,6 +1167,12 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             STORE_FINDINGS.append(finding)
             created_findings += 1
         else:
+            if finding.status in {"resolved", "verified", "closed", "remediated"}:
+                finding.status = "open"
+                finding.detected_at = now
+                finding.evidence = "Exposure re-observed after remediation; regression requires retest."
+                regressions_reopened += 1
+                regression_reopened = True
             finding.confidence = max(finding.confidence, confidence)
             severity_rank = {
                 Severity.INFO: 0,
@@ -1199,11 +1208,35 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.cpe = enriched.cpe
                 finding.published_at = enriched.published_at
 
+        ctem_item_id = f"assessment:{principal.tenant_id}:{finding.id}"
+        if regression_reopened:
+            regression_refs = list(finding.source_refs) or [
+                f"assessment:{result.get('assessment_id') or finding.id}"
+            ]
+            try:
+                reopened = reopen_ctem_item(
+                    ctem_item_id,
+                    principal.tenant_id,
+                    regression_refs,
+                    notes="assessment evidence re-observed after verified remediation",
+                )
+                if reopened.get("reopened"):
+                    ctem_regressions_reopened += 1
+            except KeyError:
+                pass
+            audit(
+                principal,
+                "reopen",
+                "finding_regression",
+                finding.id,
+                {"asset_id": asset.id, "evidence_refs": regression_refs[:20]},
+            )
+
         priority_data = assess_ctem_priority(finding, asset)
         priority = int(priority_data["priority"])
         if priority >= 45:
             upsert_ctem_item({
-                "item_id": f"assessment:{principal.tenant_id}:{finding.id}",
+                "item_id": ctem_item_id,
                 "asset_id": asset.id,
                 "finding_id": finding.id,
                 "priority": priority,
@@ -1219,6 +1252,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         "assets_created": created_assets,
         "findings_created": created_findings,
         "ctem_items": created_ctem,
+        "regressions_reopened": regressions_reopened,
+        "ctem_regressions_reopened": ctem_regressions_reopened,
         "skipped_out_of_scope": skipped_out_of_scope,
     }
 
