@@ -1,6 +1,7 @@
 import uuid
 from app.auth import Principal
-from app.main import tenant_scope, STORE_ASSETS, STORE_FINDINGS
+from app.api.tenant_scope import tenant_scope
+from app.store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 
 def scoped_principal():
     # Use the seeded test tenant identity so this contract test does not mutate
