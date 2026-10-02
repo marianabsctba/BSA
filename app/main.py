@@ -39,6 +39,7 @@ from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_p
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, save_policy, serialize_policy, validate_policy, TenantRiskPolicy
+from .tenant_sla_policy import TenantSLAPolicy, sla_policy_for, save_sla_policy, serialize_sla_policy, validate_sla_policy, sla_threshold_hours
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
@@ -359,16 +360,26 @@ def mssp_command_center(request: Request):
                 aging_days.append(max(0,(now_ts-created).days))
             except Exception:
                 pass
-        sla_target=7
-        sla_breaches=sum(1 for d in aging_days if d>sla_target)
-        sla_compliance=round((len(aging_days)-sla_breaches)/len(aging_days)*100) if aging_days else 100
+        sla_policy=sla_policy_for(t["id"])
+        sla_breaches=0
+        for p in active_plans:
+            try:
+                created=datetime.fromisoformat(p.get("created_at","").replace("Z","+00:00"))
+                age_hours=max(0,(now_ts-created).total_seconds()/3600)
+            except Exception:
+                age_hours=0
+            priority=int(p.get("priority",p.get("risk_score",p.get("residual_score",0))) or 0)
+            if age_hours>sla_threshold_hours(priority,sla_policy):
+                sla_breaches+=1
+        sla_compliance=round((len(active_plans)-sla_breaches)/len(active_plans)*100) if active_plans else 100
         residual=round(sum(p.get("residual_score",0) for p in active_plans)/len(active_plans)) if active_plans else 0
         risk_reduction=sum(max(0,p.get("risk_reduction",0)) for p in plans)
         rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":risk,
                      "assets":len(assets),"open_findings":len(findings),"critical_findings":critical,
                      "ctem":len(plans),"approved":approved,"in_progress":in_progress,"remediated":remediated,
                      "overdue":overdue,"ctem_aging":len(active_plans),"avg_ctem_age_days":round(sum(aging_days)/len(aging_days)) if aging_days else 0,
-                     "sla_compliance":sla_compliance,"sla_breaches":sla_breaches,"risk_residual":residual,
+                     "sla_compliance":sla_compliance,"sla_breaches":sla_breaches,
+                     "sla_policy":serialize_sla_policy(sla_policy),"risk_residual":residual,
                      "risk_reduction_30d":risk_reduction})
     rows.sort(key=lambda x:x["risk"],reverse=True)
     return {"tenants":rows,"summary":{"tenants":len(rows),"critical_tenants":sum(x["risk"]>=80 for x in rows),
@@ -534,6 +545,33 @@ async def update_risk_policy(request: Request):
     save_policy(candidate,updated_by=principal.user_id)
     audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
     return {"policy":serialize_policy(candidate),"validation":[],"persisted":True}
+
+@app.get("/api/v1/operations/sla-policy")
+def get_tenant_sla_policy(request: Request):
+    principal=require(request,"assets:read")
+    policy=sla_policy_for(principal.tenant_id)
+    return {"policy":serialize_sla_policy(policy),"validation":validate_sla_policy(policy)}
+
+
+@app.put("/api/v1/operations/sla-policy")
+def update_tenant_sla_policy(payload: TenantSLAPolicyRequest, request: Request):
+    principal=require(request,"remediation:write")
+    current=sla_policy_for(principal.tenant_id)
+    candidate=TenantSLAPolicy(
+        tenant_id=principal.tenant_id,
+        version=current.version+1,
+        critical_hours=payload.critical_hours,
+        high_hours=payload.high_hours,
+        medium_hours=payload.medium_hours,
+        low_hours=payload.low_hours,
+    )
+    errors=validate_sla_policy(candidate)
+    if errors:
+        raise HTTPException(status_code=400,detail={"errors":errors})
+    save_sla_policy(candidate,updated_by=principal.user_id)
+    audit(principal,"sla_policy_update","tenant_sla_policy",metadata=serialize_sla_policy(candidate))
+    return {"policy":serialize_sla_policy(candidate),"validation":[],"persisted":True}
+
 
 @app.get("/api/v1/risk/register")
 def risk_register(request: Request):
@@ -1024,6 +1062,13 @@ class ScanGrantCreateRequest(BaseModel):
     authorization_ref: str = Field(min_length=1, max_length=200)
     pattern: str = Field(min_length=1, max_length=253)
     ttl_seconds: int = Field(default=3600, ge=60, le=2592000)
+
+
+class TenantSLAPolicyRequest(BaseModel):
+    critical_hours: int = Field(default=24, ge=1, le=8760)
+    high_hours: int = Field(default=48, ge=1, le=8760)
+    medium_hours: int = Field(default=168, ge=1, le=8760)
+    low_hours: int = Field(default=336, ge=1, le=8760)
 
 
 class RetentionPolicyRequest(BaseModel):
@@ -2389,7 +2434,7 @@ def report_summary(request: Request):
     states=[state(a) for a in assets]
     engine_profiles=public_engine_health().get("profiles",{})
     ctem_items=list_ctem_items(principal.tenant_id)
-    ctem_summary=ctem_operational_summary(ctem_items)
+    ctem_summary=ctem_operational_summary(ctem_items,sla_policy=sla_policy_for(principal.tenant_id))
     ctem_queue=ctem_queue_view(ctem_items)
     queue_summary=queue_metrics(principal.tenant_id)
     return {
@@ -2478,7 +2523,7 @@ def discovery_risk_paths(target: str, request: Request):
 def ctem_operations(request: Request):
     principal=require(request,"findings:read")
     items=list_ctem_items(principal.tenant_id)
-    summary=ctem_operational_summary(items)
+    summary=ctem_operational_summary(items,sla_policy=sla_policy_for(principal.tenant_id))
     summary["remediation_coverage"]=ctem_remediation_coverage(items)
     summary["queue"]=ctem_queue_view(items)
     return {"summary":summary,"items":items}
