@@ -5,6 +5,7 @@ from ...ctem_store import history
 from ...exposure import exposure_band, exposure_breakdown
 from ...history import lifecycle_for
 from ...intelligence import ownership_confidence
+from ...nuclei_engine import validate_nuclei_target
 from ...scope import asset_in_scope
 from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ..dependencies import require
@@ -58,6 +59,10 @@ def dast_nuclei(payload: DASTRequest, request: Request):
             status_code=400,
             detail="unsupported DAST profile",
         )
+    try:
+        validate_nuclei_target(payload.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
     if not asset_in_scope(principal,payload.target):
         raise HTTPException(
             status_code=403,
