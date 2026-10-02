@@ -17,6 +17,7 @@ services:
       BSA_AUTH_DB: /data/bsa_auth.db
       BSA_HISTORY_DB: /data/bsa_history.db
       BSA_STORE_DB: /data/bsa_store.db
+      BSA_JOBS_DB: /data/bsa_jobs.db
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
@@ -32,6 +33,33 @@ services:
     depends_on:
       - ollama
     networks: [bsa_ai, bsa_app, bsa_egress]
+
+
+  worker:
+    build: .
+    container_name: bsa-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      BSA_ENV: production
+      BSA_AUTH_DB: /data/bsa_auth.db
+      BSA_HISTORY_DB: /data/bsa_history.db
+      BSA_STORE_DB: /data/bsa_store.db
+      BSA_JOBS_DB: /data/bsa_jobs.db
+      BSA_AI_ENABLED: "1"
+      BSA_OLLAMA_URL: http://ollama:11434
+    volumes:
+      - bsa_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      - ollama
+    networks: [bsa_ai, bsa_egress]
 
   web:
     build:
