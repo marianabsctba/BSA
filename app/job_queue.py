@@ -130,9 +130,41 @@ def queue_metrics(tenant_id:str)->dict:
 
 def queue_health(tenant_id:str|None=None, now:int|None=None,
                  stale_materialization_seconds:int=900)->dict:
-    """Expose queue health without mutating worker state."""
+    """Expose queue health without mutating worker state or creating storage."""
     now=int(now or time.time())
-    conn=_db()
+    path=_db_path()
+    if not Path(path).exists():
+        return {
+            "status":"unavailable",
+            "tenant_id":tenant_id,
+            "total_jobs":0,
+            "queued":0,
+            "running":0,
+            "oldest_queued_age_seconds":0,
+            "expired_running_leases":0,
+            "stale_materializations":0,
+            "retry_pressure_jobs":0,
+            "retry_exhausted_running":0,
+            "reason":"job queue database does not exist",
+        }
+    try:
+        conn=sqlite3.connect(path,timeout=5)
+        conn.row_factory=sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+    except (OSError,sqlite3.Error) as exc:
+        return {
+            "status":"unavailable",
+            "tenant_id":tenant_id,
+            "total_jobs":0,
+            "queued":0,
+            "running":0,
+            "oldest_queued_age_seconds":0,
+            "expired_running_leases":0,
+            "stale_materializations":0,
+            "retry_pressure_jobs":0,
+            "retry_exhausted_running":0,
+            "reason":exc.__class__.__name__,
+        }
     where="WHERE tenant_id=?" if tenant_id else ""
     params=(tenant_id,) if tenant_id else ()
     rows=conn.execute(
