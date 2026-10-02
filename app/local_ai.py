@@ -1,12 +1,17 @@
 """Local AI gateway for BSA. Ollama-compatible, privacy-first and evidence-grounded."""
 import json, os, urllib.request, urllib.error
 
+ENVIRONMENT=os.getenv("BSA_ENV","development").lower()
 OLLAMA_URL=os.getenv("BSA_OLLAMA_URL","http://127.0.0.1:11434")
 OLLAMA_MODEL=os.getenv("BSA_OLLAMA_MODEL","qwen2.5:7b")
+OLLAMA_PROXY_TOKEN=os.getenv("BSA_OLLAMA_PROXY_TOKEN","")
 TIMEOUT=int(os.getenv("BSA_AI_TIMEOUT","12"))
 
 def enabled():
-    return os.getenv("BSA_AI_ENABLED","1").lower() in {"1","true","yes","on"}
+    configured=os.getenv("BSA_AI_ENABLED","1").lower() in {"1","true","yes","on"}
+    if ENVIRONMENT in {"production","prod"} and configured and len(OLLAMA_PROXY_TOKEN)<32:
+        return False
+    return configured
 
 def _bounded_json(value, limit=120000):
     raw=json.dumps(value,ensure_ascii=False,separators=(",",":"))
@@ -29,7 +34,10 @@ def ask(system_prompt, user_prompt, *, json_mode=False):
     if json_mode:
         body["format"]="json"
     payload=json.dumps(body).encode()
-    req=urllib.request.Request(OLLAMA_URL.rstrip("/")+"/api/generate",data=payload,headers={"Content-Type":"application/json"},method="POST")
+    headers={"Content-Type":"application/json"}
+    if OLLAMA_PROXY_TOKEN:
+        headers["Authorization"]="Bearer "+OLLAMA_PROXY_TOKEN
+    req=urllib.request.Request(OLLAMA_URL.rstrip("/")+"/api/generate",data=payload,headers=headers,method="POST")
     try:
         with urllib.request.urlopen(req,timeout=TIMEOUT) as resp:
             data=json.loads(resp.read().decode())
