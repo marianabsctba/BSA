@@ -25,7 +25,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 | BSA-11 | Sessão/rate-limit: persistência, idle timeout, password change | P2 | Quase concluído: persistência, idle timeout e password change validados no CI | idle timeout + cookie usa TOKEN_TTL + troca de senha com reauth + testes |
 | BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Concluído e validado no CI | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
 | BSA-13 | Auditoria adulterável / posse DRP | P3 | Concluído e validado no CI | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
-| BSA-14 | HSTS/proxy/supply-chain | P3 | Parcial | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
+| BSA-14 | HSTS/proxy/supply-chain | P3 | Concluído e validado no CI | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
 
 ### Condições adicionais do parecer de pentest
 
@@ -73,12 +73,12 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Mypy/pyright.
 - [ ] Testes de frontend.
 - [ ] Modularização do App.jsx.
-- [ ] SAST (Bandit/Semgrep).
-- [ ] Trivy/image scan.
-- [ ] SBOM.
+- [x] SAST (Bandit).
+- [x] Trivy/image scan.
+- [x] SBOM CycloneDX.
 - [ ] Assinatura/attestation de artefatos.
-- [ ] Actions pinadas por SHA.
-- [ ] Imagens base pinadas por digest.
+- [x] Actions pinadas por SHA.
+- [x] Imagens base pinadas por digest.
 - [ ] Pipeline de deploy/homologação.
 - [ ] Versionamento único API/console/docs.
 - [ ] CHANGELOG e tags de release.
