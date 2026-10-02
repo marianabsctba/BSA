@@ -10,6 +10,7 @@ import struct
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+from cryptography.fernet import Fernet, InvalidToken
 
 DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
@@ -18,6 +19,24 @@ MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONME
 _LOGIN_ATTEMPTS = {}
 _IP_LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
+
+def _mfa_cipher() -> Fernet:
+    if not JWT_SECRET:
+        raise RuntimeError("BSA_JWT_SECRET is required for MFA secret encryption")
+    key=base64.urlsafe_b64encode(hashlib.sha256((JWT_SECRET + ":mfa").encode()).digest())
+    return Fernet(key)
+
+def _encrypt_mfa_secret(secret: str) -> str:
+    return "fernet:" + _mfa_cipher().encrypt(secret.encode()).decode()
+
+def _decrypt_mfa_secret(value: str) -> str:
+    if value.startswith("fernet:"):
+        try:
+            return _mfa_cipher().decrypt(value[7:].encode()).decode()
+        except InvalidToken as exc:
+            raise ValueError("invalid encrypted MFA secret") from exc
+    return value
+
 
 ROLES = {"superadmin", "admin", "manager", "analyst", "viewer"}
 CUSTOM_ROLE_PREFIX = "custom:"
@@ -152,7 +171,7 @@ def mfa_enroll(principal: Principal) -> dict:
     if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
     secret=generate_mfa_secret()
     conn=_db()
-    conn.execute("INSERT INTO users_mfa(user_id,secret,enabled,created_at) VALUES(?,?,0,?) ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret,enabled=0",(principal.user_id,secret,int(time.time())))
+    conn.execute("INSERT INTO users_mfa(user_id,secret,enabled,created_at) VALUES(?,?,0,?) ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret,enabled=0",(principal.user_id,_encrypt_mfa_secret(secret),int(time.time())))
     conn.commit(); conn.close()
     label=urllib.parse.quote(f"Be Safe ASM:{principal.email}")
     uri=f"otpauth://totp/{label}?secret={secret}&issuer=Be%20Safe%20ASM"
@@ -162,14 +181,21 @@ def mfa_enable(principal: Principal, code: str) -> bool:
     if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
     conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
     if not row: conn.close(); raise ValueError("MFA enrollment required")
-    ok=verify_totp(row["secret"],code)
+    ok=verify_totp(_decrypt_mfa_secret(row["secret"]),code)
     if ok: conn.execute("UPDATE users_mfa SET enabled=1 WHERE user_id=?",(principal.user_id,)); conn.commit()
     conn.close()
     return ok
 
 def mfa_secret_for_user(user_id: str) -> str | None:
     conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
-    return row["secret"] if row else None
+    if not row:
+        return None
+    secret=_decrypt_mfa_secret(row["secret"])
+    if not str(row["secret"]).startswith("fernet:"):
+        conn=_db()
+        conn.execute("UPDATE users_mfa SET secret=? WHERE user_id=?",(_encrypt_mfa_secret(secret),user_id))
+        conn.commit(); conn.close()
+    return secret
 
 def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
     now = time.time()
@@ -217,11 +243,16 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
             ip_attempts={"count":ip_attempts["count"],"until":now+900}
         _IP_LOGIN_ATTEMPTS[ipkey]=ip_attempts
         return None
+    mfa_secret=mfa_secret_for_user(row["id"])
+    if mfa_secret:
+        mfa_identity=f"{row['id']}:{ipkey}"
+        if not rate_limit_action("mfa-login",mfa_identity,limit=5,window_seconds=300):
+            return None
+        if not verify_totp(mfa_secret,mfa_code or ""):
+            return None
     _LOGIN_ATTEMPTS.pop(key,None)
     _IP_LOGIN_ATTEMPTS.pop(ipkey,None)
-    mfa_secret=mfa_secret_for_user(row["id"])
-    if mfa_secret and not verify_totp(mfa_secret,mfa_code or ""):
-        return None
+    _LOGIN_ATTEMPTS.pop(f"mfa-login:{row['id']}:{ipkey}",None)
     now = int(time.time())
     jti=secrets.token_urlsafe(24)
     exp=now + TOKEN_TTL
