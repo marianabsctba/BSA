@@ -23,7 +23,7 @@ RUN set -eux; \
     retry go install github.com/projectdiscovery/katana/cmd/katana@v1.7.0; \
     retry go install github.com/lc/gau/v2/cmd/gau@v2.2.4; \
     retry go install github.com/trufflesecurity/trufflehog/v3@v3.97.9; \
-    retry go install github.com/tomnomnom/assetfinder@latest; \
+    retry go install github.com/tomnomnom/assetfinder@v0.1.0; \
     retry go install github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0; \
     retry go install github.com/d3mondev/puredns/v2@v2.1.1
 
