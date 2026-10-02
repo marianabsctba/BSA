@@ -25,11 +25,20 @@ jobs:
 
       - name: Mypy critical modules
         run: |
-          mypy             app/observability.py             app/runtime_health.py             app/metrics.py             app/backup.py             app/backup_scheduler.py             --ignore-missing-imports             --follow-imports=skip
+          mypy \
+            app/observability.py \
+            app/runtime_health.py \
+            app/metrics.py \
+            app/backup.py \
+            app/backup_scheduler.py \
+            --ignore-missing-imports \
+            --follow-imports=skip
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - name: Build frontend
+
+      - name: Frontend tests and build
         working-directory: frontend
         run: |
           npm config set registry https://registry.npmjs.org/
@@ -38,6 +47,26 @@ jobs:
           npm audit --audit-level=high
           npm test
           npm run build
+
+      - name: Build web container
+        run: docker build -t bsa-web-ci:local ./frontend
+
+      - name: Validate nginx config
+        run: docker run --rm --add-host api:127.0.0.1 bsa-web-ci:local nginx -t
+
+      - name: Smoke test web container
+        run: |
+          docker run -d --name bsa-web-ci --add-host api:127.0.0.1 -p 127.0.0.1:18080:80 bsa-web-ci:local
+          trap 'docker rm -f bsa-web-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..15}; do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/ >/tmp/bsa-web-index.html; then
+              break
+            fi
+            sleep 1
+          done
+          test -s /tmp/bsa-web-index.html
+          grep -qi '<div id="root"></div>' /tmp/bsa-web-index.html
+          curl --fail --silent --show-error http://127.0.0.1:18080/index.html >/dev/null
 
       - name: Dependency audit
         run: |
