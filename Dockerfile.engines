@@ -73,13 +73,11 @@ RUN ln -s /opt/zap/zap-baseline.py /usr/local/bin/zap-baseline.py \
  && printf '%s\n' 8.8.8.8 8.8.4.4 > /etc/bsa/puredns-trusted.txt
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir gvm-tools
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
 ENV BSA_ENGINE_BUNDLE=full
-ENV BSA_GVM_SOCKET=/run/gvmd/gvmd.sock
 ENV BSA_NUCLEI_TEMPLATES=/opt/nuclei-templates
 ENV BSA_PUREDNS_RESOLVERS=/etc/bsa/puredns-resolvers.txt
 ENV BSA_PUREDNS_TRUSTED_RESOLVERS=/etc/bsa/puredns-trusted.txt
