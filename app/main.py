@@ -40,7 +40,7 @@ from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy
 from .tenant_sla_policy import sla_policy_for, serialize_sla_policy, sla_threshold_hours
-from .policy_service import get_risk_policy_view, build_and_save_risk_policy, get_sla_policy_view, build_and_save_sla_policy
+from .application.services.policy_service import get_risk_policy_view, build_and_save_risk_policy, get_sla_policy_view, build_and_save_sla_policy
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
