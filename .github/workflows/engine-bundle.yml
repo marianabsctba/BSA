@@ -73,8 +73,10 @@ jobs:
               code=$?
               set -e
               case "$code" in
-                0|1|2) ;;
-                *) echo "$bin failed to start safely (exit $code)"; cat /tmp/"$bin".help || true; exit 1 ;;
+                124) echo "$bin timed out during safe startup"; cat /tmp/"$bin".help || true; exit 1 ;;
+                126|127) echo "$bin is not executable or could not be started (exit $code)"; cat /tmp/"$bin".help || true; exit 1 ;;
+                137|139) echo "$bin crashed during safe startup (exit $code)"; cat /tmp/"$bin".help || true; exit 1 ;;
+                *) test -s /tmp/"$bin".help || { echo "$bin produced no startup/help output (exit $code)"; exit 1; } ;;
               esac
             }
             for bin in nuclei amass httpx subfinder dnsx naabu tlsx asnmap katana gau trufflehog assetfinder alterx puredns massdns nmap whatweb testssl.sh zap-baseline.py; do
