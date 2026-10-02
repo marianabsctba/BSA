@@ -1,4 +1,7 @@
+ARG ZAP_EXPECTED_VERSION=2.17.0
 FROM ghcr.io/zaproxy/zaproxy:stable AS zap
+ARG ZAP_EXPECTED_VERSION
+RUN /zap/zap.sh -version 2>&1 | grep -F "$ZAP_EXPECTED_VERSION"
 
 FROM golang:1.26-bookworm AS engines
 
@@ -76,6 +79,28 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+
+RUN mkdir -p /opt/bsa \
+ && printf '%s\n' \
+      'nuclei=3.11.1' \
+      'amass=5.1.1' \
+      'httpx=1.12.0' \
+      'subfinder=2.16.0' \
+      'dnsx=1.3.1' \
+      'naabu=2.6.1' \
+      'tlsx=1.4.0' \
+      'asnmap=1.1.1' \
+      'katana=1.7.0' \
+      'gau=2.2.4' \
+      'assetfinder=0.1.0' \
+      'alterx=0.1.0' \
+      'puredns=2.1.1' \
+      'trufflehog=3.97.9' \
+      'massdns=1.1.0' \
+      'nuclei-templates=10.4.8' \
+      'testssl=3.2.4' \
+      'zap-core=2.17.0' \
+      > /opt/bsa/engine-versions.txt
 
 ENV BSA_ENGINE_BUNDLE=full
 ENV BSA_NUCLEI_TEMPLATES=/opt/nuclei-templates
