@@ -184,3 +184,70 @@ def test_stale_worker_cannot_heartbeat_new_lease(tmp_path, monkeypatch):
 
     assert job_queue.heartbeat_job(job["job_id"],run_token=old_token) is False
     assert job_queue.heartbeat_job(job["job_id"],run_token=second["run_token"]) is True
+
+
+
+def test_stale_materialization_claim_is_recoverable(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    claimed=job_queue.claim_next_job()
+    assert claimed is not None
+    assert job_queue.complete_job(
+        job["job_id"],{"finding_count":0,"findings":[]},run_token=claimed["run_token"]
+    ) is True
+
+    assert job_queue.claim_materialization(job["job_id"],"tenant-a") is True
+    conn=job_queue._db()
+    conn.execute(
+        "UPDATE assessment_jobs SET materialization_started_at=? WHERE job_id=?",
+        (1,job["job_id"]),
+    )
+    conn.commit(); conn.close()
+
+    assert job_queue.recover_stale_materializations(now=1000,stale_seconds=300)==1
+    recovered=job_queue.get_job(job["job_id"],"tenant-a")
+    assert recovered["materializing"] is False
+    assert recovered["materialized"] is False
+    assert job_queue.claim_materialization(job["job_id"],"tenant-a") is True
+
+
+def test_many_workers_claim_each_job_at_most_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+
+    jobs=[
+        job_queue.enqueue_assessment(
+            principal,
+            f"asset-{idx}.example.org",
+            "surface",
+            f"AUTH-{idx}",
+        )
+        for idx in range(40)
+    ]
+
+    claimed=[]
+    lock=threading.Lock()
+
+    def worker_claim_loop():
+        while True:
+            item=job_queue.claim_next_job()
+            if item is None:
+                return
+            with lock:
+                claimed.append((item["job_id"],item["run_token"]))
+
+    threads=[threading.Thread(target=worker_claim_loop) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    ids=[job_id for job_id,_ in claimed]
+    assert len(ids)==len(jobs)
+    assert len(set(ids))==len(jobs)
+    assert all(token for _,token in claimed)
