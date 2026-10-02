@@ -97,8 +97,12 @@ def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
         key = _finding_key(row)
         if key not in merged:
             item = dict(row)
+            source = item.pop("_source_backend", None)
+            item["_source_backends"] = [source] if source else []
             item["evidence"] = dict(row.get("evidence") or {})
             item["evidence"]["corroboration_count"] = 1
+            item["evidence"]["independent_source_count"] = 1 if source else 0
+            item["evidence"]["independently_corroborated"] = False
             merged[key] = item
             continue
         duplicates += 1
@@ -108,6 +112,15 @@ def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
         count = int(evidence.get("corroboration_count", 1)) + 1
         evidence["corroboration_count"] = count
         evidence["corroborated"] = True
+
+        source = row.get("_source_backend")
+        source_backends = list(current.get("_source_backends") or [])
+        if source and source not in source_backends:
+            source_backends.append(source)
+        current["_source_backends"] = source_backends
+        independent_count = len(source_backends)
+        evidence["independent_source_count"] = independent_count
+        evidence["independently_corroborated"] = independent_count >= 2
 
         refs = evidence.get("reference") or evidence.get("references") or []
         incoming_refs = incoming.get("reference") or incoming.get("references") or []
@@ -130,14 +143,20 @@ def _deduplicate_findings(findings: list[dict]) -> tuple[list[dict], int]:
                 evidence[field] = incoming.get(field)
 
         current["evidence"] = evidence
+        corroboration_boost = min(12, max(0, independent_count - 1) * 4)
         current["confidence"] = min(
             100,
-            max(int(current.get("confidence", 0)), int(row.get("confidence", 0))) + min(10, (count - 1) * 3),
+            max(int(current.get("confidence", 0)), int(row.get("confidence", 0))) + corroboration_boost,
         )
         severity_rank = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
         if severity_rank.get(str(row.get("severity") or "info"), 0) > severity_rank.get(str(current.get("severity") or "info"), 0):
             current["severity"] = row.get("severity")
-    return list(merged.values()), duplicates
+    out = []
+    for item in merged.values():
+        item.pop("_source_backend", None)
+        item.pop("_source_backends", None)
+        out.append(item)
+    return out, duplicates
 
 
 def run_assessment(
@@ -181,13 +200,13 @@ def run_assessment(
                     or target
                 )
                 subject = str(subject)
+                if authorize is not None and not authorize(subject):
+                    internal["scope_filtered"] += 1
+                    continue
                 engine.add_provider_result(provider_name, subject, payload)
                 if provider_name in DISCOVERY_PROVIDERS and subject != target:
-                    if authorize is None or authorize(subject):
-                        if subject not in discovered_subjects and len(discovered_subjects) < MAX_FOLLOWUP_TARGETS:
-                            discovered_subjects.append(subject)
-                    else:
-                        internal["scope_filtered"] += 1
+                    if subject not in discovered_subjects and len(discovered_subjects) < MAX_FOLLOWUP_TARGETS:
+                        discovered_subjects.append(subject)
         except Exception as exc:
             internal["errors"].append(
                 {
@@ -259,8 +278,9 @@ def run_assessment(
 
 
     public = engine.export_public()
-    raw_finding_count = public["finding_count"]
-    deduped, duplicate_count = _deduplicate_findings(public.get("findings", []))
+    orchestration_rows = engine.export_orchestration_rows()
+    raw_finding_count = len(orchestration_rows)
+    deduped, duplicate_count = _deduplicate_findings(orchestration_rows)
     public["findings"] = deduped
     public["finding_count"] = len(deduped)
     cloud = _cloud_intelligence(public.get("findings", []))
