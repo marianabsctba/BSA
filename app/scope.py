@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 from urllib.parse import urlparse
-import urllib.request
-import urllib.error
 import http.client
 import ssl
 import socket
@@ -279,10 +277,6 @@ def create_domain_ownership_proof(principal: Principal, domain: str, method: str
         result["url"]=f"https://{registrable}/.well-known/be-safe-asm-verification"
     return result
 
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
 
 
 def _verify_dns_txt(domain: str, challenge: str) -> bool:
