@@ -1,0 +1,68 @@
+import json
+
+from fastapi.testclient import TestClient
+
+from app import observability, runtime_health
+from app.main import app
+
+
+def test_request_id_validation_and_generation():
+    assert observability.request_id_from_header("req-12345678")=="req-12345678"
+    generated=observability.request_id_from_header("bad request id with spaces")
+    assert generated!="bad request id with spaces"
+    assert len(generated)>=16
+
+
+def test_structured_http_event_contains_safe_context(monkeypatch):
+    captured=[]
+    monkeypatch.setattr(observability.logger,"info",lambda message: captured.append(message))
+    event=observability.log_http_event(
+        request_id="req-12345678",
+        method="GET",
+        path="/api/v1/assets",
+        status_code=200,
+        duration_ms=12.34,
+        tenant_id="tenant-a",
+        user_id="user-a",
+    )
+    parsed=json.loads(captured[0])
+    assert parsed==event
+    assert parsed["tenant_id"]=="tenant-a"
+    assert parsed["user_id"]=="user-a"
+    serialized=captured[0].lower()
+    assert "authorization" not in serialized
+    assert "cookie" not in serialized
+    assert "password" not in serialized
+
+
+def test_runtime_health_degrades_when_required_component_fails(monkeypatch):
+    monkeypatch.setenv("BSA_ENV","production")
+    monkeypatch.setattr(runtime_health.auth,"DB_PATH","/does/not/exist/auth.db")
+    monkeypatch.setattr(runtime_health,"_store_path",lambda:"/does/not/exist/store.db")
+    monkeypatch.setattr(runtime_health,"queue_health",lambda:{
+        "status":"unavailable","queued":0,"running":0,
+    })
+    monkeypatch.setattr(runtime_health,"worker_health",lambda:{
+        "status":"unknown","active_workers":0,
+    })
+    data=runtime_health.runtime_health()
+    assert data["status"]=="degraded"
+    assert data["components"]["auth_db"]["status"]=="unavailable"
+    assert data["components"]["queue"]["status"]=="unavailable"
+
+
+def test_health_response_has_request_id_header(monkeypatch):
+    monkeypatch.setattr("app.main.runtime_health",lambda:{
+        "status":"healthy",
+        "components":{
+            "auth_db":{"status":"healthy"},
+            "asset_store":{"status":"healthy"},
+            "queue":{"status":"healthy","queued":0,"running":0},
+            "workers":{"status":"healthy","active_workers":1},
+        },
+    })
+    client=TestClient(app)
+    response=client.get("/health",headers={"X-Request-ID":"req-health-1234"})
+    assert response.status_code==200
+    assert response.headers["X-Request-ID"]=="req-health-1234"
+    assert response.json()["status"]=="healthy"
