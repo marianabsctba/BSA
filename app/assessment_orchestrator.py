@@ -92,6 +92,33 @@ PROFILE_OPTIONAL_CAPABILITIES = {
 }
 
 
+PROFILE_COVERAGE_POLICY = {
+    # Readiness is capability-driven. Internal provider identities remain private.
+    # Core coverage must be complete for every profile; backend coverage protects
+    # against profiles that are technically operational but too thin at runtime.
+    "surface": {
+        "min_core_coverage_percent": 100,
+        "min_backend_coverage_percent": 60,
+        "allow_degraded_core": True,
+    },
+    "rapid": {
+        "min_core_coverage_percent": 100,
+        "min_backend_coverage_percent": 100,
+        "allow_degraded_core": True,
+    },
+    "network": {
+        "min_core_coverage_percent": 100,
+        "min_backend_coverage_percent": 75,
+        "allow_degraded_core": True,
+    },
+    "balanced": {
+        "min_core_coverage_percent": 100,
+        "min_backend_coverage_percent": 60,
+        "allow_degraded_core": True,
+    },
+}
+
+
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
     "rapid": ("fingerprint", "certificate_intelligence", "vulnerability"),
