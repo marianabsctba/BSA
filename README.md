@@ -257,11 +257,15 @@ Para distribuição externa, não use o perfil de desenvolvimento. O piloto deve
 2. Gere um BSA_JWT_SECRET aleatório com pelo menos 32 caracteres.
 3. Use uma senha administrativa longa e exclusiva; nunca reutilize a senha de demonstração.
 4. Configure BSA_ALLOWED_ORIGINS e BSA_ALLOWED_HOSTS somente para os domínios usados pelo piloto.
-5. Cadastre os domínios/hosts autorizados no Scope do tenant. Em produção, o BSA não libera descoberta arbitrária por padrão.
-6. Prefira docker-compose.production.yml, que mantém API e Ollama na rede interna e não publica a porta da API diretamente.
-7. Faça backup do volume bsa_data antes de atualizar o piloto.
-8. Instale o modelo local do Ollama antes de isolar a rede interna.
-9. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
+5. Mantenha BSA_DEMO_DATA=0 em produção.
+6. Cadastre os domínios/hosts autorizados no Scope e no Scan Scope do tenant.
+7. Crie grants temporários de autorização para scans ativos, com authorization_ref, alvo/pattern, usuário e expiração.
+8. Configure a política de retenção da tenant e execute primeiro o dry-run antes de qualquer limpeza.
+9. Consulte /api/v1/operations/release-readiness e não libere o piloto enquanto houver required_failures.
+10. Prefira docker-compose.production.yml, que mantém API e Ollama na rede interna e não publica a porta da API diretamente.
+11. Faça backup do volume bsa_data antes de atualizar o piloto.
+12. Instale o modelo local do Ollama antes de isolar a rede interna.
+13. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
 
 ### Segurança de discovery
 
