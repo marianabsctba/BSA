@@ -3,9 +3,9 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, Request
 
 from ...intelligence import finding_context_score
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ...vulnerability_intelligence import vulnerability_intelligence
-from ..dependencies import require, tenant_scope
+from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
@@ -14,7 +14,7 @@ router=APIRouter()
 @router.get("/api/v1/vulnerabilities/intelligence")
 def vulnerability_intelligence_api(request: Request):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     asset_map={asset.id:asset for asset in assets}
     rows=[]
     for finding in findings:
@@ -42,7 +42,7 @@ def vulnerability_intelligence_api(request: Request):
 @router.get("/api/v1/vulnerabilities/{finding_id}/intelligence")
 def vulnerability_finding_intelligence(finding_id: str, request: Request):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     finding=next((item for item in findings if item.id==finding_id),None)
     if not finding:
         raise HTTPException(status_code=404,detail="finding not found")
@@ -57,7 +57,7 @@ def vulnerability_finding_intelligence(finding_id: str, request: Request):
 @router.get("/api/v1/findings")
 def list_findings(request: Request):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     asset_map={asset.id:asset for asset in assets}
     result=[]
     for finding in findings:
