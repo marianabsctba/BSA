@@ -271,3 +271,46 @@ def test_runtime_execution_health_persists_capability_status(tmp_path, monkeypat
     assert by_name["fingerprint"]["execution_status"] == "verified"
     assert by_name["vulnerability"]["execution_status"] == "failing"
     assert by_name["certificate_intelligence"]["execution_status"] == "unverified"
+
+
+
+def test_production_profile_blocks_without_recent_execution(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setenv("BSA_ENV", "production")
+    monkeypatch.setattr("app.engine_health.registry.available", lambda name, target=None: True)
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {
+                "name": name,
+                "operational": True,
+                "status": "ready",
+                "available_backends": 1,
+                "backend_count": 1,
+            }
+            for name in (capabilities or ())
+        ],
+    )
+    monkeypatch.setattr(
+        "app.engine_health.recent_capability_execution_health",
+        lambda capabilities, max_age_minutes=1440: [
+            {
+                "name": name,
+                "execution_status": "verified" if name != "vulnerability" else "unverified",
+                "recent_calls": 1 if name != "vulnerability" else 0,
+                "recent_successful_calls": 1 if name != "vulnerability" else 0,
+                "recent_errors": 0,
+                "last_execution_age_seconds": 10 if name != "vulnerability" else None,
+            }
+            for name in capabilities
+        ],
+    )
+
+    rapid = engine_health("example.com")["profiles"]["rapid"]
+
+    assert rapid["ready"] is False
+    assert rapid["state"] == "partial"
+    assert rapid["readiness_blockers"] == ["execution_validation"]
+    assert rapid["execution_validation"]["verified_percent"] == 67
+    assert rapid["execution_validation"]["unverified_capabilities"] == ["vulnerability"]
