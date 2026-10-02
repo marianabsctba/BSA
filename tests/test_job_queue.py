@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import threading
 
 from app import job_queue
 
@@ -104,3 +105,82 @@ def test_materialization_claim_is_atomic(tmp_path, monkeypatch):
     final=job_queue.get_job(job["job_id"],"tenant-a")
     assert final["materialized"] is True
     assert final["materializing"] is False
+
+
+def test_two_workers_never_claim_same_job(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    claimed=[]
+    lock=threading.Lock()
+
+    def claim():
+        value=job_queue.claim_next_job()
+        with lock:
+            claimed.append(value)
+
+    threads=[threading.Thread(target=claim) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    winners=[x for x in claimed if x is not None]
+    assert len(winners)==1
+    assert winners[0]["job_id"]==job["job_id"]
+    assert winners[0]["run_token"]
+
+
+def test_stale_worker_cannot_complete_after_lease_reclaim(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    first=job_queue.claim_next_job(lease_seconds=1)
+    assert first is not None
+    old_token=first["run_token"]
+
+    conn=job_queue._db()
+    conn.execute("UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=?",(1,job["job_id"]))
+    conn.commit(); conn.close()
+
+    recovered=job_queue.recover_stale_jobs(now=2)
+    assert recovered["requeued"]==1
+
+    second=job_queue.claim_next_job()
+    assert second is not None
+    assert second["run_token"] != old_token
+
+    assert job_queue.complete_job(
+        job["job_id"],{"finding_count":99,"findings":[]},run_token=old_token
+    ) is False
+    assert job_queue.complete_job(
+        job["job_id"],{"finding_count":1,"findings":[]},run_token=second["run_token"]
+    ) is True
+
+    final=job_queue.get_job(job["job_id"],"tenant-a")
+    assert final["status"]=="succeeded"
+    assert final["result"]["finding_count"]==1
+    assert final["attempts"]==2
+
+
+def test_stale_worker_cannot_heartbeat_new_lease(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    first=job_queue.claim_next_job(lease_seconds=1)
+    old_token=first["run_token"]
+
+    conn=job_queue._db()
+    conn.execute("UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=?",(1,job["job_id"]))
+    conn.commit(); conn.close()
+    job_queue.recover_stale_jobs(now=2)
+    second=job_queue.claim_next_job()
+
+    assert job_queue.heartbeat_job(job["job_id"],run_token=old_token) is False
+    assert job_queue.heartbeat_job(job["job_id"],run_token=second["run_token"]) is True
