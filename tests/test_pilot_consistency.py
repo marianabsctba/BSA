@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import app.main as main
+from app.api.routers import vulnerabilities as vulnerabilities_router
 from app.models import Asset, AssetType, Finding, Severity
 
 
@@ -70,10 +71,10 @@ def test_business_impact_is_bounded_to_100(monkeypatch):
 def test_vulnerability_summary_counts_actual_finding_severity(monkeypatch):
     asset=_asset()
     finding=_finding()
-    monkeypatch.setattr(main, "require", lambda request, permission: _principal())
-    monkeypatch.setattr(main, "tenant_scope", lambda principal, assets, findings: ([asset], [finding]))
+    monkeypatch.setattr(vulnerabilities_router, "require", lambda request, permission: _principal())
+    monkeypatch.setattr(vulnerabilities_router, "tenant_scope", lambda principal, assets, findings: ([asset], [finding]))
 
-    result=main.vulnerability_intelligence_api(None)
+    result=vulnerabilities_router.vulnerability_intelligence_api(None)
 
     assert result["summary"]["findings"] == 1
     assert result["summary"]["high"] == 1
