@@ -613,13 +613,20 @@ def list_changes(request: Request, hours: int = 24, limit: int = 200):
     assets,_ = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     by_fingerprint={a.fingerprint:a for a in assets if getattr(a,"fingerprint",None)}
     events=recent_change_events(principal.tenant_id,hours=hours,limit=limit)
+    scoped_events=[]
     for event in events:
         asset=by_fingerprint.get(event.get("fingerprint"))
-        if asset is not None:
-            event["asset_id"]=asset.id
-            event["asset"]=asset.value
-            event["type"]=asset.type.value
-    return {"hours":max(1,min(int(hours),24*90)),"count":len(events),"items":events}
+        if asset is None:
+            continue
+        event["asset_id"]=asset.id
+        event["asset"]=asset.value
+        event["type"]=asset.type.value
+        scoped_events.append(event)
+    return {
+        "hours":max(1,min(int(hours),24*90)),
+        "count":len(scoped_events),
+        "items":scoped_events,
+    }
 
 
 class RemediationSimulationRequest(BaseModel):
