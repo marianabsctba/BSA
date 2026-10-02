@@ -267,6 +267,41 @@ Para distribuição externa, não use o perfil de desenvolvimento. O piloto deve
 12. Instale o modelo local do Ollama antes de isolar a rede interna.
 13. Nunca exponha o endpoint administrativo diretamente à Internet sem uma camada TLS/reverse proxy e controles de acesso.
 
+### Backup, restore e upgrade do piloto
+
+Antes de qualquer atualização do piloto, gere um snapshot consistente dos quatro bancos SQLite:
+
+```bash
+docker compose -f docker-compose.production.yml exec api \
+  python -m app.backup create /data/bsa-backup.zip
+```
+
+Valide o arquivo antes de mover ou armazenar:
+
+```bash
+docker compose -f docker-compose.production.yml exec api \
+  python -m app.backup inspect /data/bsa-backup.zip
+```
+
+O backup usa a API online do SQLite, executa `PRAGMA integrity_check` e registra SHA-256 no manifesto. Para restore, pare API e worker primeiro. O restore recusa sobrescrever bancos existentes por padrão:
+
+```bash
+docker compose -f docker-compose.production.yml stop api worker
+docker compose -f docker-compose.production.yml run --rm api \
+  python -m app.backup restore /data/bsa-backup.zip --force
+docker compose -f docker-compose.production.yml up -d api worker web
+```
+
+Após upgrade ou restore, confirme:
+
+1. `/health` da API;
+2. `/api/v1/operations/release-readiness`;
+3. worker com status saudável em `/api/v1/operations/assessment-queue`;
+4. tenants, usuários, assets, findings, CTEM e histórico;
+5. um scan controlado de validação antes de reabrir a operação normal.
+
+O `docker-compose.production.yml` possui healthcheck da API e do worker. O worker só fica saudável quando o heartbeat persistido estiver recente.
+
 ### Segurança de discovery
 
 O Discovery possui validação contra destinos não públicos e redirecionamentos para endereços privados, reduzindo risco de SSRF. Probes de portas e TLS também passam pelo gate de alvo externo. A expansão recursiva permanece limitada por profundidade e quantidade de ativos.
