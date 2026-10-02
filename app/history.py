@@ -52,6 +52,14 @@ def _history_db():
         execution_ms INTEGER NOT NULL,
         raw_results INTEGER NOT NULL)""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_capability_execution_health_cap_time ON capability_execution_health(capability,observed_at)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS provider_execution_health(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        calls INTEGER NOT NULL,
+        errors INTEGER NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_provider_execution_health_name_time ON provider_execution_health(provider,observed_at)")
+
 
     conn.execute("""CREATE TABLE IF NOT EXISTS ctem_retests(
         job_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
@@ -1250,6 +1258,93 @@ def capability_reliability(
                 "state_transitions": transitions,
                 "window_hours": max(1, int(window_hours)),
             })
+        return out
+    finally:
+        conn.close()
+
+
+
+def record_provider_execution(metrics: dict[str, dict]) -> None:
+    """Persist private backend execution telemetry. Never expose provider names publicly."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _history_db()
+    try:
+        for provider, row in metrics.items():
+            calls = max(0, int(row.get("calls", 0) or 0))
+            errors = max(0, min(calls, int(row.get("errors", 0) or 0)))
+            if calls <= 0:
+                continue
+            conn.execute(
+                "INSERT INTO provider_execution_health(provider,observed_at,calls,errors) VALUES(?,?,?,?)",
+                (str(provider), now, calls, errors),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def provider_reliability(
+    providers: tuple[str, ...] | list[str],
+    *,
+    window_hours: int = 168,
+    min_calls: int = 3,
+) -> dict[str, dict]:
+    """Private reliability view used only for adaptive backend execution."""
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=max(1, int(window_hours)))
+    required_calls = max(1, int(min_calls))
+    conn = _history_db()
+    try:
+        out = {}
+        for provider in providers:
+            rows = conn.execute(
+                """SELECT calls,errors
+                   FROM provider_execution_health
+                   WHERE provider=? AND observed_at>=?
+                   ORDER BY observed_at ASC,id ASC""",
+                (provider, cutoff.isoformat()),
+            ).fetchall()
+            calls = sum(int(row["calls"]) for row in rows)
+            errors = sum(int(row["errors"]) for row in rows)
+            successes = max(0, calls - errors)
+            success_rate = round(100 * successes / max(1, calls))
+
+            states = []
+            for row in rows:
+                row_calls = max(0, int(row["calls"]))
+                row_errors = max(0, min(row_calls, int(row["errors"])))
+                if row_calls:
+                    states.append("failure" if row_errors >= row_calls else "success")
+            transitions = sum(
+                1 for previous, current in zip(states, states[1:])
+                if previous != current
+            )
+            consecutive_failures = 0
+            for state in reversed(states):
+                if state != "failure":
+                    break
+                consecutive_failures += 1
+
+            if calls < required_calls:
+                status = "insufficient_data"
+            elif consecutive_failures >= 2 or success_rate < 60:
+                status = "unreliable"
+            elif transitions >= 3 and len(states) >= 5:
+                status = "flapping"
+            elif success_rate < 90:
+                status = "degraded"
+            else:
+                status = "stable"
+
+            out[str(provider)] = {
+                "status": status,
+                "calls": calls,
+                "success_rate_percent": success_rate if calls else None,
+                "consecutive_failures": consecutive_failures,
+                "state_transitions": transitions,
+            }
         return out
     finally:
         conn.close()
