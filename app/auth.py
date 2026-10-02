@@ -328,10 +328,16 @@ def revoke_session(principal: Principal, jti: str | None = None) -> None:
 def create_user(principal: Principal, email: str, name: str, password: str, role: str) -> dict:
     if not can(principal, "users:write"):
         raise PermissionError("users:write required")
-    if role not in ROLES:
+    if role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX):
         raise ValueError("invalid role")
+    if role.startswith(CUSTOM_ROLE_PREFIX):
+        role_permissions(role, principal.tenant_id)
     if role == "superadmin" and principal.role != "superadmin":
         raise PermissionError("superadmin role requires superadmin")
+    if role == "admin" and principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin role requires admin")
+    if not _can_manage_target(principal, role, principal.tenant_id, allow_equal=True):
+        raise PermissionError("cannot grant a role above caller authority")
     _validate_password(password)
     conn = _db()
     uid = secrets.token_hex(12)
@@ -370,6 +376,9 @@ def update_user(principal: Principal, user_id: str, name: str, role: str | None 
     if role is not None and role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX): raise ValueError("invalid role")
     if role and role.startswith(CUSTOM_ROLE_PREFIX): role_permissions(role, principal.tenant_id)
     if role == "superadmin" and principal.role != "superadmin": raise PermissionError("superadmin role requires superadmin")
+    if role == "admin" and principal.role not in {"admin","superadmin"}: raise PermissionError("admin role requires admin")
+    if role and not _can_manage_target(principal,role,principal.tenant_id,allow_equal=True):
+        raise PermissionError("cannot grant a role above caller authority")
     conn=_db()
     row=conn.execute("SELECT id,role,tenant_id FROM users WHERE id=? AND tenant_id=?", (user_id,principal.tenant_id)).fetchone()
     if not row: conn.close(); raise ValueError("user not found")
