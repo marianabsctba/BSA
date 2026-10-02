@@ -52,8 +52,8 @@ def test_tenant_purge_is_scoped_and_preserves_audit_by_default(tmp_path, monkeyp
         Asset(tenant_id="tenant-b",id="b1",value="b.example.org",type=AssetType.DOMAIN,first_seen=now,last_seen=now),
     ]
     store.FINDINGS[:]=[
-        Finding(tenant_id="tenant-a",id="fa",asset_id="a1",title="A",severity=Severity.LOW),
-        Finding(tenant_id="tenant-b",id="fb",asset_id="b1",title="B",severity=Severity.LOW),
+        Finding(tenant_id="tenant-a",id="fa",asset_id="a1",title="A",severity=Severity.LOW,evidence="tenant-a evidence"),
+        Finding(tenant_id="tenant-b",id="fb",asset_id="b1",title="B",severity=Severity.LOW,evidence="tenant-b evidence"),
     ]
     store.persist_state(store.ASSETS,store.FINDINGS)
 
@@ -103,7 +103,7 @@ def test_persisted_store_survives_restart_simulation(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_STORE_DB",str(tmp_path/"store.db"))
     now=datetime.now(timezone.utc).isoformat()
     asset=Asset(tenant_id="tenant-a",id="a1",value="api.example.org",type=AssetType.DOMAIN,first_seen=now,last_seen=now)
-    finding=Finding(tenant_id="tenant-a",id="f1",asset_id="a1",title="Exposure",severity=Severity.HIGH)
+    finding=Finding(tenant_id="tenant-a",id="f1",asset_id="a1",title="Exposure",severity=Severity.HIGH,evidence="restart persistence evidence")
     store.persist_state([asset],[finding])
 
     assets,findings=store._load_persisted()
