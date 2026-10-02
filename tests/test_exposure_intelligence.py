@@ -171,14 +171,18 @@ def test_attack_path_local_ai_contract():
         assert "ai" in r.json()
 
 
-def test_digital_risk_ingest_and_takedown_lifecycle():
+def test_digital_risk_ingest_and_summary():
     h=auth()
     payload={"category":"phishing","title":"Brand impersonation","indicator":"https://evil.example","source":"test","severity":"high","confidence":92,"evidence":{"screenshot":"sha256:test"}}
     r=client.post("/api/v1/digital-risk/events",headers={**h,"Content-Type":"application/json"},json=payload)
     assert r.status_code==200
     event=r.json()
     r=client.get("/api/v1/digital-risk",headers=h)
-    assert r.status_code==200 and r.json()["summary"]["takedown_candidates"]>=1
+    assert r.status_code==200
+    summary=r.json()["summary"]
+    assert summary["total"]>=1
+    assert summary["high_risk_open"]>=1
+    assert "takedown_candidates" not in summary
     r=client.post("/api/v1/digital-risk/takedowns",headers={**h,"Content-Type":"application/json"},json={"event_id":event["event_id"],"provider":"auto","reason":"phishing","priority":"high"})
     assert r.status_code==200
     assert r.json()["status"]=="queued"
