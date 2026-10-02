@@ -291,10 +291,7 @@ O Syslog usa framing compatível com RFC5424 e payload JSON estruturado. Campos 
 
 O BSA unifica sinais externos em uma camada de **DRP + CTI + EASM**, com eventos para phishing, abuso de marca, perfis falsos, apps falsos, malware, vazamento de dados, VIP/executivos, Deep/Dark Web e supply chain.
 
-A camada também mantém um ciclo de takedown rastreável:
-`detected → queued → submitted → provider_action → removed/rejected → retest`.
-
-O desenho segue padrões observados nas plataformas atuais de DRP: correlação de EASM com CTI, brand protection, leak monitoring, threat hunting, VIP protection e resposta/takedown automatizada. A implementação do BSA é vendor-neutral e exige evidência antes de classificar ou executar uma ação.
+O desenho segue padrões de DRP com correlação de EASM e CTI, brand protection, leak monitoring, threat hunting e VIP protection. A implementação do BSA é vendor-neutral, orientada a evidências e mantém separadas observação, correlação, classificação de risco e resposta operacional.
 
 
 ## Piloto distribuído — 31 empresas
