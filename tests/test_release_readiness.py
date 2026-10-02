@@ -148,3 +148,23 @@ def test_release_readiness_warns_on_stale_worker(monkeypatch):
     assert data["state"]=="degraded"
     assert data["pilot_ready"] is True
     assert "assessment_worker_health" in data["warnings"]
+
+
+def test_release_readiness_accepts_postgres_asset_store(monkeypatch):
+    _governance_ready(monkeypatch)
+    monkeypatch.setenv("BSA_ENV","production")
+    monkeypatch.setenv("BSA_JWT_SECRET","x"*40)
+    monkeypatch.setenv("BSA_AUTH_DB","/data/bsa_auth.db")
+    monkeypatch.setenv("BSA_ALLOWED_ORIGINS","https://asm.example.com")
+    monkeypatch.setenv("BSA_ALLOWED_HOSTS","asm.example.com")
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","postgres")
+    monkeypatch.setenv("BSA_DATABASE_URL","postgresql://safe-redacted/db")
+    monkeypatch.delenv("BSA_STORE_DB",raising=False)
+    monkeypatch.setattr("app.release_readiness._db_path",lambda: "/data/bsa_jobs.db")
+    monkeypatch.setattr("app.release_readiness.engine_health",lambda: _engine_state(True,True))
+
+    data=release_readiness()
+
+    checks={item["name"]:item for item in data["checks"]}
+    assert checks["persistent_asset_store"]["status"]=="pass"
+    assert "persistent_asset_store" not in data["required_failures"]
