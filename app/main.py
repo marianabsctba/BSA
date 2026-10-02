@@ -1223,7 +1223,10 @@ def users_create(request: Request, payload: UserCreateRequest):
 @app.get("/api/v1/auth/permissions")
 def auth_permissions(request: Request):
     p=current_principal(request)
-    return {"role":p.role,"permissions":role_permissions(p.role)}
+    try:
+        return {"role":p.role,"permissions":role_permissions(p.role,p.tenant_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=403,detail="invalid role permissions") from exc
 
 @app.get("/api/v1/rbac/permissions")
 def rbac_permissions():
