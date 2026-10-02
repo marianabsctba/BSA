@@ -50,6 +50,12 @@ def config_from_env() -> SyslogConfig | None:
     )
 
 
+def _header_token(value: object, fallback: str, max_len: int) -> str:
+    token="_".join(str(value or fallback).strip().split())
+    token="".join(ch for ch in token if 33 <= ord(ch) <= 126 and ch not in {'"', "'", "\\"})
+    return (token or fallback)[:max_len]
+
+
 def _severity(event: dict) -> int:
     value=str(
         event.get("finding",{}).get("severity")
@@ -82,11 +88,12 @@ def rfc5424_message(event: dict, config: SyslogConfig, hostname: str | None=None
     safe=_safe_event(event)
     severity=_severity(safe)
     pri=config.facility*8+severity
-    ts=str(safe.get("observed_at") or datetime.now(timezone.utc).isoformat())
-    host=(hostname or socket.gethostname() or "bsa")[:255]
-    msgid=str(safe.get("event_type") or "bsa.event").replace(" ","_")[:32]
+    ts=_header_token(safe.get("observed_at") or datetime.now(timezone.utc).isoformat(),"1970-01-01T00:00:00Z",64)
+    host=_header_token(hostname or socket.gethostname() or "bsa","bsa",255)
+    app_name=_header_token(config.app_name,"be-safe-asm",48)
+    msgid=_header_token(safe.get("event_type") or "bsa.event","bsa.event",32)
     payload=json.dumps(safe,ensure_ascii=False,separators=(",",":"),sort_keys=True)
-    return f"<{pri}>1 {ts} {host} {config.app_name} - {msgid} - {payload}\n".encode("utf-8")
+    return f"<{pri}>1 {ts} {host} {app_name} - {msgid} - {payload}\n".encode("utf-8")
 
 
 def send_event(event: dict, config: SyslogConfig | None=None) -> dict:
