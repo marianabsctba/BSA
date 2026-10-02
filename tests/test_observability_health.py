@@ -65,4 +65,34 @@ def test_health_response_has_request_id_header(monkeypatch):
     response=client.get("/health",headers={"X-Request-ID":"req-health-1234"})
     assert response.status_code==200
     assert response.headers["X-Request-ID"]=="req-health-1234"
-    assert response.json()["status"]=="healthy"
+    assert response.json()=={"status":"ok"}
+
+
+def test_ready_returns_503_with_component_detail_when_degraded(monkeypatch):
+    monkeypatch.setattr("app.main.runtime_health",lambda:{
+        "status":"degraded",
+        "components":{
+            "auth_db":{"status":"unavailable"},
+            "asset_store":{"status":"healthy"},
+            "queue":{"status":"healthy","queued":0,"running":0},
+            "workers":{"status":"healthy","active_workers":1},
+        },
+    })
+    client=TestClient(app)
+    response=client.get("/ready")
+    assert response.status_code==503
+    assert response.json()["status"]=="degraded"
+    assert response.json()["components"]["auth_db"]["status"]=="unavailable"
+
+
+def test_observability_identity_is_not_taken_from_unvalidated_token(monkeypatch):
+    captured=[]
+    monkeypatch.setattr("app.main.log_http_event",lambda **kwargs: captured.append(kwargs))
+    client=TestClient(app)
+    response=client.get(
+        "/health",
+        headers={"Authorization":"Bearer invalid-but-shaped-token"},
+    )
+    assert response.status_code==200
+    assert captured[-1]["tenant_id"] is None
+    assert captured[-1]["user_id"] is None
