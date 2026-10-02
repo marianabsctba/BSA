@@ -4,7 +4,7 @@ New code should import app.application.services.operation_dispatcher.run_operati
 This module remains temporarily to preserve older imports while the monolith is reduced.
 """
 
-from .application.services.operation_dispatcher import run_operation
+from .infrastructure.workers.operation_dispatcher import run_operation
 
 
 def run_active_operation(operation: str, target: str, payload: dict, principal):
