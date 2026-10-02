@@ -66,3 +66,41 @@ def test_retry_budget_exhaustion_marks_failed(tmp_path, monkeypatch):
     final=job_queue.get_job(job["job_id"],"tenant-a")
     assert final["status"]=="failed"
     assert final["attempts"]==3
+
+
+def test_cancelled_job_stays_cancelled(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    claimed=job_queue.claim_next_job()
+    assert claimed["status"]=="running"
+
+    cancelled=job_queue.cancel_job(job["job_id"],"tenant-a")
+    assert cancelled["status"]=="cancelled"
+    assert job_queue.complete_job(job["job_id"],{"finding_count":0,"findings":[]}) is False
+    assert job_queue.retry_or_fail_job(job["job_id"],"late worker error")=="cancelled"
+    final=job_queue.get_job(job["job_id"],"tenant-a")
+    assert final["status"]=="cancelled"
+
+
+def test_materialization_claim_is_atomic(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"example.org","surface","AUTH-123")
+    job_queue.claim_next_job()
+    assert job_queue.complete_job(job["job_id"],{"finding_count":0,"findings":[]}) is True
+
+    assert job_queue.claim_materialization(job["job_id"],"tenant-a") is True
+    assert job_queue.claim_materialization(job["job_id"],"tenant-a") is False
+    in_progress=job_queue.get_job(job["job_id"],"tenant-a")
+    assert in_progress["materializing"] is True
+    assert in_progress["materialized"] is False
+
+    job_queue.finish_materialization(job["job_id"],"tenant-a",True)
+    final=job_queue.get_job(job["job_id"],"tenant-a")
+    assert final["materialized"] is True
+    assert final["materializing"] is False
