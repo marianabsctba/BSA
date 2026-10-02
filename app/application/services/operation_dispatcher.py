@@ -15,6 +15,10 @@ from ...infrastructure.workers.technology_executor import (
     run_technology_operation,
     supports as supports_technology_operation,
 )
+from ...infrastructure.workers.easm_executor import (
+    run_easm_operation,
+    supports as supports_easm_operation,
+)
 
 
 def run_operation(operation: str, target: str, payload: dict, principal):
@@ -26,4 +30,6 @@ def run_operation(operation: str, target: str, payload: dict, principal):
         return run_discovery_intelligence_operation(operation,target,payload,principal)
     if supports_technology_operation(operation):
         return run_technology_operation(operation,target,payload,principal)
+    if supports_easm_operation(operation):
+        return run_easm_operation(operation,target,payload,principal)
     return run_legacy_operation(operation,target,payload,principal)
