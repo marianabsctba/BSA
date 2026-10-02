@@ -44,6 +44,7 @@ from .dast import run_safe_web_assessment
 from .nuclei_engine import NucleiEngineError, run_nuclei, normalize_findings
 from .assessment_orchestrator import run_public_assessment
 from .engine_health import public_engine_health
+from .release_readiness import release_readiness
 from .assessment_registry import registry
 from .job_queue import enqueue_assessment, get_job, mark_materialized
 from .auth import Principal
@@ -149,6 +150,14 @@ def health():
 def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
+
+
+@app.get("/api/v1/operations/release-readiness")
+def operations_release_readiness(request: Request):
+    principal = require(request, "assets:read")
+    if principal.role not in {"superadmin", "admin", "manager"}:
+        raise HTTPException(status_code=403, detail="manager role required")
+    return release_readiness()
 
 
 @app.get("/api/v1/mssp/command-center/trend")
