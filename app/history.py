@@ -1300,7 +1300,7 @@ def provider_reliability(
         out = {}
         for provider in providers:
             rows = conn.execute(
-                """SELECT calls,errors
+                """SELECT observed_at,calls,errors
                    FROM provider_execution_health
                    WHERE provider=? AND observed_at>=?
                    ORDER BY observed_at ASC,id ASC""",
@@ -1338,12 +1338,25 @@ def provider_reliability(
             else:
                 status = "stable"
 
+            last_observed_age_seconds = None
+            last_state = states[-1] if states else None
+            if rows:
+                try:
+                    observed = datetime.fromisoformat(str(rows[-1]["observed_at"]).replace("Z", "+00:00"))
+                    if observed.tzinfo is None:
+                        observed = observed.replace(tzinfo=timezone.utc)
+                    last_observed_age_seconds = max(0, int((now - observed).total_seconds()))
+                except (TypeError, ValueError):
+                    last_observed_age_seconds = None
+
             out[str(provider)] = {
                 "status": status,
                 "calls": calls,
                 "success_rate_percent": success_rate if calls else None,
                 "consecutive_failures": consecutive_failures,
                 "state_transitions": transitions,
+                "last_state": last_state,
+                "last_observed_age_seconds": last_observed_age_seconds,
             }
         return out
     finally:
