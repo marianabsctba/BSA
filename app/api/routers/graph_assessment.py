@@ -397,7 +397,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         finding=next(
             (
                 item
-                for item in repository._findings
+                for item in repository.all_findings()
                 if item.tenant_id==principal.tenant_id
                 and item.id==finding_id
             ),
