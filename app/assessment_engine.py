@@ -97,6 +97,28 @@ class AssessmentEngine:
             "finding_count": len(findings),
         }
 
+    def export_orchestration_rows(self) -> list[dict]:
+        """Sanitized rows for internal orchestration.
+
+        Provider identity is carried only in a private transient field so the
+        orchestrator can measure independent corroboration. The field must be
+        removed before crossing the public API boundary.
+        """
+        rows = []
+        for item in self.findings:
+            rows.append(
+                {
+                    "asset": item.asset,
+                    "category": item.category,
+                    "title": item.title,
+                    "severity": item.severity,
+                    "confidence": item.confidence,
+                    "evidence": self._sanitize_evidence(item.evidence),
+                    "_source_backend": item.engine,
+                }
+            )
+        return rows
+
     def export_internal(self) -> dict:
         """Internal diagnostics only. Never expose this payload through tenant APIs."""
         return {
