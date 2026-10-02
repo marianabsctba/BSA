@@ -133,8 +133,20 @@ def summarize_events(events: list[dict]) -> dict:
 def _db():
     c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row
     c.execute("""CREATE TABLE IF NOT EXISTS digital_risk(
-      event_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
-      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)""")
+      event_id TEXT NOT NULL, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY(tenant_id,event_id))""")
+    info=c.execute("PRAGMA table_info(digital_risk)").fetchall()
+    pk=[r["name"] for r in sorted((r for r in info if r["pk"]),key=lambda r:r["pk"])]
+    if pk==["event_id"]:
+        c.execute("""CREATE TABLE digital_risk_v2(
+          event_id TEXT NOT NULL, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          PRIMARY KEY(tenant_id,event_id))""")
+        c.execute("""INSERT INTO digital_risk_v2(event_id,tenant_id,payload,created_at,updated_at)
+          SELECT event_id,tenant_id,payload,created_at,updated_at FROM digital_risk""")
+        c.execute("DROP TABLE digital_risk")
+        c.execute("ALTER TABLE digital_risk_v2 RENAME TO digital_risk")
     c.commit(); return c
 
 def upsert_event(tenant_id,event):
@@ -169,7 +181,7 @@ def upsert_event(tenant_id,event):
         first_seen=event.get("first_seen") or ""
     event=enrich_event({**event,"event_id":eid,"first_seen":first_seen,"updated_at":now})
     c.execute("""INSERT INTO digital_risk(event_id,tenant_id,payload,created_at,updated_at)
-      VALUES(?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at""",
+      VALUES(?,?,?,?,?) ON CONFLICT(tenant_id,event_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at""",
       (eid,tenant_id,json.dumps(event,ensure_ascii=False),created_at,now)); c.commit(); c.close(); return event
 
 def list_events(tenant_id,category=None):
