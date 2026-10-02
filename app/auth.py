@@ -295,6 +295,25 @@ def principal_from_token(token: str) -> Principal:
         raise ValueError("role changed; re-authentication required")
     return Principal(p["sub"], p["tenant"], p["email"], user["role"], p["name"])
 
+def current_principal_for_user(user_id: str, tenant_id: str) -> Principal:
+    conn=_db()
+    user=conn.execute(
+        "SELECT id,tenant_id,email,name,role,active FROM users WHERE id=? AND tenant_id=?",
+        (user_id,tenant_id),
+    ).fetchone()
+    tenant=conn.execute("SELECT active FROM tenants WHERE id=?",(tenant_id,)).fetchone()
+    conn.close()
+    if not user or not user["active"]:
+        raise ValueError("user inactive or missing")
+    if not tenant or not tenant["active"]:
+        raise ValueError("tenant inactive or missing")
+    role=str(user["role"])
+    if role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX):
+        raise ValueError("invalid current role")
+    role_permissions(role,tenant_id)
+    return Principal(user["id"],user["tenant_id"],user["email"],role,user["name"])
+
+
 def revoke_session(principal: Principal, jti: str | None = None) -> None:
     conn = _db()
     if jti:
