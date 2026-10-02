@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from .assessment_registry import registry
-from .history import recent_capability_execution_health
+from .history import capability_reliability, recent_capability_execution_health
 from .assessment_orchestrator import (
     PROFILES,
     PROFILE_CAPABILITIES,
@@ -105,6 +105,22 @@ def engine_health(target: str | None = None) -> dict:
             100 * (core_requested - len(unverified_execution)) / max(1, core_requested)
         )
 
+        reliability_rows = capability_reliability(
+            tuple(row["name"] for row in core_rows),
+            window_hours=168,
+            min_calls=3,
+        )
+        unreliable_capabilities = [
+            row["name"]
+            for row in reliability_rows
+            if row.get("reliability_status") in {"unreliable", "flapping"}
+        ]
+        degraded_reliability = [
+            row["name"]
+            for row in reliability_rows
+            if row.get("reliability_status") == "degraded"
+        ]
+
         readiness_blockers = []
         if not core_requested or coverage_percent < min_core_coverage:
             readiness_blockers.append("core_coverage")
@@ -115,6 +131,8 @@ def engine_health(target: str | None = None) -> dict:
         production = os.getenv("BSA_ENV", "development").lower() in {"production", "prod"}
         if production and unverified_execution:
             readiness_blockers.append("execution_validation")
+        if production and unreliable_capabilities:
+            readiness_blockers.append("historical_reliability")
 
         policy_ready = not readiness_blockers
         state = (
@@ -144,6 +162,13 @@ def engine_health(target: str | None = None) -> dict:
                 "verified_percent": execution_verified_percent,
                 "unverified_capabilities": unverified_execution,
                 "max_age_minutes": 1440,
+            },
+            "historical_reliability": {
+                "status": "unstable" if unreliable_capabilities else ("degraded" if degraded_reliability else "stable"),
+                "unreliable_capabilities": unreliable_capabilities,
+                "degraded_capabilities": degraded_reliability,
+                "window_hours": 168,
+                "minimum_calls": 3,
             },
             "coverage_policy": {
                 "min_core_coverage_percent": min_core_coverage,
