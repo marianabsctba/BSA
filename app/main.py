@@ -540,7 +540,7 @@ def vulnerability_intelligence_api(request: Request):
         intel=vulnerability_intelligence(f,amap.get(f.asset_id))
         rows.append({"finding":f.model_dump(),"asset":amap.get(f.asset_id).value if amap.get(f.asset_id) else None,"intelligence":asdict(intel)})
     rows.sort(key=lambda x:x["intelligence"]["priority_score"],reverse=True)
-    return {"summary":{"findings":len(rows),"critical":sum(x["intelligence"]["band"]=="critical" for x in rows),"high":sum(x["intelligence"]["band"]=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
+    return {"summary":{"findings":len(rows),"critical":sum(x["finding"].severity.value=="critical" for x in rows),"high":sum(x["finding"].severity.value=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
 
 @app.get("/api/v1/vulnerabilities/{finding_id}/intelligence")
 def vulnerability_finding_intelligence(finding_id: str, request: Request):
@@ -669,7 +669,7 @@ def graph(request: Request):
     principal = require(request, "assets:read")
     assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     result = build_risk_graph(
-        f"tenant:{principal.tenant_id}",
+        "External Surface",
         assets,
         [],
         source_assets=assets,
@@ -1793,7 +1793,7 @@ def exposure_business_impact(request: Request):
         rows.append({"asset_id":a.id,"asset":a.value,"business_unit":a.business_unit,
                      "environment":a.environment,"criticality":a.criticality,
                      "exposure":score,"owner":a.owner or "unowned",
-                     "impact_index":round(score*(1+a.criticality/5),1)})
+                     "impact_index":min(100,round(score*(1+a.criticality/5),1))})
     return {"items":sorted(rows,key=lambda x:x["impact_index"],reverse=True)}
 
 @app.get("/api/v1/exposure/reduction")
@@ -2027,7 +2027,8 @@ def easm_overview(request: Request):
     principal=require(request,"assets:read")
     scoped_assets,scoped_findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
     def state(a):
-        if a.status in {"approved","owned","managed"}: return "approved"
+        ownership=ownership_confidence(a)
+        if a.status in {"approved","owned","managed"} or ownership.state=="confirmed": return "approved"
         if a.status in {"dependency","third_party"}: return "dependency"
         if a.status in {"monitor","monitor_only"}: return "monitor_only"
         if a.status in {"requires_investigation","investigate"}: return "requires_investigation"
