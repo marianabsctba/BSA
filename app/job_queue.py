@@ -42,7 +42,8 @@ def _db():
         attempts INTEGER NOT NULL DEFAULT 0,
         max_attempts INTEGER NOT NULL DEFAULT 3,
         lease_expires_at INTEGER,
-        run_token TEXT
+        run_token TEXT,
+        materialization_started_at INTEGER
     )""")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(assessment_jobs)").fetchall()}
     if "attempts" not in cols:
@@ -53,6 +54,8 @@ def _db():
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN lease_expires_at INTEGER")
     if "run_token" not in cols:
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN run_token TEXT")
+    if "materialization_started_at" not in cols:
+        conn.execute("ALTER TABLE assessment_jobs ADD COLUMN materialization_started_at INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_jobs_tenant_status ON assessment_jobs(tenant_id,status,created_at)")
     conn.commit()
     return conn
@@ -221,12 +224,30 @@ def cancel_job(job_id:str,tenant_id:str)->dict|None:
     return get_job(job_id,tenant_id)
 
 
-def claim_materialization(job_id:str,tenant_id:str)->bool:
+def recover_stale_materializations(now:int|None=None,stale_seconds:int=900)->int:
+    now=int(now or time.time())
+    cutoff=now-max(60,int(stale_seconds))
     conn=_db()
     updated=conn.execute(
-        """UPDATE assessment_jobs SET materialized=2
+        """UPDATE assessment_jobs
+        SET materialized=0,materialization_started_at=NULL
+        WHERE status='succeeded' AND materialized=2
+          AND materialization_started_at IS NOT NULL
+          AND materialization_started_at<?""",
+        (cutoff,),
+    ).rowcount
+    conn.commit(); conn.close()
+    return updated
+
+
+def claim_materialization(job_id:str,tenant_id:str,stale_seconds:int=900)->bool:
+    recover_stale_materializations(stale_seconds=stale_seconds)
+    conn=_db()
+    now=int(time.time())
+    updated=conn.execute(
+        """UPDATE assessment_jobs SET materialized=2,materialization_started_at=?
         WHERE job_id=? AND tenant_id=? AND status='succeeded' AND materialized=0""",
-        (job_id,tenant_id),
+        (now,job_id,tenant_id),
     ).rowcount
     conn.commit(); conn.close()
     return bool(updated)
@@ -235,7 +256,9 @@ def claim_materialization(job_id:str,tenant_id:str)->bool:
 def finish_materialization(job_id:str,tenant_id:str,success:bool)->None:
     conn=_db()
     conn.execute(
-        "UPDATE assessment_jobs SET materialized=? WHERE job_id=? AND tenant_id=? AND materialized=2",
+        """UPDATE assessment_jobs
+        SET materialized=?,materialization_started_at=NULL
+        WHERE job_id=? AND tenant_id=? AND materialized=2""",
         (1 if success else 0,job_id,tenant_id),
     )
     conn.commit(); conn.close()
@@ -243,5 +266,5 @@ def finish_materialization(job_id:str,tenant_id:str,success:bool)->None:
 
 def mark_materialized(job_id:str,tenant_id:str)->None:
     conn=_db()
-    conn.execute("UPDATE assessment_jobs SET materialized=1 WHERE job_id=? AND tenant_id=?",(job_id,tenant_id))
+    conn.execute("UPDATE assessment_jobs SET materialized=1,materialization_started_at=NULL WHERE job_id=? AND tenant_id=?",(job_id,tenant_id))
     conn.commit(); conn.close()
