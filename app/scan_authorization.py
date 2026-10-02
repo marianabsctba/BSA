@@ -2,7 +2,7 @@ import secrets
 import time
 
 from .auth import _db, can, Principal
-from .scope import _scope_hostname_from_value, _scope_pattern_matches
+from .scope import _scope_hostname_from_value, _scope_pattern_matches, validate_active_scope_pattern
 
 
 def ensure_authorization_schema():
@@ -29,18 +29,32 @@ def ensure_authorization_schema():
 
 def create_authorization_grant(principal: Principal, user_id: str, authorization_ref: str,
                                pattern: str, ttl_seconds: int = 3600) -> dict:
-    if not can(principal,"users:write"):
-        raise PermissionError("users:write required")
+    if principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin required for active scan authorization")
+    if user_id==principal.user_id:
+        raise PermissionError("grant creator cannot be the beneficiary")
     ref=str(authorization_ref or "").strip()
     if not ref or len(ref)>200:
         raise ValueError("invalid authorization_ref")
-    ttl=max(60,min(int(ttl_seconds),30*24*3600))
+    pattern=validate_active_scope_pattern(pattern)
+    requested_ttl=int(ttl_seconds)
+    if requested_ttl>24*3600 and principal.role!="superadmin":
+        raise PermissionError("grants longer than 24 hours require superadmin approval")
+    ttl=max(60,min(requested_ttl,30*24*3600))
     ensure_authorization_schema()
     conn=_db()
     user=conn.execute("SELECT id,tenant_id,active FROM users WHERE id=?",(user_id,)).fetchone()
     if not user or user["tenant_id"]!=principal.tenant_id or not user["active"]:
         conn.close()
         raise ValueError("user outside tenant or inactive")
+    assigned=conn.execute("""SELECT s.pattern FROM scan_scopes s
+        JOIN user_scan_scopes us ON us.scope_id=s.id
+        WHERE us.user_id=? AND s.tenant_id=? AND s.active=1""",
+        (user_id,principal.tenant_id)).fetchall()
+    requested_base=pattern[2:] if pattern.startswith("*.") else pattern
+    if not assigned or not any(_scope_pattern_matches(requested_base,row["pattern"]) for row in assigned):
+        conn.close()
+        raise PermissionError("grant pattern must be within beneficiary active scan scope")
     now=int(time.time())
     grant_id=secrets.token_hex(12)
     conn.execute(
