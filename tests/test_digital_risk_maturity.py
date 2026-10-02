@@ -107,12 +107,11 @@ def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
         last_seen=now,
     )
 
-    monkeypatch.setattr(main,"STORE_ASSETS",[asset_a,asset_b])
-    monkeypatch.setattr(main,"STORE_FINDINGS",[])
-    monkeypatch.setattr(main,"require",lambda request,permission:tenant_a)
-    monkeypatch.setattr(main,"current_principal",lambda request:tenant_a)
-    monkeypatch.setattr(main,"asset_in_scope",lambda principal,value:True)
-    monkeypatch.setattr(main,"audit",lambda *args,**kwargs:None)
+    monkeypatch.setattr(digital_risk_router,"STORE_ASSETS",[asset_a,asset_b])
+    monkeypatch.setattr(digital_risk_router,"STORE_FINDINGS",[])
+    monkeypatch.setattr(digital_risk_router,"require",lambda request,permission:tenant_a)
+    monkeypatch.setattr(digital_risk_router,"asset_in_scope",lambda principal,value:True)
+    monkeypatch.setattr(digital_risk_router,"audit",lambda *args,**kwargs:None)
 
     linked=client.post("/api/v1/digital-risk/leaks",json={
         "leak_type":"credential",
