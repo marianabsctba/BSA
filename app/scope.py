@@ -275,7 +275,7 @@ def create_domain_ownership_proof(principal: Principal, domain: str, method: str
     conn.commit(); conn.close()
     result={
         "proof_id":proof_id,
-        "tenant_id":target_tenant,
+        "tenant_id":principal.tenant_id,
         "domain":registrable,
         "method":method,
         "challenge":challenge,
