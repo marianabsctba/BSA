@@ -1,5 +1,7 @@
 # BSA — Be Safe ASM
 
+**Versão atual:** `0.4.0`
+
 <p align="center">
   <img src="assets/bsa-readme-logo.jpg" alt="BSA Panther" width="520">
 </p>
@@ -44,7 +46,7 @@ A proposta é ir além de uma lista de IPs e domínios: o BSA mantém um **inven
 
 > O princípio é simples: **descobrir como um atacante enxerga a organização, mas entregar o resultado com governança, rastreabilidade e validação humana.**
 
-## Estado atual — v0.2 Intelligence
+## Estado atual — v0.4.0 Intelligence
 
 O BSA já saiu do simples inventário e passou a trabalhar com contexto de superfície:
 
