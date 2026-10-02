@@ -319,3 +319,53 @@ def test_queue_metrics_are_tenant_scoped_and_report_retries(tmp_path, monkeypatc
 
     other=job_queue.queue_metrics("tenant-b")
     assert other["total_jobs"] == 1
+
+
+
+def test_multi_tenant_backlog_is_processed_without_duplicate_claims(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    tenants=[
+        SimpleNamespace(
+            tenant_id=f"tenant-{idx}",
+            user_id=f"user-{idx}",
+            email=f"user-{idx}@example.org",
+            role="admin",
+            name=f"Admin {idx}",
+        )
+        for idx in range(6)
+    ]
+
+    jobs=[]
+    for tenant in tenants:
+        for idx in range(12):
+            jobs.append(
+                job_queue.enqueue_assessment(
+                    tenant,
+                    f"asset-{idx}.{tenant.tenant_id}.example.org",
+                    "surface",
+                    f"AUTH-{tenant.tenant_id}-{idx}",
+                )
+            )
+
+    claimed=[]
+    lock=threading.Lock()
+
+    def worker_loop():
+        while True:
+            item=job_queue.claim_next_job()
+            if item is None:
+                return
+            with lock:
+                claimed.append((item["job_id"],item["tenant_id"],item["run_token"]))
+
+    threads=[threading.Thread(target=worker_loop) for _ in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    ids=[job_id for job_id,_,_ in claimed]
+    assert len(ids)==len(jobs)
+    assert len(set(ids))==len(jobs)
+    assert all(token for _,_,token in claimed)
+    assert {tenant_id for _,tenant_id,_ in claimed}=={tenant.tenant_id for tenant in tenants}
