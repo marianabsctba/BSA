@@ -13,7 +13,7 @@ RUN set -eux; \
       done; \
     }; \
     retry go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1; \
-    retry env CGO_ENABLED=0 GOBIN=/out GOPROXY="$GOPROXY" GODEBUG="$GODEBUG" go install github.com/owasp-amass/amass/v5/cmd/amass@main; \
+    retry env CGO_ENABLED=0 GOBIN=/out GOPROXY="$GOPROXY" GODEBUG="$GODEBUG" go install github.com/owasp-amass/amass/v5/cmd/amass@v5.1.1; \
     retry go install github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0; \
     retry go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.16.0; \
     retry go install github.com/projectdiscovery/dnsx/cmd/dnsx@v1.3.1; \
@@ -36,7 +36,7 @@ RUN apt-get update \
 FROM debian:bookworm-slim AS massdns
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git build-essential \
- && git clone --depth 1 https://github.com/blechschmidt/massdns.git /src/massdns \
+ && git clone --depth 1 --branch v1.1.0 https://github.com/blechschmidt/massdns.git /src/massdns \
  && make -C /src/massdns \
  && mkdir -p /out \
  && cp /src/massdns/bin/massdns /out/massdns \
@@ -57,7 +57,7 @@ COPY --from=nuclei_templates /out/nuclei-templates /opt/nuclei-templates
 COPY --from=zap /zap/ /opt/zap/
 
 RUN ln -s /opt/zap/zap-baseline.py /usr/local/bin/zap-baseline.py \
- && git clone --depth 1 https://github.com/drwetter/testssl.sh.git /opt/testssl.sh \
+ && git clone --depth 1 --branch v3.2.4 https://github.com/drwetter/testssl.sh.git /opt/testssl.sh \
  && ln -s /opt/testssl.sh/testssl.sh /usr/local/bin/testssl.sh \
  && mkdir -p /etc/bsa \
  && printf '%s\n' 1.1.1.1 8.8.8.8 9.9.9.9 > /etc/bsa/puredns-resolvers.txt \
