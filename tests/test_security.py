@@ -68,16 +68,22 @@ def test_authenticated_session_cannot_be_reused_after_logout():
     assert replay.get("/api/v1/auth/me").status_code == 401
 
 
-def test_login_rate_limit_is_bound_to_ip():
-    from app.auth import authenticate, _IP_LOGIN_ATTEMPTS, _LOGIN_ATTEMPTS
-    _IP_LOGIN_ATTEMPTS.clear()
-    _LOGIN_ATTEMPTS.clear()
+def test_login_rate_limit_is_bound_to_ip(tmp_path, monkeypatch):
+    from app import auth
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
     ip="198.51.100.10"
     for i in range(20):
-        assert authenticate(f"missing-{i}@example.invalid","Wrong-Password-2026!",ip) is None
-    assert _IP_LOGIN_ATTEMPTS[ip]["until"] > 0
-    _IP_LOGIN_ATTEMPTS.clear()
-    _LOGIN_ATTEMPTS.clear()
+        assert auth.authenticate(f"missing-{i}@example.invalid","Wrong-Password-2026!",ip) is None
+    assert auth.authenticate("another-missing@example.invalid","Wrong-Password-2026!",ip) is None
+    conn=auth._db()
+    row=conn.execute(
+        "SELECT blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-ip",ip),
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert int(row["blocked_until"]) > 0
 
 
 def test_totp_helpers_validate_codes():
