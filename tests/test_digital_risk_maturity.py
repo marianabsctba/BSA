@@ -137,10 +137,10 @@ def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
     assert foreign.status_code==404
 
 
-def test_drp_summary_tracks_takedown_and_credentials(tmp_path, monkeypatch):
+def test_drp_summary_tracks_risk_and_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(digital_risk,"DB_PATH",str(tmp_path/"drp.db"))
 
-    phishing=digital_risk.upsert_event("tenant-a",{
+    digital_risk.upsert_event("tenant-a",{
         "category":"phishing",
         "title":"Fake portal",
         "indicator":"phish.invalid",
@@ -158,15 +158,10 @@ def test_drp_summary_tracks_takedown_and_credentials(tmp_path, monkeypatch):
         "evidence":{"sample_hash":"abc"},
         "status":"open",
     })
-    takedown=digital_risk.create_takedown("tenant-a",phishing["event_id"],None,"phishing","high")
 
-    summary=digital_risk.summarize_events(
-        digital_risk.list_events("tenant-a"),
-        [takedown],
-    )
+    summary=digital_risk.summarize_events(digital_risk.list_events("tenant-a"))
 
     assert summary["credential_exposures"]==1
-    assert summary["takedown_candidates"]==1
-    assert summary["takedown_covered"]==1
-    assert summary["takedown_coverage_percent"]==100
+    assert summary["high_risk_open"]>=1
     assert summary["average_risk_score"]>0
+    assert "takedown_candidates" not in summary
