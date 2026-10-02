@@ -240,37 +240,41 @@ def mfa_enroll(principal: Principal, current_password: str, current_mfa_code: st
         (principal.user_id,principal.tenant_id),
     ).fetchone()
     existing=conn.execute(
-        "SELECT secret,enabled,last_counter FROM users_mfa WHERE user_id=?",
+        "SELECT enabled FROM users_mfa WHERE user_id=?",
         (principal.user_id,),
     ).fetchone()
+    conn.close()
     if not user:
-        conn.close()
         raise ValueError("user not found")
     if not _verify(current_password,user["password_hash"]):
-        conn.close()
         raise PermissionError("current password verification failed")
     if existing and existing["enabled"]:
-        counter=verify_totp_counter(_decrypt_mfa_secret(existing["secret"]),current_mfa_code or "")
-        if counter is None or (existing["last_counter"] is not None and counter<=int(existing["last_counter"])):
-            conn.close()
+        if not current_mfa_code or not verify_user_mfa_once(principal.user_id,current_mfa_code):
             raise PermissionError("current MFA verification failed")
+
     secret=generate_mfa_secret()
+    now=int(time.time())
+    conn=_db()
     conn.execute(
         """INSERT INTO users_mfa(user_id,secret,enabled,created_at,last_counter)
            VALUES(?,?,0,?,NULL)
            ON CONFLICT(user_id) DO UPDATE SET
              secret=excluded.secret,enabled=0,created_at=excluded.created_at,last_counter=NULL""",
-        (principal.user_id,_encrypt_mfa_secret(secret),int(time.time())),
+        (principal.user_id,_encrypt_mfa_secret(secret),now),
     )
     conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
     conn.commit(); conn.close()
+
     label=urllib.parse.quote(f"Be Safe ASM:{principal.email}")
     uri=f"otpauth://totp/{label}?secret={secret}&issuer=Be%20Safe%20ASM"
     return {"secret":secret,"otpauth_uri":uri}
 
 def mfa_enable(principal: Principal, code: str) -> bool:
     conn=_db()
-    row=conn.execute("SELECT secret,last_counter FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
+    row=conn.execute(
+        "SELECT secret,last_counter FROM users_mfa WHERE user_id=?",
+        (principal.user_id,),
+    ).fetchone()
     if not row:
         conn.close()
         raise ValueError("MFA enrollment required")
@@ -278,18 +282,29 @@ def mfa_enable(principal: Principal, code: str) -> bool:
     if counter is None or (row["last_counter"] is not None and counter<=int(row["last_counter"])):
         conn.close()
         return False
-    conn.execute("UPDATE users_mfa SET enabled=1,last_counter=? WHERE user_id=?",(counter,principal.user_id))
+    conn.execute(
+        "UPDATE users_mfa SET enabled=1,last_counter=? WHERE user_id=?",
+        (counter,principal.user_id),
+    )
     conn.commit(); conn.close()
     return True
 
 def mfa_secret_for_user(user_id: str) -> str | None:
-    conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
+    conn=_db()
+    row=conn.execute(
+        "SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",
+        (user_id,),
+    ).fetchone()
+    conn.close()
     if not row:
         return None
     secret=_decrypt_mfa_secret(row["secret"])
-    if not str(row["secret"]).startswith("fernet-v2:"):
+    if not str(row["secret"]).startswith("fernet:"):
         conn=_db()
-        conn.execute("UPDATE users_mfa SET secret=? WHERE user_id=?",(_encrypt_mfa_secret(secret),user_id))
+        conn.execute(
+            "UPDATE users_mfa SET secret=? WHERE user_id=?",
+            (_encrypt_mfa_secret(secret),user_id),
+        )
         conn.commit(); conn.close()
     return secret
 
@@ -301,7 +316,7 @@ def verify_user_mfa_once(user_id: str, code: str) -> bool:
     ).fetchone()
     if not row:
         conn.close()
-        return True
+        return False
     counter=verify_totp_counter(_decrypt_mfa_secret(row["secret"]),code)
     if counter is None or (row["last_counter"] is not None and counter<=int(row["last_counter"])):
         conn.close()
@@ -314,13 +329,9 @@ def verify_user_mfa_once(user_id: str, code: str) -> bool:
     conn.commit(); conn.close()
     return bool(updated)
 
-
 def _recovery_code_hash(code: str) -> str:
-    return hmac.new(
-        hashlib.sha256((_mfa_key_material()+":recovery").encode()).digest(),
-        str(code or "").strip().encode(),
-        hashlib.sha256,
-    ).hexdigest()
+    key=hashlib.sha256((_mfa_key_material()+":recovery").encode()).digest()
+    return hmac.new(key,str(code or "").strip().encode(),hashlib.sha256).hexdigest()
 
 def issue_mfa_recovery_codes(principal: Principal) -> list[str]:
     conn=_db()
@@ -335,7 +346,7 @@ def issue_mfa_recovery_codes(principal: Principal) -> list[str]:
     now=int(time.time())
     conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
     conn.executemany(
-        "INSERT INTO mfa_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)",
+        "INSERT INTO mfa_recovery_codes(user_id,code_hash,created_at,used_at) VALUES(?,?,?,NULL)",
         [(principal.user_id,_recovery_code_hash(code),now) for code in codes],
     )
     conn.commit(); conn.close()
@@ -366,69 +377,6 @@ def verify_mfa_recovery_code(user_id: str, code: str) -> bool:
     conn.commit(); conn.close()
     return bool(updated)
 
-def mfa_disable(principal: Principal, current_password: str, current_mfa_code: str) -> bool:
-    conn=_db()
-    user=conn.execute(
-        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
-        (principal.user_id,principal.tenant_id),
-    ).fetchone()
-    conn.close()
-    if not user or not _verify(current_password,user["password_hash"]):
-        raise PermissionError("current password verification failed")
-    if not verify_user_mfa_once(principal.user_id,current_mfa_code):
-        raise PermissionError("current MFA verification failed")
-    conn=_db()
-    conn.execute("UPDATE users_mfa SET enabled=0 WHERE user_id=?",(principal.user_id,))
-    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
-    conn.commit(); conn.close()
-    return True
-
-def tenant_mfa_policy(tenant_id: str) -> dict:
-    conn=_db()
-    row=conn.execute(
-        "SELECT mfa_required_roles,updated_at FROM tenant_security_policy WHERE tenant_id=?",
-        (tenant_id,),
-    ).fetchone()
-    conn.close()
-    roles=json.loads(row["mfa_required_roles"]) if row else []
-    return {"tenant_id":tenant_id,"mfa_required_roles":roles,"updated_at":row["updated_at"] if row else None}
-
-def set_tenant_mfa_policy(principal: Principal, roles: list[str]) -> dict:
-    if principal.role not in {"admin","superadmin"} and not can(principal,"tenant:manage"):
-        raise PermissionError("admin required")
-    normalized=sorted(set(str(role).strip() for role in roles if str(role).strip()))
-    for role in normalized:
-        if role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX):
-            raise ValueError("invalid role in MFA policy")
-        if role.startswith(CUSTOM_ROLE_PREFIX):
-            role_permissions(role,principal.tenant_id)
-    conn=_db()
-    if normalized:
-        placeholders=",".join("?" for _ in normalized)
-        rows=conn.execute(
-            f"""SELECT u.id,u.email,u.role FROM users u
-                LEFT JOIN users_mfa m ON m.user_id=u.id AND m.enabled=1
-                WHERE u.tenant_id=? AND u.active=1 AND u.role IN ({placeholders}) AND m.user_id IS NULL""",
-            (principal.tenant_id,*normalized),
-        ).fetchall()
-        if rows:
-            conn.close()
-            raise ValueError("all active users in required roles must enable MFA before policy enforcement")
-    now=int(time.time())
-    conn.execute(
-        """INSERT INTO tenant_security_policy(tenant_id,mfa_required_roles,updated_at)
-           VALUES(?,?,?)
-           ON CONFLICT(tenant_id) DO UPDATE SET
-             mfa_required_roles=excluded.mfa_required_roles,updated_at=excluded.updated_at""",
-        (principal.tenant_id,json.dumps(normalized,separators=(",",":")),now),
-    )
-    conn.commit(); conn.close()
-    return {"tenant_id":principal.tenant_id,"mfa_required_roles":normalized,"updated_at":now}
-
-def _tenant_role_requires_mfa(tenant_id: str, role: str) -> bool:
-    return role in set(tenant_mfa_policy(tenant_id)["mfa_required_roles"])
-
-
 def mfa_disable(principal: Principal, current_password: str, verification_code: str) -> bool:
     conn=_db()
     user=conn.execute(
@@ -446,43 +394,92 @@ def mfa_disable(principal: Principal, current_password: str, verification_code: 
         raise PermissionError("current password verification failed")
     if not enabled or not enabled["enabled"]:
         return True
-    verified=verify_user_mfa_once(principal.user_id,verification_code)
+
+    verified=False
+    if verification_code.isdigit() and len(verification_code)==6:
+        verified=verify_user_mfa_once(principal.user_id,verification_code)
     if not verified:
-        verified=_consume_recovery_code(principal.user_id,verification_code)
+        verified=verify_mfa_recovery_code(principal.user_id,verification_code)
     if not verified:
         raise PermissionError("current MFA verification failed")
+
+    now=int(time.time())
     conn=_db()
-    conn.execute("UPDATE users_mfa SET enabled=0,last_counter=NULL WHERE user_id=?",(principal.user_id,))
+    conn.execute(
+        "UPDATE users_mfa SET enabled=0,last_counter=NULL WHERE user_id=?",
+        (principal.user_id,),
+    )
     conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
-    conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",
-                 (int(time.time()),principal.user_id,principal.tenant_id))
+    conn.execute(
+        "UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",
+        (now,principal.user_id,principal.tenant_id),
+    )
     conn.commit(); conn.close()
     return True
 
-def tenant_mfa_required(tenant_id: str) -> bool:
+def tenant_mfa_policy(tenant_id: str) -> dict:
     conn=_db()
-    row=conn.execute("SELECT mfa_required FROM tenants WHERE id=?",(tenant_id,)).fetchone()
+    row=conn.execute(
+        "SELECT mfa_required_roles,updated_at FROM tenant_security_policy WHERE tenant_id=?",
+        (tenant_id,),
+    ).fetchone()
     conn.close()
-    return bool(row and row["mfa_required"])
+    roles=json.loads(row["mfa_required_roles"]) if row else []
+    return {
+        "tenant_id":tenant_id,
+        "mfa_required_roles":roles,
+        "updated_at":row["updated_at"] if row else None,
+    }
 
-def set_tenant_mfa_required(principal: Principal, required: bool) -> dict:
-    if principal.role not in {"admin","superadmin"}:
+def set_tenant_mfa_policy(principal: Principal, roles: list[str]) -> dict:
+    if principal.role not in {"admin","superadmin"} and not can(principal,"tenant:manage"):
         raise PermissionError("admin required")
-    conn=_db()
-    conn.execute("UPDATE tenants SET mfa_required=? WHERE id=?",(1 if required else 0,principal.tenant_id))
-    conn.commit(); conn.close()
-    return {"tenant_id":principal.tenant_id,"mfa_required":bool(required)}
+    normalized=sorted(set(str(role).strip() for role in roles if str(role).strip()))
+    for role in normalized:
+        if role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX):
+            raise ValueError("invalid role in MFA policy")
+        if role.startswith(CUSTOM_ROLE_PREFIX):
+            role_permissions(role,principal.tenant_id)
 
-def mfa_required_for(principal: Principal, permission: str | None = None) -> bool:
-    if not tenant_mfa_required(principal.tenant_id):
-        return False
-    if permission is None:
-        return True
-    return permission=="discovery:run" and can(principal,"discovery:run")
+    conn=_db()
+    if normalized:
+        placeholders=",".join("?" for _ in normalized)
+        rows=conn.execute(
+            f"""SELECT u.id,u.email,u.role FROM users u
+                LEFT JOIN users_mfa m ON m.user_id=u.id AND m.enabled=1
+                WHERE u.tenant_id=? AND u.active=1
+                  AND u.role IN ({placeholders}) AND m.user_id IS NULL""",
+            (principal.tenant_id,*normalized),
+        ).fetchall()
+        if rows:
+            conn.close()
+            raise ValueError("all active users in required roles must enable MFA before policy enforcement")
+
+    now=int(time.time())
+    conn.execute(
+        """INSERT INTO tenant_security_policy(tenant_id,mfa_required_roles,updated_at)
+           VALUES(?,?,?)
+           ON CONFLICT(tenant_id) DO UPDATE SET
+             mfa_required_roles=excluded.mfa_required_roles,
+             updated_at=excluded.updated_at""",
+        (principal.tenant_id,json.dumps(normalized,separators=(",",":")),now),
+    )
+    conn.commit(); conn.close()
+    return {
+        "tenant_id":principal.tenant_id,
+        "mfa_required_roles":normalized,
+        "updated_at":now,
+    }
+
+def _tenant_role_requires_mfa(tenant_id: str, role: str) -> bool:
+    return role in set(tenant_mfa_policy(tenant_id)["mfa_required_roles"])
 
 def mfa_enabled_for_user(user_id: str) -> bool:
     conn=_db()
-    row=conn.execute("SELECT enabled FROM users_mfa WHERE user_id=?",(user_id,)).fetchone()
+    row=conn.execute(
+        "SELECT enabled FROM users_mfa WHERE user_id=?",
+        (user_id,),
+    ).fetchone()
     conn.close()
     return bool(row and row["enabled"])
 
