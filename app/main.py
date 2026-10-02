@@ -39,7 +39,7 @@ from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_p
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
-from .digital_risk import DigitalRiskEvent, TakedownRequest, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, create_takedown, list_takedowns, summarize_events
+from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
 from .dast import run_safe_web_assessment
@@ -1804,7 +1804,6 @@ def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
 def digital_risk(request: Request, category: str|None=None):
     principal=require(request,"assets:read")
     events=list_events(principal.tenant_id,category)
-    takedowns=list_takedowns(principal.tenant_id)
     ordered=sorted(
         events,
         key=lambda e:(int(e.get("risk_score",0)),int(e.get("confidence",0))),
@@ -1812,7 +1811,7 @@ def digital_risk(request: Request, category: str|None=None):
     )
     return {
         "events":ordered,
-        "summary":summarize_events(events,takedowns),
+        "summary":summarize_events(events),
         "top_risk":ordered[:10],
     }
 
@@ -1853,20 +1852,6 @@ def digital_risk_ingest(payload: DigitalRiskEvent, request: Request):
     audit(principal,"create","digital_risk",item["event_id"],{"category":item["category"],"source":item["source"]})
     return item
 
-@app.get("/api/v1/digital-risk/takedowns")
-def digital_risk_takedowns(request: Request):
-    principal=require(request,"assets:read")
-    return {"items":list_takedowns(principal.tenant_id)}
-
-@app.post("/api/v1/digital-risk/takedowns")
-def digital_risk_takedown(payload: TakedownRequest, request: Request):
-    principal=require(request,"assets:write")
-    events=list_events(principal.tenant_id)
-    if not any(e["event_id"]==payload.event_id for e in events):
-        raise HTTPException(status_code=404,detail="digital risk event not found")
-    item=create_takedown(principal.tenant_id,payload.event_id,payload.provider,payload.reason,payload.priority)
-    audit(principal,"create","takedown",item["takedown_id"],{"event_id":payload.event_id,"provider":item["provider"]})
-    return item
 
 @app.get("/api/v1/exposure/storyline")
 def exposure_storyline(request: Request, limit: int = 50):
