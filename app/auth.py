@@ -940,18 +940,42 @@ def _backfill_audit_chain(conn) -> None:
             prev=current
 
 def _run_one_time_migrations(conn) -> None:
-    migration_name="audit_chain_v1"
+    audit_migration="audit_chain_v1"
     applied=conn.execute(
         "SELECT 1 FROM schema_migrations WHERE name=?",
-        (migration_name,),
+        (audit_migration,),
     ).fetchone()
-    if applied:
-        return
-    _backfill_audit_chain(conn)
-    conn.execute(
-        "INSERT OR IGNORE INTO schema_migrations(name,applied_at) VALUES(?,?)",
-        (migration_name,int(time.time())),
-    )
+    if not applied:
+        _backfill_audit_chain(conn)
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(name,applied_at) VALUES(?,?)",
+            (audit_migration,int(time.time())),
+        )
+
+    policy_migration="tenant_policy_tables_v1"
+    applied=conn.execute(
+        "SELECT 1 FROM schema_migrations WHERE name=?",
+        (policy_migration,),
+    ).fetchone()
+    if not applied:
+        conn.execute("""CREATE TABLE IF NOT EXISTS tenant_risk_policies(
+            tenant_id TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            policy_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            updated_by TEXT
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS tenant_sla_policies(
+            tenant_id TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            policy_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            updated_by TEXT
+        )""")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(name,applied_at) VALUES(?,?)",
+            (policy_migration,int(time.time())),
+        )
     conn.commit()
 
 
