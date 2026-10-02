@@ -28,7 +28,7 @@ def test_network_active_post_routes_queue_in_production():
 def test_active_operation_queue_has_worker_dispatch():
     queue=Path("app/job_queue.py").read_text(encoding="utf-8")
     worker=Path("app/worker.py").read_text(encoding="utf-8")
-    dispatcher=Path("app/application/services/operation_dispatcher.py").read_text(encoding="utf-8")
+    dispatcher=Path("app/infrastructure/workers/operation_dispatcher.py").read_text(encoding="utf-8")
     legacy=Path("app/active_operations.py").read_text(encoding="utf-8")
 
     assert "def enqueue_operation(" in queue
