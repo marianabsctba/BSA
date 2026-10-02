@@ -24,7 +24,7 @@ from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
-from .ctem_retest import classify_ctem_retest
+from .ctem_retest import reconcile_ctem_retest_job
 from .discovery_orchestrator import plan_candidate_collection
 from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user
 from .asset_view import asset_detail
@@ -1509,7 +1509,7 @@ def exposure_assessment_job(job_id: str, request: Request):
             job=get_job(job_id,principal.tenant_id) or job
     ctem_retest_result=None
     if job["status"]=="succeeded" and result is not None and job_principal is not None and job.get("materialized"):
-        ctem_retest_result=_reconcile_ctem_retest_result(job_principal,job,result)
+        ctem_retest_result=reconcile_ctem_retest_job(job_principal,job,result,audit)
     return {
         "job_id":job["job_id"],
         "status":job["status"],
@@ -2238,90 +2238,6 @@ def discovery_risk_paths(target: str, request: Request):
         "paths": graph["top_risk_paths"],
         "summary": graph["risk_summary"],
     }
-
-
-def _reconcile_ctem_retest_result(principal, job: dict, result: dict) -> dict | None:
-    link=ctem_retest_for_job(job["job_id"],principal.tenant_id)
-    if not link:
-        return None
-    if link.get("outcome"):
-        return link
-
-    item=next(
-        (x for x in list_ctem_items(principal.tenant_id) if x.get("item_id")==link.get("item_id")),
-        None,
-    )
-    if item is None:
-        return complete_ctem_retest(
-            job["job_id"],principal.tenant_id,"inconclusive",
-            [f"assessment-job:{job['job_id']}:ctem-item-missing"],
-        )
-
-    decision=classify_ctem_retest(
-        item,result,job_id=job["job_id"],target=job.get("target",""),
-    )
-    outcome=decision["outcome"]
-    refs=list(decision.get("evidence_refs") or [])
-    previous_state=str(item.get("state") or "")
-
-    if outcome in {"passed","failed"}:
-        try:
-            verified=verify_ctem_item(
-                item["item_id"],
-                principal.tenant_id,
-                outcome,
-                refs,
-                f"Automated authorized retest {job['job_id']}: {decision.get('reason','')}",
-            )
-            next_state=str(verified.get("state") or previous_state)
-            record_ctem_transition(
-                item["item_id"],
-                principal.tenant_id,
-                "retest_verified" if outcome=="passed" else "retest_failed",
-                previous_state,
-                next_state,
-                actor_id=str(getattr(principal,"user_id","") or ""),
-                request_id=str(job["job_id"]),
-            )
-        except ValueError:
-            outcome="inconclusive"
-            decision["reason"]="CTEM state is not eligible for automatic verification"
-            refs=sorted(set(refs+[f"assessment-job:{job['job_id']}:state:{previous_state}"]))
-            record_ctem_transition(
-                item["item_id"],
-                principal.tenant_id,
-                "retest_inconclusive",
-                previous_state,
-                previous_state,
-                actor_id=str(getattr(principal,"user_id","") or ""),
-                request_id=str(job["job_id"]),
-            )
-    else:
-        record_ctem_transition(
-            item["item_id"],
-            principal.tenant_id,
-            "retest_inconclusive",
-            previous_state,
-            previous_state,
-            actor_id=str(getattr(principal,"user_id","") or ""),
-            request_id=str(job["job_id"]),
-        )
-
-    complete_ctem_retest(job["job_id"],principal.tenant_id,outcome,refs)
-    audit(
-        principal,
-        "ctem_retest_reconcile",
-        "ctem",
-        item["item_id"],
-        {
-            "job_id":job["job_id"],
-            "outcome":outcome,
-            "coverage_percent":decision.get("coverage_percent",0),
-            "matching_findings":decision.get("matching_findings",0),
-            "partial_coverage":decision.get("partial_coverage",False),
-        },
-    )
-    return {**decision,"outcome":outcome,"evidence_refs":refs}
 
 
 @app.get("/api/v1/ctem/operations")
