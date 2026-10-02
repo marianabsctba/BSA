@@ -8,28 +8,12 @@ from ...exposure_dna import build_exposure_dna
 from ...history import change_summary, history_for
 from ...intelligence import blast_radius, ownership_confidence
 from ...scope import asset_in_scope
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
 
-
-def tenant_scope(principal):
-    assets=[
-        asset
-        for asset in STORE_ASSETS
-        if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
-        and asset_in_scope(principal,asset.value)
-    ]
-    asset_ids={asset.id for asset in assets}
-    findings=[
-        finding
-        for finding in STORE_FINDINGS
-        if getattr(finding,"tenant_id","tenant-demo")==principal.tenant_id
-        and finding.asset_id in asset_ids
-    ]
-    return assets,findings
 
 
 @router.get("/api/v1/assets")
