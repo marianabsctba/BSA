@@ -7,6 +7,7 @@ as proof of remediation.
 from __future__ import annotations
 
 from hashlib import sha256
+from urllib.parse import urlparse
 
 
 MATERIAL_SEVERITIES={"critical","high","medium","low"}
@@ -26,14 +27,30 @@ def _identity_values(finding: dict) -> set[str]:
     return values
 
 
+def _hostish(value: str) -> str:
+    raw=str(value or "").strip().lower()
+    if not raw:
+        return ""
+    parsed=urlparse(raw if "://" in raw else "//"+raw)
+    host=parsed.hostname or raw.split("/",1)[0].split(":",1)[0]
+    return host.rstrip(".")
+
+
 def _finding_matches_item(item: dict, finding: dict, target: str) -> bool:
     finding_id=str(item.get("finding_id") or "").strip().lower()
     if finding_id:
         identities=_identity_values(finding)
         return finding_id in identities or any(finding_id in x or x in finding_id for x in identities if x)
 
-    asset=str(finding.get("asset") or (finding.get("evidence") or {}).get("asset") or "").strip().lower()
-    target=str(target or "").strip().lower()
+    evidence=finding.get("evidence") or {}
+    asset=_hostish(
+        finding.get("asset")
+        or evidence.get("asset")
+        or evidence.get("url")
+        or evidence.get("matched_at")
+        or ""
+    )
+    target=_hostish(target)
     if asset and target:
         return asset==target or asset.endswith("."+target) or target.endswith("."+asset)
 
