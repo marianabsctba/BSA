@@ -126,3 +126,33 @@ def test_retest_matches_url_evidence_to_hostname_target():
 
     assert out["outcome"]=="failed"
     assert "evidence://url-match" in out["evidence_refs"]
+
+
+def test_retest_reconciliation_claim_is_atomic(tmp_path,monkeypatch):
+    import app.history as history
+
+    monkeypatch.setenv("BSA_HISTORY_DB",str(tmp_path/"history.db"))
+    history.record_ctem_retest("job-race","tenant-a","item-a","rapid","auth-a")
+
+    assert history.claim_ctem_retest_reconciliation("job-race","tenant-a") is True
+    assert history.claim_ctem_retest_reconciliation("job-race","tenant-a") is False
+
+    link=history.ctem_retest_for_job("job-race","tenant-a")
+    assert link["status"]=="reconciling"
+
+    history.release_ctem_retest_reconciliation("job-race","tenant-a")
+    assert history.claim_ctem_retest_reconciliation("job-race","tenant-a") is True
+
+
+def test_completed_retest_cannot_be_claimed_again(tmp_path,monkeypatch):
+    import app.history as history
+
+    monkeypatch.setenv("BSA_HISTORY_DB",str(tmp_path/"history.db"))
+    history.record_ctem_retest("job-done","tenant-a","item-a","rapid","auth-a")
+    assert history.claim_ctem_retest_reconciliation("job-done","tenant-a") is True
+    done=history.complete_ctem_retest(
+        "job-done","tenant-a","passed",["assessment-job:job-done:coverage:100"],
+    )
+
+    assert done["status"]=="reconciled"
+    assert history.claim_ctem_retest_reconciliation("job-done","tenant-a") is False
