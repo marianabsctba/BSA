@@ -590,3 +590,58 @@ def test_capability_metrics_count_execution_errors_without_leaking_provider(monk
         }
     ]
     assert "httpx" not in str(metrics)
+
+
+
+def test_effectiveness_metrics_measure_execution_evidence_and_corroboration():
+    from app.assessment_orchestrator import _assessment_effectiveness
+
+    findings = [
+        {
+            "confidence": 95,
+            "evidence": {
+                "validation_state": "confirmed_evidence",
+                "independently_corroborated": True,
+            },
+        },
+        {
+            "confidence": 75,
+            "evidence": {"relationship": "observed"},
+        },
+        {
+            "confidence": 90,
+            "evidence": {},
+        },
+    ]
+    metrics = [
+        {"name": "fingerprint", "calls": 2, "errors": 0, "raw_results": 3},
+        {"name": "vulnerability", "calls": 1, "errors": 1, "raw_results": 0},
+        {"name": "certificate_intelligence", "calls": 0, "errors": 0, "raw_results": 0},
+    ]
+
+    out = _assessment_effectiveness(findings, metrics, 3)
+
+    assert out["execution_success_percent"] == 67
+    assert out["exercised_capability_percent"] == 67
+    assert out["productive_capability_percent"] == 33
+    assert out["evidenced_finding_percent"] == 67
+    assert out["high_confidence_finding_percent"] == 67
+    assert out["confirmed_evidence_count"] == 1
+    assert out["independently_corroborated_count"] == 1
+    assert out["finding_count"] == 3
+
+
+def test_effectiveness_metrics_do_not_treat_zero_findings_as_execution_failure():
+    from app.assessment_orchestrator import _assessment_effectiveness
+
+    out = _assessment_effectiveness(
+        [],
+        [{"name": "fingerprint", "calls": 1, "errors": 0, "raw_results": 0}],
+        1,
+    )
+
+    assert out["execution_success_percent"] == 100
+    assert out["exercised_capability_percent"] == 100
+    assert out["productive_capability_percent"] == 0
+    assert out["finding_count"] == 0
+    assert out["failed_calls"] == 0
