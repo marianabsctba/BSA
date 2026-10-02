@@ -70,7 +70,7 @@ def test_health_response_has_request_id_header(monkeypatch):
 
 
 def test_ready_returns_503_with_component_detail_when_degraded(monkeypatch):
-    monkeypatch.setattr("app.main.runtime_health",lambda:{
+    monkeypatch.setattr(operations_router,"runtime_health",lambda:{
         "status":"degraded",
         "components":{
             "auth_db":{"status":"unavailable"},
