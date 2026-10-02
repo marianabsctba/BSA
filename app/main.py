@@ -2576,8 +2576,6 @@ def discovery_infrastructure_graph(target: str, request: Request):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     if IS_PRODUCTION:
         return queue_active_operation(request,principal,target,"discovery.infrastructure_graph",{})
-    if IS_PRODUCTION:
-        return queue_active_operation(request,principal,target,"discovery.infrastructure",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
@@ -2594,6 +2592,8 @@ def discovery_infrastructure(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.infrastructure",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
