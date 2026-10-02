@@ -312,7 +312,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
     ctem_regressions_reopened=0
     skipped_out_of_scope=0
 
-    scoped_assets,_=tenant_scope(principal)
+    scoped_assets,_=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
     by_value={asset.value.lower():asset for asset in scoped_assets}
 
     for row in result.get("findings",[]):
