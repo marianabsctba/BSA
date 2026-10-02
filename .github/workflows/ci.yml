@@ -17,6 +17,23 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall app
+      - name: Verify product version consistency
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+          from app.version import __version__
+
+          root=pathlib.Path(".")
+          expected=(root/"VERSION").read_text().strip()
+          frontend=json.loads((root/"frontend/package.json").read_text())["version"]
+          readme=(root/"README.md").read_text()
+          assert __version__==expected, f"API version {__version__} != VERSION {expected}"
+          assert frontend==expected, f"Frontend version {frontend} != VERSION {expected}"
+          assert f"Versão atual:** \`{expected}\`" in readme, "README version is not aligned"
+          PY
+
       - name: Backend tests with coverage baseline
         run: pytest -q --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=70
 
