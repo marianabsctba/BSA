@@ -1695,8 +1695,46 @@ def update_ctem_plan(plan_id: str, payload: CTEMStatusRequest, request: Request)
 def exposure_ctem(request: Request):
     principal = require(request, "assets:read")
     assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    asset_map = {a.id: a for a in assets}
+    finding_map = {f.id: f for f in findings}
     queue = []
+    persistent = list_ctem_items(principal.tenant_id)
+    persistent_asset_ids = set()
+
+    for item in persistent:
+        if item.get("state") == "verified":
+            continue
+        asset = asset_map.get(item.get("asset_id"))
+        if not asset:
+            continue
+        persistent_asset_ids.add(asset.id)
+        finding = finding_map.get(item.get("finding_id"))
+        verifications = ctem_verification_history(item["item_id"], principal.tenant_id)
+        regression = any(v.get("result") == "failed" for v in verifications)
+        state = str(item.get("state") or "new")
+        stage = "retest" if state == "resolved" else "prioritize" if state in {"acknowledged", "in_progress"} else "validate"
+        next_action = ctem_next_action(item)
+        queue.append({
+            "item_id": item["item_id"],
+            "asset_id": asset.id,
+            "asset": asset.value,
+            "finding_id": item.get("finding_id"),
+            "finding": finding.title if finding else item.get("title"),
+            "priority_score": int(item.get("priority", 0) or 0),
+            "criticality": asset.criticality,
+            "owner": asset.owner,
+            "finding_count": 1 if finding else 0,
+            "stage": stage,
+            "state": state,
+            "next_action": next_action["action"],
+            "verification_required": bool(next_action.get("requires_evidence")),
+            "regression": regression,
+            "evidence_ref_count": len(item.get("evidence_refs", []) or []),
+        })
+
     for asset in assets:
+        if asset.id in persistent_asset_ids:
+            continue
         af = [f for f in findings if f.asset_id == asset.id and f.status == "open"]
         score = exposure_breakdown(asset, findings).score
         dna = build_exposure_dna(asset, findings)
@@ -1707,7 +1745,10 @@ def exposure_ctem(request: Request):
                 "owner": asset.owner, "finding_count": len(af),
                 "dna": dna.fingerprint, "signals": dna.signals,
                 "stage": "prioritize" if af else "validate",
+                "state": "candidate",
                 "next_action": "validate-exposure" if not af else "mobilize-remediation",
+                "verification_required": False,
+                "regression": False,
             })
     return {"items": sorted(queue, key=lambda x: x["priority_score"], reverse=True)}
 
