@@ -148,45 +148,55 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
     if not claim_ctem_retest_reconciliation(job["job_id"],tenant_id):
         return ctem_retest_for_job(job["job_id"],tenant_id)
 
-    item=next(
-        (x for x in list_ctem_items(tenant_id) if x.get("item_id")==link.get("item_id")),
-        None,
-    )
-    if item is None:
-        refs=[f"assessment-job:{job['job_id']}:ctem-item-missing"]
-        return complete_ctem_retest(job["job_id"],tenant_id,"inconclusive",refs)
-
     try:
+        item=next(
+            (x for x in list_ctem_items(tenant_id) if x.get("item_id")==link.get("item_id")),
+            None,
+        )
+        if item is None:
+            refs=[f"assessment-job:{job['job_id']}:ctem-item-missing"]
+            return complete_ctem_retest(job["job_id"],tenant_id,"inconclusive",refs)
+
         decision=classify_ctem_retest(
             item,result,job_id=job["job_id"],target=job.get("target",""),
         )
         outcome=decision["outcome"]
-    refs=list(decision.get("evidence_refs") or [])
-    previous_state=str(item.get("state") or "")
+        refs=list(decision.get("evidence_refs") or [])
+        previous_state=str(item.get("state") or "")
 
-    if outcome in {"passed","failed"}:
-        try:
-            verified=verify_ctem_item(
-                item["item_id"],
-                tenant_id,
-                outcome,
-                refs,
-                f"Automated authorized retest {job['job_id']}: {decision.get('reason','')}",
-            )
-            next_state=str(verified.get("state") or previous_state)
-            record_ctem_transition(
-                item["item_id"],
-                tenant_id,
-                "retest_verified" if outcome=="passed" else "retest_failed",
-                previous_state,
-                next_state,
-                actor_id=str(getattr(principal,"user_id","") or ""),
-                request_id=str(job["job_id"]),
-            )
-        except ValueError:
-            outcome="inconclusive"
-            decision["reason"]="CTEM state is not eligible for automatic verification"
-            refs=sorted(set(refs+[f"assessment-job:{job['job_id']}:state:{previous_state}"]))
+        if outcome in {"passed","failed"}:
+            try:
+                verified=verify_ctem_item(
+                    item["item_id"],
+                    tenant_id,
+                    outcome,
+                    refs,
+                    f"Automated authorized retest {job['job_id']}: {decision.get('reason','')}",
+                )
+                next_state=str(verified.get("state") or previous_state)
+                record_ctem_transition(
+                    item["item_id"],
+                    tenant_id,
+                    "retest_verified" if outcome=="passed" else "retest_failed",
+                    previous_state,
+                    next_state,
+                    actor_id=str(getattr(principal,"user_id","") or ""),
+                    request_id=str(job["job_id"]),
+                )
+            except ValueError:
+                outcome="inconclusive"
+                decision["reason"]="CTEM state is not eligible for automatic verification"
+                refs=sorted(set(refs+[f"assessment-job:{job['job_id']}:state:{previous_state}"]))
+                record_ctem_transition(
+                    item["item_id"],
+                    tenant_id,
+                    "retest_inconclusive",
+                    previous_state,
+                    previous_state,
+                    actor_id=str(getattr(principal,"user_id","") or ""),
+                    request_id=str(job["job_id"]),
+                )
+        else:
             record_ctem_transition(
                 item["item_id"],
                 tenant_id,
@@ -196,28 +206,19 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
                 actor_id=str(getattr(principal,"user_id","") or ""),
                 request_id=str(job["job_id"]),
             )
-    else:
-        record_ctem_transition(
-            item["item_id"],
-            tenant_id,
-            "retest_inconclusive",
-            previous_state,
-            previous_state,
-            actor_id=str(getattr(principal,"user_id","") or ""),
-            request_id=str(job["job_id"]),
-        )
 
-    complete_ctem_retest(job["job_id"],tenant_id,outcome,refs)
-    payload={
-        "job_id":job["job_id"],
-        "outcome":outcome,
-        "coverage_percent":decision.get("coverage_percent",0),
-        "matching_findings":decision.get("matching_findings",0),
-        "partial_coverage":decision.get("partial_coverage",False),
-    }
-    if audit_callback is not None:
-        audit_callback(principal,"ctem_retest_reconcile","ctem",item["item_id"],payload)
+        complete_ctem_retest(job["job_id"],tenant_id,outcome,refs)
+        payload={
+            "job_id":job["job_id"],
+            "outcome":outcome,
+            "coverage_percent":decision.get("coverage_percent",0),
+            "matching_findings":decision.get("matching_findings",0),
+            "partial_coverage":decision.get("partial_coverage",False),
+        }
+        if audit_callback is not None:
+            audit_callback(principal,"ctem_retest_reconcile","ctem",item["item_id"],payload)
         return {**decision,"outcome":outcome,"evidence_refs":refs}
     except Exception:
         release_ctem_retest_reconciliation(job["job_id"],tenant_id)
         raise
+
