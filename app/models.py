@@ -62,6 +62,7 @@ class Finding(BaseModel):
     detected_at: str | None = None
     fixed_version: str | None = None
     affected_component: str | None = None
+    affected_components: list[str] = Field(default_factory=list)
     source_refs: list[str] = Field(default_factory=list)
     false_positive_confidence: int = Field(default=0, ge=0, le=100)
     validation_state: str = "observed"
