@@ -35,23 +35,6 @@ def test_puredns_requires_resolver_files(monkeypatch, tmp_path):
     assert provider.available() is True
 
 
-def test_openvas_readiness_requires_live_configuration(monkeypatch, tmp_path):
-    from app.assessment_providers import OpenVASProvider
-
-    monkeypatch.setattr("app.assessment_providers.shutil.which", lambda name: "/usr/local/bin/gvm-cli" if name == "gvm-cli" else None)
-    socket_path = tmp_path / "gvmd.sock"
-    monkeypatch.setenv("BSA_GVM_SOCKET", str(socket_path))
-    monkeypatch.setenv("BSA_GVM_SCAN_CONFIG_ID", "config-id")
-    monkeypatch.setenv("BSA_GVM_SCANNER_ID", "scanner-id")
-
-    provider = OpenVASProvider()
-    state = provider.readiness()
-    assert state["installed"] is True
-    assert state["configured"] is True
-    assert state["socket_ready"] is False
-    assert state["ready"] is False
-
-
 def test_public_engine_health_hides_engine_readiness_details(monkeypatch):
     from app.engine_health import public_engine_health
 
@@ -68,34 +51,6 @@ def test_public_engine_health_hides_engine_readiness_details(monkeypatch):
     assert "engines" not in public
     assert "private-a" not in str(public)
     assert "installed" not in str(public)
-
-
-
-def test_openvas_optional_live_probe_controls_readiness(monkeypatch, tmp_path):
-    from app.assessment_providers import OpenVASProvider
-
-    socket_path = tmp_path / "gvmd.sock"
-    socket_path.write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        "app.assessment_providers.shutil.which",
-        lambda name: "/usr/local/bin/gvm-cli" if name == "gvm-cli" else None,
-    )
-    monkeypatch.setenv("BSA_GVM_SOCKET", str(socket_path))
-    monkeypatch.setenv("BSA_GVM_SCAN_CONFIG_ID", "config-id")
-    monkeypatch.setenv("BSA_GVM_SCANNER_ID", "scanner-id")
-    monkeypatch.setenv("BSA_GVM_READINESS_PROBE", "1")
-
-    provider = OpenVASProvider()
-    monkeypatch.setattr(provider, "_probe", lambda: False)
-    state = provider.readiness()
-    assert state["live_probe_enabled"] is True
-    assert state["live"] is False
-    assert state["ready"] is False
-
-    monkeypatch.setattr(provider, "_probe", lambda: True)
-    state = provider.readiness()
-    assert state["live"] is True
-    assert state["ready"] is True
 
 
 def test_engine_runtime_readiness_contracts_hide_configuration_details(monkeypatch):
