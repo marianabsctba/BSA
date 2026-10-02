@@ -59,3 +59,58 @@ def test_admin_cannot_cross_approve_scan_grant_for_another_admin(tmp_path, monke
 
     with pytest.raises(PermissionError,match="superadmin approval"):
         grants.create_authorization_grant(admin_a,"admin-b","AUTH-ADMIN","example.org",ttl_seconds=300)
+
+
+def test_superadmin_can_approve_public_ip_for_another_tenant(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setenv("BSA_ENV","production")
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-a","Tenant A"))
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-b","Tenant B"))
+    _seed_user(conn,"super-a","tenant-a","superadmin")
+    _seed_user(conn,"admin-b","tenant-b","admin")
+    conn.commit(); conn.close()
+
+    superadmin=auth.Principal(
+        "super-a","tenant-a","super-a@example.test","superadmin","Super A"
+    )
+    admin_b=auth.Principal(
+        "admin-b","tenant-b","admin-b@example.test","admin","Admin B"
+    )
+
+    approval=scope.create_ip_ownership_approval(
+        superadmin,
+        "8.8.8.8",
+        "CONTRACT-TENANT-B",
+        "contract",
+        ttl_seconds=3600,
+        tenant_id="tenant-b",
+    )
+    assert approval["tenant_id"]=="tenant-b"
+
+    created=scope.create_scan_scope(
+        admin_b,
+        "Tenant B public IP",
+        "8.8.8.8",
+        ownership_ref="CONTRACT-TENANT-B",
+    )
+    assert created["tenant_id"]=="tenant-b"
+    assert created["ownership_verified"] is True
+
+
+def test_superadmin_target_tenant_must_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-a","Tenant A"))
+    _seed_user(conn,"super-a","tenant-a","superadmin")
+    conn.commit(); conn.close()
+    superadmin=auth.Principal(
+        "super-a","tenant-a","super-a@example.test","superadmin","Super A"
+    )
+    with pytest.raises(ValueError,match="target tenant not found"):
+        scope.create_ip_ownership_approval(
+            superadmin,
+            "8.8.8.8",
+            "CONTRACT-MISSING",
+            tenant_id="tenant-missing",
+        )
