@@ -60,9 +60,24 @@ def engine_health(target: str | None = None) -> dict:
             for row in optional_rows
             if row.get("operational") and row.get("status") == "degraded"
         ]
-        backend_slots = sum(int(row.get("backend_count", 0) or 0) for row in core_rows)
+        # Capability health normally carries backend cardinality. Keep the
+        # readiness contract compatible with synthetic/legacy health rows used by
+        # callers and tests: an operational capability without backend metadata
+        # represents one available backend, while an unavailable one represents
+        # one requested backend with zero availability.
+        backend_slots = sum(
+            int(row.get("backend_count", 1) or 1)
+            for row in core_rows
+        )
         backend_available = sum(
-            int(row.get("available_backends", 0) or 0) for row in core_rows
+            int(
+                row.get(
+                    "available_backends",
+                    1 if row.get("operational") else 0,
+                )
+                or 0
+            )
+            for row in core_rows
         )
         backend_coverage_percent = round(
             100 * backend_available / max(1, backend_slots)
