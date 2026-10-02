@@ -5,7 +5,35 @@ services:
     restart: unless-stopped
     volumes:
       - bsa_ollama:/root/.ollama
-    networks: [bsa_ai]
+    networks: [bsa_ai_backend]
+
+  ai-proxy:
+    build: .
+    container_name: bsa-ai-proxy
+    restart: unless-stopped
+    command: ["uvicorn", "app.ollama_proxy:app", "--host", "0.0.0.0", "--port", "11435"]
+    env_file: .env
+    environment:
+      BSA_ENV: production
+      BSA_OLLAMA_PROXY_TOKEN: ${BSA_OLLAMA_PROXY_TOKEN:?set BSA_OLLAMA_PROXY_TOKEN}
+      BSA_OLLAMA_UPSTREAM_URL: http://ollama:11434
+    expose:
+      - "11435"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      - ai-proxy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [bsa_ai_backend, bsa_ai_client]
 
   api:
     build: .
@@ -22,7 +50,8 @@ services:
       BSA_DEMO_DATA: "0"
       BSA_TRUST_PROXY_HEADERS: "1"
       BSA_AI_ENABLED: "1"
-      BSA_OLLAMA_URL: http://ollama:11434
+      BSA_OLLAMA_URL: http://ai-proxy:11435
+      BSA_OLLAMA_PROXY_TOKEN: ${BSA_OLLAMA_PROXY_TOKEN:?set BSA_OLLAMA_PROXY_TOKEN}
     volumes:
       - bsa_data:/data
     expose:
@@ -41,7 +70,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    networks: [bsa_ai, bsa_app, bsa_egress]
+    networks: [bsa_ai_client, bsa_app, bsa_egress]
 
 
   worker:
@@ -98,7 +127,10 @@ volumes:
   bsa_data:
 
 networks:
-  bsa_ai:
+  bsa_ai_backend:
+    driver: bridge
+    internal: true
+  bsa_ai_client:
     driver: bridge
     internal: true
   bsa_app:
