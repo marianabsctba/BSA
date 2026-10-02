@@ -550,11 +550,38 @@ def _clear_rate_limit(bucket: str, identity: str) -> None:
     conn.commit(); conn.close()
 
 
+def _account_backoff_delay(identity: str, window_seconds: int = 900) -> float:
+    now=int(time.time())
+    key=str(identity or "unknown").strip().lower()[:512] or "unknown"
+    bucket="login-account-backoff"
+    conn=_db()
+    row=conn.execute(
+        "SELECT count,window_started_at FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        (bucket,key),
+    ).fetchone()
+    if not row or now-int(row["window_started_at"] or 0)>=window_seconds:
+        count=1
+        started=now
+    else:
+        count=int(row["count"] or 0)+1
+        started=int(row["window_started_at"])
+    conn.execute(
+        """INSERT INTO auth_rate_limits(bucket,identity,count,window_started_at,blocked_until)
+           VALUES(?,?,?,?,0)
+           ON CONFLICT(bucket,identity) DO UPDATE SET
+             count=excluded.count,window_started_at=excluded.window_started_at,blocked_until=0""",
+        (bucket,key,count,started),
+    )
+    conn.commit(); conn.close()
+    # Per-account progressive delay only; never a durable account lockout.
+    return min(2.0, 0.10 * (2 ** max(0,min(count-1,5))))
+
+
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
     account_client=f"{key}:{ipkey}"
-    if _rate_limit_blocked("login-account-client",account_client) or _rate_limit_blocked("login-ip",ipkey):
+    if _rate_limit_blocked("login-ip",ipkey):
         return None
 
     conn=_db()
@@ -564,14 +591,15 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     encoded=row["password_hash"] if row else _DUMMY_PASSWORD_HASH
     password_ok=_verify(password,encoded)
     if not row or not password_ok:
-        rate_limit_action("login-account-client",account_client,limit=5,window_seconds=300)
+        delay=_account_backoff_delay(account_client)
         rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900)
+        time.sleep(delay)
         return None
 
     # Password is valid: clear primary credential throttles before entering
     # the independent MFA challenge so MFA failures cannot poison the
     # password/IP bucket or prevent the MFA limiter from taking effect.
-    _clear_rate_limit("login-account-client",account_client)
+    _clear_rate_limit("login-account-backoff",account_client)
     _clear_rate_limit("login-ip",ipkey)
 
     mfa_secret=mfa_secret_for_user(row["id"])
