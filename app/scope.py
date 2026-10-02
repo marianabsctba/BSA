@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 import urllib.request
 import urllib.error
+import http.client
+import ssl
+import socket
 import ipaddress
 import unicodedata
 import tldextract
@@ -301,19 +304,39 @@ def _verify_dns_txt(domain: str, challenge: str) -> bool:
     return False
 
 
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, hostname: str, ip: str, timeout: int=5):
+        super().__init__(hostname,port=443,timeout=timeout,context=ssl.create_default_context())
+        self._pinned_ip=ip
+
+    def connect(self):
+        sock=socket.create_connection((self._pinned_ip,self.port),self.timeout)
+        self.sock=self._context.wrap_socket(sock,server_hostname=self.host)
+
+
 def _verify_well_known(domain: str, challenge: str) -> bool:
-    from .security import validate_external_target
-    validate_external_target(domain)
-    url=f"https://{domain}/.well-known/be-safe-asm-verification"
-    opener=urllib.request.build_opener(_NoRedirect)
-    request=urllib.request.Request(url,headers={"User-Agent":"Be-Safe-ASM-Ownership/1.0"},method="GET")
+    from .security import resolve_public
     try:
-        with opener.open(request,timeout=5) as response:
-            if int(getattr(response,"status",200))!=200:
-                return False
-            body=response.read(4096).decode("utf-8","ignore").strip()
-    except (urllib.error.URLError,urllib.error.HTTPError,TimeoutError,OSError,ValueError):
+        ips=resolve_public(domain)
+    except ValueError:
         return False
+    if not ips:
+        return False
+    conn=_PinnedHTTPSConnection(domain,ips[0],timeout=5)
+    try:
+        conn.request(
+            "GET",
+            "/.well-known/be-safe-asm-verification",
+            headers={"Host":domain,"User-Agent":"Be-Safe-ASM-Ownership/1.0","Accept":"text/plain"},
+        )
+        response=conn.getresponse()
+        if response.status!=200:
+            return False
+        body=response.read(4096).decode("utf-8","ignore").strip()
+    except (OSError,ssl.SSLError,http.client.HTTPException,TimeoutError,ValueError):
+        return False
+    finally:
+        conn.close()
     return body==challenge
 
 
