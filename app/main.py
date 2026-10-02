@@ -38,7 +38,7 @@ from .technology_intelligence import extract_technologies, technology_match_qual
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
-from .tenant_risk_policy import policy_for, serialize_policy, validate_policy, TenantRiskPolicy
+from .tenant_risk_policy import policy_for, save_policy, serialize_policy, validate_policy, TenantRiskPolicy
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
@@ -529,24 +529,27 @@ async def update_risk_policy(request: Request):
     values={k:body[k] for k in allowed if k in body}
     candidate=TenantRiskPolicy(**{**base.__dict__,**values,"tenant_id":principal.tenant_id,"version":base.version+1})
     errors=validate_policy(candidate)
-    if errors: raise HTTPException(status_code=400,detail={"errors":errors})
+    if errors:
+        raise HTTPException(status_code=400,detail={"errors":errors})
+    save_policy(candidate,updated_by=principal.user_id)
     audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
-    return {"policy":serialize_policy(candidate),"validation":[],"note":"policy validated; persistence wiring is isolated from the scoring contract"}
+    return {"policy":serialize_policy(candidate),"validation":[],"persisted":True}
 
 @app.get("/api/v1/risk/register")
 def risk_register(request: Request):
     principal=require(request,"assets:read")
     assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
     amap={a.id:a for a in assets}
+    policy=policy_for(principal.tenant_id)
     items=[]
     for f in findings:
         if f.status!="open": continue
         a=amap.get(f.asset_id)
-        risk=calculate_risk(f,a)
+        risk=calculate_risk(f,a,policy)
         items.append({"finding_id":f.id,"asset_id":f.asset_id,"asset":a.value if a else None,
                       "title":f.title,"risk":risk})
     items.sort(key=lambda x:(x["risk"]["residual_score"],x["risk"]["score"]),reverse=True)
-    return {"policy":asdict(DEFAULT_POLICY),"summary":{
+    return {"policy":serialize_policy(policy),"summary":{
         "findings":len(items),
         "critical":sum(x["risk"]["band"]=="critical" for x in items),
         "high":sum(x["risk"]["band"]=="high" for x in items),
