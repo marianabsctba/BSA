@@ -62,6 +62,7 @@ from .runtime_health import runtime_health
 from .metrics import record_http_metric, prometheus_metrics, operational_alerts
 from .version import __version__
 from .api.routers.risk import router as risk_router
+from .api.routers.vulnerabilities import router as vulnerabilities_router
 
 bootstrap()
 bootstrap_scope()
@@ -79,6 +80,7 @@ app = FastAPI(
 
 
 app.include_router(risk_router)
+app.include_router(vulnerabilities_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -530,42 +532,6 @@ async def correlate_vulnerabilities(request: Request):
         matches=match_cve(product,version,cpe,candidates)
         results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
     return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
-
-@app.get("/api/v1/vulnerabilities/intelligence")
-def vulnerability_intelligence_api(request: Request):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    amap={a.id:a for a in assets}
-    rows=[]
-    for f in findings:
-        if f.status!="open": continue
-        intel=vulnerability_intelligence(f,amap.get(f.asset_id))
-        rows.append({"finding":f.model_dump(),"asset":amap.get(f.asset_id).value if amap.get(f.asset_id) else None,"intelligence":asdict(intel)})
-    rows.sort(key=lambda x:x["intelligence"]["priority_score"],reverse=True)
-    return {"summary":{"findings":len(rows),"critical":sum(x["finding"].get("severity")=="critical" for x in rows),"high":sum(x["finding"].get("severity")=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
-
-@app.get("/api/v1/vulnerabilities/{finding_id}/intelligence")
-def vulnerability_finding_intelligence(finding_id: str, request: Request):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    f=next((x for x in findings if x.id==finding_id),None)
-    if not f: raise HTTPException(status_code=404,detail="finding not found")
-    a=next((x for x in assets if x.id==f.asset_id),None)
-    return {"finding":f.model_dump(),"asset":a.model_dump() if a else None,"intelligence":asdict(vulnerability_intelligence(f,a))}
-
-@app.get("/api/v1/findings")
-def list_findings(request: Request):
-    principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset_map = {a.id: a for a in ASSETS}
-    result = []
-    for finding in FINDINGS:
-        item = finding.model_dump()
-        asset = asset_map.get(finding.asset_id)
-        item["context_score"] = finding_context_score(finding, asset) if asset else None
-        result.append(item)
-    return result
-
 
 @app.get("/api/v1/integrations/siem/export")
 def integrations_siem_export(
