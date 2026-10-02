@@ -105,11 +105,17 @@ def engine_health(target: str | None = None) -> dict:
             100 * (core_requested - len(unverified_execution)) / max(1, core_requested)
         )
 
-        reliability_rows = capability_reliability(
-            tuple(row["name"] for row in core_rows),
-            window_hours=168,
-            min_calls=3,
-        )
+        try:
+            reliability_rows = capability_reliability(
+                tuple(row["name"] for row in core_rows),
+                window_hours=168,
+                min_calls=3,
+            )
+        except Exception:
+            reliability_rows = [
+                {"name": row["name"], "reliability_status": "insufficient_data"}
+                for row in core_rows
+            ]
         unreliable_capabilities = [
             row["name"]
             for row in reliability_rows
