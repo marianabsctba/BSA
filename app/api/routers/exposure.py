@@ -23,8 +23,8 @@ from ...local_ai import (
 from ...remediation import build_remediation_plan
 from ...scope import asset_in_scope
 from ...scoring import exposure_score
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
@@ -35,22 +35,6 @@ def exposure_engines_health(request: Request):
     require(request,"assets:read")
     return public_engine_health()
 
-
-def tenant_scope(principal):
-    assets=[
-        asset
-        for asset in STORE_ASSETS
-        if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
-        and asset_in_scope(principal,asset.value)
-    ]
-    asset_ids={asset.id for asset in assets}
-    findings=[
-        finding
-        for finding in STORE_FINDINGS
-        if getattr(finding,"tenant_id","tenant-demo")==principal.tenant_id
-        and finding.asset_id in asset_ids
-    ]
-    return assets,findings
 
 
 @router.get("/api/v1/exposure/storyline")
