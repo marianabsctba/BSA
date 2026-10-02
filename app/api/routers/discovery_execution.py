@@ -7,43 +7,13 @@ from ...history import lifecycle_for
 from ...intelligence import ownership_confidence
 from ...nuclei_engine import validate_nuclei_target
 from ...scope import asset_in_scope
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ..dependencies import require
+from ..tenant_scope import tenant_scope
 from ..operation_queue import queue_active_operation
 
 
 router=APIRouter()
 
-
-def tenant_scope(principal):
-    assets=[
-        asset
-        for asset in STORE_ASSETS
-        if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
-        and asset_in_scope(principal,asset.value)
-    ]
-    asset_ids={asset.id for asset in assets}
-    findings=[
-        finding
-        for finding in STORE_FINDINGS
-        if getattr(finding,"tenant_id","tenant-demo")==principal.tenant_id
-        and finding.asset_id in asset_ids
-    ]
-    return assets,findings
-
-
-class DiscoveryRequest(BaseModel):
-    target:str=Field(min_length=1,max_length=253)
-    checks:list[str]=Field(
-        default_factory=lambda:["dns","http","tls","ct"]
-    )
-    authorization_ref:str=Field(default="",max_length=200)
-
-
-class DASTRequest(BaseModel):
-    target:str=Field(min_length=1,max_length=2048)
-    authorization_ref:str=Field(min_length=1,max_length=200)
-    profile:str=Field(default="safe",max_length=20)
 
 
 @router.post("/api/v1/dast/nuclei")
