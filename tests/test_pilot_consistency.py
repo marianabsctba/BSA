@@ -116,7 +116,7 @@ def test_report_summary_exposes_engine_private_operational_metrics(monkeypatch):
         "average_execution_seconds":5,"average_queue_wait_seconds":1,
     })
     monkeypatch.setattr(main, "list_ctem_items", lambda tenant_id: [])
-    monkeypatch.setattr(main, "ctem_operational_summary", lambda items: {
+    monkeypatch.setattr(main, "ctem_operational_summary", lambda items, *args, **kwargs: {
         "active_items":0,"overdue_items":0,"oldest_active_age_hours":0,
     })
     monkeypatch.setattr(main, "ctem_queue_view", lambda items: {
