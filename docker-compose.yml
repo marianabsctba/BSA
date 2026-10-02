@@ -19,6 +19,7 @@ services:
       BSA_ADMIN_PASSWORD: "${BSA_ADMIN_PASSWORD:-Bsa-Dev-Only-2026!ChangeMe}"
       BSA_AUTH_DB: /data/bsa_auth.db
       BSA_HISTORY_DB: /data/bsa_history.db
+      BSA_STORE_DB: /data/bsa_store.db
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: "http://ollama:11434"
       BSA_OLLAMA_MODEL: "qwen2.5:7b"
