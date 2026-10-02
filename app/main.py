@@ -75,6 +75,7 @@ from .api.routers.mssp import router as mssp_router
 from .api.routers.reporting import router as reporting_router
 from .api.routers.assets import router as assets_router
 from .api.routers.remediation import router as remediation_router
+from .api.routers.discovery_intelligence import router as discovery_intelligence_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -106,6 +107,7 @@ app.include_router(mssp_router)
 app.include_router(reporting_router)
 app.include_router(assets_router)
 app.include_router(remediation_router)
+app.include_router(discovery_intelligence_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -224,111 +226,6 @@ def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
 
-
-@app.post("/api/v1/discovery/adaptive/{target}")
-def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_assets: int = 40):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    if max_rounds < 1 or max_rounds > 3 or max_assets < 1 or max_assets > 100:
-        raise HTTPException(status_code=400,detail="invalid discovery bounds")
-    return queue_active_operation(
-        request,principal,target,"discovery.adaptive",
-        {"max_rounds":max_rounds,"max_assets":max_assets},
-    )
-
-@app.post("/api/v1/discovery/ip-intelligence/{target}")
-def discovery_ip_intelligence(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ip_intelligence")
-
-@app.post("/api/v1/discovery/ai-attack-paths")
-def discovery_ai_attack_paths(request: Request, payload: dict):
-    principal=require(request,"assets:read")
-    graph=payload.get("graph") if isinstance(payload,dict) else None
-    if not isinstance(graph,dict):
-        raise HTTPException(status_code=400,detail="graph required")
-    target=str(payload.get("target","")).strip()
-    if target and not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    result=analyze_attack_paths(graph)
-    return {"target":target or None,"ai_enabled":local_ai_enabled(),
-            "model":OLLAMA_MODEL if local_ai_enabled() else None,
-            "analysis":result,"fallback":"deterministic graph only" if result is None else None}
-
-@app.post("/api/v1/discovery/ai-identity/{target}")
-def discovery_ai_identity(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_identity")
-
-@app.post("/api/v1/discovery/ai-prioritize/{target}")
-def discovery_ai_prioritize(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_prioritize")
-
-@app.post("/api/v1/discovery/ai-api-surface/{target}")
-def discovery_ai_api_surface(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_api_surface")
-
-@app.post("/api/v1/discovery/ai-correlate/{target}")
-def discovery_ai_correlate(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_correlate")
-
-@app.post("/api/v1/discovery/signals/{target}")
-def discovery_signals(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.signals")
-
-@app.post("/api/v1/discovery/ai-judge/{target}")
-def discovery_ai_judge(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_judge")
-
-@app.post("/api/v1/discovery/ai-plan/{target}")
-def discovery_ai_plan(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"discovery.ai_plan")
-
-@app.post("/api/v1/technologies/intelligence/{target}")
-def technology_intelligence_api(target: str, request: Request):
-    principal=require(request,"discovery:run")
-    if not asset_in_scope(principal,target):
-        raise HTTPException(status_code=403,detail="target outside assigned scope")
-    return queue_active_operation(request,principal,target,"technology.intelligence")
-
-@app.post("/api/v1/vulnerabilities/correlate")
-async def correlate_vulnerabilities(request: Request):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    body=await request.json()
-    candidates=[]
-    for x in body.get("candidates",[]):
-        try: candidates.append(CVERange(vulnerability_id=str(x["vulnerability_id"]),vendor=str(x.get("vendor","")),product=str(x["product"]),version_start=x.get("version_start"),version_end=x.get("version_end"),exact_versions=tuple(x.get("exact_versions",[])),source=str(x.get("source","catalog"))))
-        except (KeyError,TypeError): continue
-    results=[]
-    for x in body.get("observations",[]):
-        product=str(x.get("product","")); version=x.get("version"); cpe=normalize_cpe(x.get("cpe"))
-        matches=match_cve(product,version,cpe,candidates)
-        results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
-    return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
 
 @app.get("/api/v1/changes")
 def list_changes(request: Request, hours: int = 24, limit: int = 200):
