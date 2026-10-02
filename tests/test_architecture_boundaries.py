@@ -215,3 +215,22 @@ def test_tenant_governance_routes_live_outside_main():
         assert f'@app.patch("{route}")' not in main_source
     assert '@router.get("/api/v1/audit/integrity")' in router_source
     assert '@router.patch("/api/v1/tenant/settings")' in router_source
+
+
+def test_digital_risk_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/digital_risk.py").read_text(encoding="utf-8")
+    assert "app.include_router(digital_risk_router)" in main_source
+    for route in (
+        "/api/v1/digital-risk",
+        "/api/v1/digital-risk/events",
+        "/api/v1/digital-risk/leaks",
+        "/api/v1/digital-risk/brand/analyze",
+        "/api/v1/digital-risk/infrastructure/analyze",
+    ):
+        assert f'@app.get("{route}")' not in main_source
+        assert f'@app.post("{route}")' not in main_source
+    assert '@router.get("/api/v1/digital-risk")' in router_source
+    assert '@router.post("/api/v1/digital-risk/leaks")' in router_source
