@@ -65,6 +65,13 @@ bootstrap_scope()
 
 IS_PRODUCTION=os.getenv("BSA_ENV","development").lower() in {"production","prod"}
 
+class TenantSLAPolicyRequest(BaseModel):
+    critical_hours: int = Field(default=24, ge=1, le=8760)
+    high_hours: int = Field(default=48, ge=1, le=8760)
+    medium_hours: int = Field(default=168, ge=1, le=8760)
+    low_hours: int = Field(default=336, ge=1, le=8760)
+
+
 app = FastAPI(
     title="BSA — Be Safe ASM API",
     version="0.3.0",
@@ -1070,13 +1077,6 @@ class ScanGrantCreateRequest(BaseModel):
     authorization_ref: str = Field(min_length=1, max_length=200)
     pattern: str = Field(min_length=1, max_length=253)
     ttl_seconds: int = Field(default=3600, ge=60, le=2592000)
-
-
-class TenantSLAPolicyRequest(BaseModel):
-    critical_hours: int = Field(default=24, ge=1, le=8760)
-    high_hours: int = Field(default=48, ge=1, le=8760)
-    medium_hours: int = Field(default=168, ge=1, le=8760)
-    low_hours: int = Field(default=336, ge=1, le=8760)
 
 
 class RetentionPolicyRequest(BaseModel):
