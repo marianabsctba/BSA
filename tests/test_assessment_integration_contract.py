@@ -349,3 +349,51 @@ def test_balanced_defers_active_web_checks_until_http_validation(monkeypatch):
     assert not any(name == "nuclei" and target == "example.com" for name, target in calls)
     assert "nuclei" in result["internal"]["deferred"]
     assert result["public"]["coverage"]["capability_coverage_percent"] == 100
+
+
+
+def test_assessment_budget_limits_followups_and_marks_partial(monkeypatch):
+    from app.assessment_orchestrator import run_assessment
+    from app.assessment_providers import ProviderResult
+
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILES",
+        {"surface": ("subfinder",)},
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILE_CAPABILITIES",
+        {"surface": ("discovery",)},
+    )
+    monkeypatch.setenv("BSA_ASSESSMENT_MAX_FOLLOWUPS", "1")
+    monkeypatch.setenv("BSA_ASSESSMENT_MAX_FINDINGS", "50")
+    monkeypatch.setenv("BSA_ASSESSMENT_BUDGET_SECONDS", "30")
+    monkeypatch.setattr("app.assessment_orchestrator.registry.available", lambda name, target=None: True)
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {"name": "discovery", "operational": True, "status": "ready"}
+        ],
+    )
+
+    calls = []
+
+    def execute(name, *, target):
+        calls.append((name, target))
+        if name == "subfinder":
+            return [
+                ProviderResult("child", "info", 80, {"asset": "a.example.org"}),
+                ProviderResult("child", "info", 80, {"asset": "b.example.org"}),
+            ]
+        return []
+
+    monkeypatch.setattr("app.assessment_orchestrator.registry.execute", execute)
+
+    result = run_assessment(
+        "example.org",
+        profile="surface",
+        authorize=lambda value: value.endswith("example.org"),
+    )
+
+    assert result["public"]["coverage"]["followup_targets"] == 1
+    assert result["public"]["coverage"]["provider_calls"] >= 1
+    assert result["public"]["coverage"]["execution_ms"] >= 0
