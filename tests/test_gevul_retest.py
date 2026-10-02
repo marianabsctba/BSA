@@ -5,6 +5,7 @@ from app.auth import Principal
 from app.models import Asset, AssetType
 from app.history import upsert_ctem_item, update_ctem_state
 from app.api.routers import ctem as ctem_router
+from app.api import tenant_scope as tenant_scope_module
 
 
 def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
@@ -26,9 +27,7 @@ def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
         first_seen=now,
         last_seen=now,
     )
-    monkeypatch.setattr(ctem_router, "STORE_ASSETS", [asset])
-    monkeypatch.setattr(ctem_router, "STORE_FINDINGS", [])
-    monkeypatch.setattr(ctem_router, "tenant_scope", lambda principal, assets, findings: ([asset], []))
+    monkeypatch.setattr(ctem_router, "tenant_scope", lambda principal: ([asset], []))
     monkeypatch.setattr(ctem_router, "require", lambda request, permission: principal)
     monkeypatch.setattr(ctem_router, "govern_active_scan", lambda request, principal, target, authorization_ref=None: "AUTH-RETEST")
     monkeypatch.setattr(ctem_router, "audit", lambda *args, **kwargs: None)
