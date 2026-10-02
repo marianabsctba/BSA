@@ -88,7 +88,7 @@ def create_backup(output: str | Path) -> dict:
         with zipfile.ZipFile(output,"w",compression=zipfile.ZIP_DEFLATED) as zf:
             zf.write(root/"manifest.json","manifest.json")
             for item in files:
-                zf.write(root/f"{item['name']}.db",item["archive_path"])
+                zf.write(root/f"{item['name']}.db",str(item["archive_path"]))
     return {**manifest,"output":str(output)}
 
 
