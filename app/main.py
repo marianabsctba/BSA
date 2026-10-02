@@ -64,6 +64,7 @@ from .version import __version__
 from .api.routers.risk import router as risk_router
 from .api.routers.vulnerabilities import router as vulnerabilities_router
 from .api.routers.ctem import router as ctem_router
+from .api.routers.integrations import router as integrations_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -84,6 +85,7 @@ app = FastAPI(
 app.include_router(risk_router)
 app.include_router(vulnerabilities_router)
 app.include_router(ctem_router)
+app.include_router(integrations_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -513,99 +515,6 @@ async def correlate_vulnerabilities(request: Request):
         matches=match_cve(product,version,cpe,candidates)
         results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
     return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
-
-@app.get("/api/v1/integrations/siem/export")
-def integrations_siem_export(
-    request: Request,
-    since: str | None = None,
-    limit: int = 500,
-):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    drp=list_events(principal.tenant_id)
-    return unified_siem_events(
-        principal.tenant_id,
-        assets,
-        findings,
-        drp,
-        since=since,
-        limit=limit,
-    )
-
-
-@app.get("/api/v1/integrations/siem/status")
-def integrations_siem_status(request: Request):
-    principal=require(request,"assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403,detail="manager role required")
-    cfg=config_from_env()
-    return {
-        "api_export":True,
-        "syslog_enabled":cfg is not None,
-        "transport":cfg.transport if cfg else None,
-        "port":cfg.port if cfg else None,
-        "tls":bool(cfg and cfg.transport=="tls"),
-        "configured":cfg is not None,
-    }
-
-
-@app.post("/api/v1/integrations/siem/syslog/test")
-def integrations_siem_syslog_test(request: Request):
-    principal=require(request,"assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403,detail="manager role required")
-    cfg=config_from_env()
-    if cfg is None:
-        raise HTTPException(status_code=400,detail="syslog not configured")
-    event={
-        "schema_version":"1.0",
-        "event_type":"integration.test",
-        "event_id":f"syslog-test:{principal.tenant_id}",
-        "observed_at":datetime.now(timezone.utc).isoformat(),
-        "tenant_id":principal.tenant_id,
-        "severity":"info",
-        "source":"be-safe-asm",
-        "message":"Be Safe ASM Syslog integration test",
-    }
-    result=send_event(event,cfg)
-    audit(principal,"test","integration.syslog",None,{
-        "transport":cfg.transport,
-        "port":cfg.port,
-        "delivered":bool(result.get("delivered")),
-    })
-    return result
-
-
-@app.post("/api/v1/integrations/siem/syslog/push")
-def integrations_siem_syslog_push(
-    request: Request,
-    since: str | None = None,
-    limit: int = 500,
-):
-    principal=require(request,"assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403,detail="manager role required")
-    cfg=config_from_env()
-    if cfg is None:
-        raise HTTPException(status_code=400,detail="syslog not configured")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    stream=unified_siem_events(
-        principal.tenant_id,
-        assets,
-        findings,
-        list_events(principal.tenant_id),
-        since=since,
-        limit=limit,
-    )
-    result=send_events(stream["events"],cfg,limit=limit)
-    audit(principal,"push","integration.syslog",None,{
-        "requested":stream["count"],
-        "delivered":result.get("delivered",0),
-        "failed":result.get("failed",0),
-        "transport":cfg.transport,
-    })
-    return {"stream_count":stream["count"],**result}
-
 
 @app.get("/api/v1/changes")
 def list_changes(request: Request, hours: int = 24, limit: int = 200):
