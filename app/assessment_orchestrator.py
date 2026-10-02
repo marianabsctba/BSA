@@ -13,6 +13,7 @@ import time
 from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
 from .exposure_signals import cloud_signals, summarize_signals
+from .history import record_capability_execution
 from .vulnerability_evidence import vulnerability_identity_key
 from .security import validate_external_target, validated_external_binding
 
@@ -534,6 +535,11 @@ def run_assessment(
     )
     optional_operational = sum(1 for row in optional_health if row.get("operational"))
 
+    capability_metrics = _capability_telemetry_public(
+        internal["capability_telemetry"]
+    )
+    record_capability_execution(capability_metrics)
+
     public.update(
         {
             "profile": profile,
@@ -557,9 +563,7 @@ def run_assessment(
                 "budget_exhausted": internal["budget_exhausted"],
                 "execution_ms": internal["execution_ms"],
                 "provider_calls": internal["provider_calls"],
-                "capability_metrics": _capability_telemetry_public(
-                    internal["capability_telemetry"]
-                ),
+                "capability_metrics": capability_metrics,
             },
         }
     )
