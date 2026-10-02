@@ -234,3 +234,15 @@ def test_digital_risk_routes_live_outside_main():
         assert f'@app.post("{route}")' not in main_source
     assert '@router.get("/api/v1/digital-risk")' in router_source
     assert '@router.post("/api/v1/digital-risk/leaks")' in router_source
+
+
+def test_mssp_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/mssp.py").read_text(encoding="utf-8")
+    assert "app.include_router(mssp_router)" in main_source
+    assert '@app.get("/api/v1/mssp/command-center")' not in main_source
+    assert '@app.get("/api/v1/mssp/command-center/trend")' not in main_source
+    assert '@router.get("/api/v1/mssp/command-center")' in router_source
+    assert '@router.get("/api/v1/mssp/command-center/trend")' in router_source
