@@ -197,3 +197,44 @@ def test_login_account_uses_progressive_backoff_without_account_lockout(tmp_path
     assert row is not None
     assert int(row["count"])==4
     assert int(row["blocked_until"])==0
+
+
+def test_successful_login_does_not_clear_shared_ip_throttle(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","j"*48)
+    monkeypatch.setattr(auth,"MFA_KEY","m"*48)
+    monkeypatch.setattr(auth.time,"sleep",lambda seconds: None)
+
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-ip","IP"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("good-user","tenant-ip","good@example.org","Good",auth._hash("CorrectHorseBattery1!"),"analyst",1),
+    )
+    conn.commit(); conn.close()
+
+    ip="198.51.100.77"
+    for _ in range(3):
+        assert auth.authenticate("missing@example.org","WrongPassword123!",ip) is None
+
+    conn=auth._db()
+    before=conn.execute(
+        "SELECT count FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-ip",ip),
+    ).fetchone()
+    conn.close()
+    assert before is not None
+    assert int(before["count"])==3
+
+    assert auth.authenticate("good@example.org","CorrectHorseBattery1!",ip)
+
+    conn=auth._db()
+    after=conn.execute(
+        "SELECT count FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-ip",ip),
+    ).fetchone()
+    conn.close()
+    assert after is not None
+    assert int(after["count"])==3
