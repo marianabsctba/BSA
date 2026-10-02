@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .engine_health import engine_health
 from .store import _store_path
-from .job_queue import _db_path
+from .job_queue import _db_path, queue_health
 from .retention import get_retention_policy
 from .scan_authorization import ensure_authorization_schema
 
@@ -36,6 +36,7 @@ def release_readiness() -> dict:
     health = engine_health()
     rapid = health.get("profiles", {}).get("rapid", {})
     balanced = health.get("profiles", {}).get("balanced", {})
+    queue = queue_health()
 
     checks = [
         {
@@ -99,6 +100,16 @@ def release_readiness() -> dict:
             "name": "tenant_retention_policy",
             "status": "pass" if int(get_retention_policy("tenant-demo").get("retention_days",0) or 0) >= 30 else "fail",
             "required": True,
+        },
+        {
+            "name": "assessment_queue_health",
+            "status": "pass" if queue.get("status")=="healthy" else "warn",
+            "required": False,
+            "queue_status": queue.get("status"),
+            "oldest_queued_age_seconds": int(queue.get("oldest_queued_age_seconds",0) or 0),
+            "expired_running_leases": int(queue.get("expired_running_leases",0) or 0),
+            "stale_materializations": int(queue.get("stale_materializations",0) or 0),
+            "retry_pressure_jobs": int(queue.get("retry_pressure_jobs",0) or 0),
         },
         {
             "name": "scan_authorization_store",
