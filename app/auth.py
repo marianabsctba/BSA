@@ -99,8 +99,12 @@ def _db():
         conn.execute("DROP TABLE custom_roles")
         conn.execute("ALTER TABLE custom_roles_v2 RENAME TO custom_roles")
     conn.execute("""CREATE TABLE IF NOT EXISTS users_mfa(
-        user_id TEXT PRIMARY KEY, secret TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)
+        user_id TEXT PRIMARY KEY, secret TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL, last_counter INTEGER)
     """)
+    mfa_cols={r["name"] for r in conn.execute("PRAGMA table_info(users_mfa)").fetchall()}
+    if "last_counter" not in mfa_cols:
+        conn.execute("ALTER TABLE users_mfa ADD COLUMN last_counter INTEGER")
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -177,10 +181,17 @@ def _totp(secret: str, counter: int) -> str:
 def generate_mfa_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
 
-def verify_totp(secret: str, code: str, window: int=1) -> bool:
-    if not code or not code.isdigit() or len(code)!=6: return False
+def verify_totp_counter(secret: str, code: str, window: int=1) -> int | None:
+    if not code or not code.isdigit() or len(code)!=6:
+        return None
     counter=int(time.time())//30
-    return any(hmac.compare_digest(_totp(secret,counter+i),code) for i in range(-window,window+1))
+    for candidate in range(counter-window,counter+window+1):
+        if hmac.compare_digest(_totp(secret,candidate),code):
+            return candidate
+    return None
+
+def verify_totp(secret: str, code: str, window: int=1) -> bool:
+    return verify_totp_counter(secret,code,window) is not None
 
 def mfa_status(principal: Principal) -> dict:
     conn=_db()
@@ -188,24 +199,45 @@ def mfa_status(principal: Principal) -> dict:
     conn.close()
     return {"enabled":bool(row and row["enabled"])}
 
-def mfa_enroll(principal: Principal) -> dict:
-    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
-    secret=generate_mfa_secret()
+def mfa_enroll(principal: Principal, current_password: str) -> dict:
     conn=_db()
-    conn.execute("INSERT INTO users_mfa(user_id,secret,enabled,created_at) VALUES(?,?,0,?) ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret,enabled=0",(principal.user_id,_encrypt_mfa_secret(secret),int(time.time())))
+    user=conn.execute(
+        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
+        (principal.user_id,principal.tenant_id),
+    ).fetchone()
+    if not user:
+        conn.close()
+        raise ValueError("user not found")
+    password_ok=_verify(current_password,user["password_hash"])
+    if not password_ok:
+        conn.close()
+        raise PermissionError("current password verification failed")
+    secret=generate_mfa_secret()
+    conn.execute(
+        """INSERT INTO users_mfa(user_id,secret,enabled,created_at,last_counter)
+           VALUES(?,?,0,?,NULL)
+           ON CONFLICT(user_id) DO UPDATE SET
+             secret=excluded.secret,enabled=0,created_at=excluded.created_at,last_counter=NULL""",
+        (principal.user_id,_encrypt_mfa_secret(secret),int(time.time())),
+    )
     conn.commit(); conn.close()
     label=urllib.parse.quote(f"Be Safe ASM:{principal.email}")
     uri=f"otpauth://totp/{label}?secret={secret}&issuer=Be%20Safe%20ASM"
     return {"secret":secret,"otpauth_uri":uri}
 
 def mfa_enable(principal: Principal, code: str) -> bool:
-    if principal.role not in {"admin","superadmin"}: raise PermissionError("admin required")
-    conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
-    if not row: conn.close(); raise ValueError("MFA enrollment required")
-    ok=verify_totp(_decrypt_mfa_secret(row["secret"]),code)
-    if ok: conn.execute("UPDATE users_mfa SET enabled=1 WHERE user_id=?",(principal.user_id,)); conn.commit()
-    conn.close()
-    return ok
+    conn=_db()
+    row=conn.execute("SELECT secret,last_counter FROM users_mfa WHERE user_id=?",(principal.user_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("MFA enrollment required")
+    counter=verify_totp_counter(_decrypt_mfa_secret(row["secret"]),code)
+    if counter is None or (row["last_counter"] is not None and counter<=int(row["last_counter"])):
+        conn.close()
+        return False
+    conn.execute("UPDATE users_mfa SET enabled=1,last_counter=? WHERE user_id=?",(counter,principal.user_id))
+    conn.commit(); conn.close()
+    return True
 
 def mfa_secret_for_user(user_id: str) -> str | None:
     conn=_db(); row=conn.execute("SELECT secret FROM users_mfa WHERE user_id=? AND enabled=1",(user_id,)).fetchone(); conn.close()
@@ -217,6 +249,27 @@ def mfa_secret_for_user(user_id: str) -> str | None:
         conn.execute("UPDATE users_mfa SET secret=? WHERE user_id=?",(_encrypt_mfa_secret(secret),user_id))
         conn.commit(); conn.close()
     return secret
+
+def verify_user_mfa_once(user_id: str, code: str) -> bool:
+    conn=_db()
+    row=conn.execute(
+        "SELECT secret,last_counter FROM users_mfa WHERE user_id=? AND enabled=1",
+        (user_id,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return True
+    counter=verify_totp_counter(_decrypt_mfa_secret(row["secret"]),code)
+    if counter is None or (row["last_counter"] is not None and counter<=int(row["last_counter"])):
+        conn.close()
+        return False
+    updated=conn.execute(
+        """UPDATE users_mfa SET last_counter=?
+           WHERE user_id=? AND enabled=1 AND (last_counter IS NULL OR last_counter<?)""",
+        (counter,user_id,counter),
+    ).rowcount
+    conn.commit(); conn.close()
+    return bool(updated)
 
 def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
     now=int(time.time())
@@ -274,7 +327,7 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
         mfa_identity=f"{row['id']}:{ipkey}"
         if not rate_limit_action("mfa-login",mfa_identity,limit=5,window_seconds=300):
             return None
-        if not verify_totp(mfa_secret,mfa_code or ""):
+        if not verify_user_mfa_once(row["id"],mfa_code or ""):
             return None
         _clear_rate_limit("mfa-login",mfa_identity)
 
