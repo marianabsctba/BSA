@@ -31,6 +31,122 @@ class TakedownRequest(BaseModel):
     reason: str="brand_abuse"
     priority: str="high"
 
+
+SEVERITY_WEIGHT={"info":5,"low":20,"medium":45,"high":70,"critical":90}
+TAKEDOWN_CATEGORIES={"phishing","brand_abuse","fake_profile","fake_app","malware"}
+CREDENTIAL_CATEGORIES={"credential_leak","credentials","leak","data_leak"}
+
+def _normalized_event(event: dict) -> dict:
+    category=str(event.get("category") or "unknown").strip().lower()
+    severity=str(event.get("severity") or "medium").strip().lower()
+    if severity not in SEVERITY_WEIGHT:
+        severity="medium"
+    confidence=max(0,min(100,int(event.get("confidence",70) or 70)))
+    status=str(event.get("status") or "open").strip().lower()
+    indicator=str(event.get("indicator") or "").strip()
+    source=str(event.get("source") or "manual").strip() or "manual"
+    brand=str(event.get("brand") or "").strip() or None
+    asset_id=str(event.get("asset_id") or "").strip() or None
+    evidence=event.get("evidence") if isinstance(event.get("evidence"),dict) else {}
+    return {
+        **event,
+        "category":category,
+        "severity":severity,
+        "confidence":confidence,
+        "status":status,
+        "indicator":indicator,
+        "source":source,
+        "brand":brand,
+        "asset_id":asset_id,
+        "evidence":evidence,
+    }
+
+def event_correlation_key(event: dict) -> str:
+    normalized=_normalized_event(event)
+    raw="|".join([
+        normalized["category"],
+        normalized["indicator"].lower(),
+        str(normalized.get("brand") or "").lower(),
+        str(normalized.get("asset_id") or "").lower(),
+    ])
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+def event_risk(event: dict) -> dict:
+    e=_normalized_event(event)
+    base=SEVERITY_WEIGHT[e["severity"]]
+    confidence_component=round(e["confidence"]*0.35)
+    evidence_count=len(e.get("evidence") or {})
+    evidence_component=min(12,evidence_count*3)
+    asset_component=8 if e.get("asset_id") else 0
+    takedown_component=8 if e["category"] in TAKEDOWN_CATEGORIES else 0
+    credential_component=10 if e["category"] in CREDENTIAL_CATEGORIES else 0
+    score=max(0,min(100,round(base*0.55+confidence_component+evidence_component+asset_component+takedown_component+credential_component)))
+    if score>=85: band="critical"
+    elif score>=70: band="high"
+    elif score>=45: band="medium"
+    else: band="low"
+    reasons=[
+        f"severity:{e['severity']}",
+        f"confidence:{e['confidence']}",
+    ]
+    if evidence_count: reasons.append(f"evidence:{evidence_count}")
+    if e.get("asset_id"): reasons.append("linked_asset")
+    if e["category"] in TAKEDOWN_CATEGORIES: reasons.append("takedown_candidate")
+    if e["category"] in CREDENTIAL_CATEGORIES: reasons.append("credential_exposure")
+    return {
+        "score":score,
+        "band":band,
+        "reasons":reasons,
+        "evidence_count":evidence_count,
+        "takedown_candidate":e["category"] in TAKEDOWN_CATEGORIES and e["status"]=="open",
+    }
+
+def enrich_event(event: dict) -> dict:
+    e=_normalized_event(event)
+    risk=event_risk(e)
+    return {
+        **e,
+        "correlation_key":event_correlation_key(e),
+        "risk_score":risk["score"],
+        "risk_band":risk["band"],
+        "risk_reasons":risk["reasons"],
+        "evidence_count":risk["evidence_count"],
+        "takedown_candidate":risk["takedown_candidate"],
+    }
+
+def summarize_events(events: list[dict], takedowns: list[dict]|None=None) -> dict:
+    takedowns=takedowns or []
+    enriched=[enrich_event(x) for x in events]
+    by_category={}
+    by_severity={}
+    by_status={}
+    by_source={}
+    for e in enriched:
+        by_category[e["category"]]=by_category.get(e["category"],0)+1
+        by_severity[e["severity"]]=by_severity.get(e["severity"],0)+1
+        by_status[e["status"]]=by_status.get(e["status"],0)+1
+        by_source[e["source"]]=by_source.get(e["source"],0)+1
+    candidate_ids={e["event_id"] for e in enriched if e.get("takedown_candidate") and e.get("event_id")}
+    covered_ids={x.get("event_id") for x in takedowns if x.get("event_id")}
+    high_risk=[e for e in enriched if int(e.get("risk_score",0))>=70 and e.get("status")=="open"]
+    return {
+        "total":len(enriched),
+        "open":sum(1 for e in enriched if e.get("status")=="open"),
+        "critical":sum(1 for e in enriched if e.get("risk_band")=="critical" and e.get("status")=="open"),
+        "high_risk_open":len(high_risk),
+        "average_risk_score":round(sum(int(e.get("risk_score",0)) for e in enriched)/len(enriched)) if enriched else 0,
+        "average_confidence":round(sum(int(e.get("confidence",0)) for e in enriched)/len(enriched)) if enriched else 0,
+        "linked_assets":sum(1 for e in enriched if e.get("asset_id")),
+        "credential_exposures":sum(1 for e in enriched if e.get("category") in CREDENTIAL_CATEGORIES and e.get("status")=="open"),
+        "takedown_candidates":len(candidate_ids),
+        "takedown_covered":len(candidate_ids & covered_ids),
+        "takedown_coverage_percent":round(100*len(candidate_ids & covered_ids)/len(candidate_ids)) if candidate_ids else 100,
+        "by_category":by_category,
+        "by_severity":by_severity,
+        "by_status":by_status,
+        "by_source":by_source,
+    }
+
 def _db():
     c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row
     c.execute("""CREATE TABLE IF NOT EXISTS digital_risk(
@@ -42,17 +158,45 @@ def _db():
     c.commit(); return c
 
 def upsert_event(tenant_id,event):
-    now=int(time.time()); eid=event.get("event_id") or str(uuid.uuid4())
-    event={**event,"event_id":eid,"updated_at":now}
-    c=_db(); c.execute("""INSERT INTO digital_risk(event_id,tenant_id,payload,created_at,updated_at)
+    now=int(time.time())
+    event=enrich_event(event)
+    c=_db()
+    eid=event.get("event_id")
+    if not eid:
+        rows=c.execute("SELECT event_id,payload FROM digital_risk WHERE tenant_id=?",(tenant_id,)).fetchall()
+        match=None
+        for row in rows:
+            try:
+                existing=json.loads(row["payload"])
+            except Exception:
+                continue
+            if event_correlation_key(existing)==event["correlation_key"]:
+                match=row["event_id"]
+                break
+        eid=match or str(uuid.uuid4())
+    previous=c.execute(
+        "SELECT payload,created_at FROM digital_risk WHERE event_id=? AND tenant_id=?",
+        (eid,tenant_id),
+    ).fetchone()
+    created_at=int(previous["created_at"]) if previous else now
+    if previous:
+        try:
+            old=json.loads(previous["payload"])
+            first_seen=old.get("first_seen") or event.get("first_seen") or ""
+        except Exception:
+            first_seen=event.get("first_seen") or ""
+    else:
+        first_seen=event.get("first_seen") or ""
+    event=enrich_event({**event,"event_id":eid,"first_seen":first_seen,"updated_at":now})
+    c.execute("""INSERT INTO digital_risk(event_id,tenant_id,payload,created_at,updated_at)
       VALUES(?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at""",
-      (eid,tenant_id,json.dumps(event,ensure_ascii=False),now,now)); c.commit(); c.close(); return event
+      (eid,tenant_id,json.dumps(event,ensure_ascii=False),created_at,now)); c.commit(); c.close(); return event
 
 def list_events(tenant_id,category=None):
     c=_db(); q="SELECT payload FROM digital_risk WHERE tenant_id=?"; args=[tenant_id]
     if category: q+=" AND json_extract(payload,'$.category')=?"; args.append(category)
     rows=c.execute(q+" ORDER BY updated_at DESC",args).fetchall(); c.close()
-    return [mask_public_data(json.loads(r["payload"])) for r in rows]
+    return [mask_public_data(enrich_event(json.loads(r["payload"]))) for r in rows]
 
 def create_takedown(tenant_id,event_id,provider,reason,priority):
     tid=str(uuid.uuid4()); now=int(time.time())
