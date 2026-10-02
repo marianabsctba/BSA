@@ -1161,6 +1161,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 validation_state=vuln_ctx["validation_state"],
                 evidence_quality=vuln_ctx["evidence_quality"],
                 affected_component=vuln_ctx["affected_component"],
+                affected_components=[vuln_ctx["affected_component"]] if vuln_ctx["affected_component"] else [],
             )
             if finding.vulnerability_id:
                 finding = enrich_finding(finding)
@@ -1200,6 +1201,9 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.source_refs = sorted(set(finding.source_refs + vuln_ctx["references"]))[:20]
             if vuln_ctx["affected_component"]:
                 finding.affected_component = vuln_ctx["affected_component"]
+                if vuln_ctx["affected_component"] not in finding.affected_components:
+                    finding.affected_components.append(vuln_ctx["affected_component"])
+                finding.affected_components = finding.affected_components[:50]
             if finding.vulnerability_id:
                 enriched = enrich_finding(finding)
                 finding.cvss = enriched.cvss
