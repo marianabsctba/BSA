@@ -303,7 +303,7 @@ def asset_detail_view(asset_id: str, request: Request):
     return asset_detail(asset, findings, assets, principal.tenant_id)
 
 
-@app.get("/api/v1/discovery/adaptive/{target}")
+@app.post("/api/v1/discovery/adaptive/{target}")
 def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_assets: int = 40):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -320,7 +320,7 @@ def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_a
             "summary":{"candidate_count":len(candidates),"planned_jobs":len(authorized),
                        "max_assets":max_assets,"scope_filtered_jobs":len(plans)-len(authorized)}}
 
-@app.get("/api/v1/discovery/ip-intelligence/{target}")
+@app.post("/api/v1/discovery/ip-intelligence/{target}")
 def discovery_ip_intelligence(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -349,7 +349,7 @@ def discovery_ai_attack_paths(request: Request, payload: dict):
             "model":OLLAMA_MODEL if local_ai_enabled() else None,
             "analysis":result,"fallback":"deterministic graph only" if result is None else None}
 
-@app.get("/api/v1/discovery/ai-identity/{target}")
+@app.post("/api/v1/discovery/ai-identity/{target}")
 def discovery_ai_identity(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -364,7 +364,7 @@ def discovery_ai_identity(target: str, request: Request):
     return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
             "assets":payload,"evidence_count":data["evidence_count"],"identity_validation":result}
 
-@app.get("/api/v1/discovery/ai-prioritize/{target}")
+@app.post("/api/v1/discovery/ai-prioritize/{target}")
 def discovery_ai_prioritize(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -381,7 +381,7 @@ def discovery_ai_prioritize(target: str, request: Request):
             "evidence_count":data["evidence_count"],"candidate_checks":candidate_checks,
             "prioritization":result,"fallback":"deterministic collector order" if result is None else None}
 
-@app.get("/api/v1/discovery/ai-api-surface/{target}")
+@app.post("/api/v1/discovery/ai-api-surface/{target}")
 def discovery_ai_api_surface(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -395,7 +395,7 @@ def discovery_ai_api_surface(target: str, request: Request):
             "endpoint_count":len(endpoints),"evidence_count":data["evidence_count"],
             "analysis":result,"fallback":"deterministic evidence only" if result is None else None}
 
-@app.get("/api/v1/discovery/ai-correlate/{target}")
+@app.post("/api/v1/discovery/ai-correlate/{target}")
 def discovery_ai_correlate(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -406,7 +406,7 @@ def discovery_ai_correlate(target: str, request: Request):
     return {"target":data["target"],"ai_enabled":local_ai_enabled(),"model":OLLAMA_MODEL if local_ai_enabled() else None,
             "evidence_count":data["evidence_count"],"correlation":result}
 
-@app.get("/api/v1/discovery/signals/{target}")
+@app.post("/api/v1/discovery/signals/{target}")
 def discovery_signals(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -418,7 +418,7 @@ def discovery_signals(target: str, request: Request):
     signals=cloud_signals(values)+takeover_signals(http_values)
     return {"target":data["target"],"evidence_count":data["evidence_count"],**summarize_signals(signals)}
 
-@app.get("/api/v1/discovery/ai-judge/{target}")
+@app.post("/api/v1/discovery/ai-judge/{target}")
 def discovery_ai_judge(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -437,7 +437,7 @@ def discovery_ai_judge(target: str, request: Request):
     return {"target":data["target"],"evidence_count":data["evidence_count"],"ai_enabled":local_ai_enabled(),
             "model":OLLAMA_MODEL if local_ai_enabled() else None,"decisions":decisions}
     
-@app.get("/api/v1/discovery/ai-plan/{target}")
+@app.post("/api/v1/discovery/ai-plan/{target}")
 def discovery_ai_plan(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -449,7 +449,7 @@ def discovery_ai_plan(target: str, request: Request):
             "evidence_count":data["evidence_count"],"plan":plan,
             "fallback":"deterministic discovery only" if plan is None else None}
 
-@app.get("/api/v1/technologies/intelligence/{target}")
+@app.post("/api/v1/technologies/intelligence/{target}")
 def technology_intelligence_api(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -2148,7 +2148,7 @@ def discovery(request: DiscoveryRequest, http_request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/v1/discovery/{target}/changes")
+@app.post("/api/v1/discovery/{target}/changes")
 def discovery_changes(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
@@ -2172,7 +2172,7 @@ def discovery_changes(target: str, request: Request):
     }
 
 
-@app.get("/api/v1/discovery/{target}/graph")
+@app.post("/api/v1/discovery/{target}/graph")
 def discovery_graph(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
@@ -2183,7 +2183,7 @@ def discovery_graph(target: str, request: Request):
     assets = correlate_evidence(data["target"], data["evidence"])
     return build_risk_graph(data["target"], assets, data["evidence"], source_assets=ASSETS, findings=FINDINGS)
 
-@app.get("/api/v1/discovery/{target}/correlation")
+@app.post("/api/v1/discovery/{target}/correlation")
 def discovery_correlation(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
@@ -2222,7 +2222,7 @@ def discovery_correlation(target: str, request: Request):
     }
 
 
-@app.get("/api/v1/easm/discover/{target}")
+@app.post("/api/v1/easm/discover/{target}")
 def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets: int = 40):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -2233,7 +2233,7 @@ def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets:
     result=discover_surface(target,max_depth=max_depth,max_assets=max_assets,scope_validator=lambda candidate: asset_in_scope(principal,candidate))
     return result
 
-@app.get("/api/v1/easm/lifecycle/{target}")
+@app.post("/api/v1/easm/lifecycle/{target}")
 def easm_lifecycle(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -2417,7 +2417,7 @@ def dashboard(request: Request):
         attack_paths=len(RELATIONSHIPS),
     )
 
-@app.get("/api/v1/discovery/{target}/infrastructure/graph")
+@app.post("/api/v1/discovery/{target}/infrastructure/graph")
 def discovery_infrastructure_graph(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -2433,7 +2433,7 @@ def discovery_infrastructure_graph(target: str, request: Request):
     graph["discovery"]={"target":data["target"],"evidence_count":data["evidence_count"],"confidence":data["confidence"]}
     return graph
 
-@app.get("/api/v1/discovery/{target}/infrastructure")
+@app.post("/api/v1/discovery/{target}/infrastructure")
 def discovery_infrastructure(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
@@ -2452,7 +2452,7 @@ def discovery_infrastructure(target: str, request: Request):
     result["evidence"]=data["evidence"]
     return result
 
-@app.get("/api/v1/discovery/{target}/risk-paths")
+@app.post("/api/v1/discovery/{target}/risk-paths")
 def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
