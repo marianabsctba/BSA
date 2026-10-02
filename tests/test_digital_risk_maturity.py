@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main
 from app.api.routers import digital_risk as digital_risk_router
+from app.api import tenant_scope as tenant_scope_module
 from app import auth
 from app import digital_risk
 from app.models import Asset, AssetType
@@ -107,10 +108,16 @@ def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
         last_seen=now,
     )
 
-    monkeypatch.setattr(digital_risk_router,"STORE_ASSETS",[asset_a,asset_b])
-    monkeypatch.setattr(digital_risk_router,"STORE_FINDINGS",[])
     monkeypatch.setattr(digital_risk_router,"require",lambda request,permission:tenant_a)
-    monkeypatch.setattr(digital_risk_router,"asset_in_scope",lambda principal,value:True)
+    monkeypatch.setattr(
+        tenant_scope_module,
+        "asset_finding_repository",
+        lambda assets=None,findings=None: __import__(
+            "app.repositories.assets_findings",
+            fromlist=["AssetFindingRepository"],
+        ).AssetFindingRepository([asset_a,asset_b],[]),
+    )
+    monkeypatch.setattr(tenant_scope_module,"asset_in_scope",lambda principal,value:True)
     monkeypatch.setattr(digital_risk_router,"audit",lambda *args,**kwargs:None)
 
     linked=client.post("/api/v1/digital-risk/leaks",json={
