@@ -78,7 +78,8 @@ def get_job(job_id:str,tenant_id:str)->dict|None:
     else:
         out.pop("result_json",None)
         out["result"]=None
-    out["materialized"]=bool(out.get("materialized"))
+    out["materializing"]=int(out.get("materialized") or 0)==2
+    out["materialized"]=int(out.get("materialized") or 0)==1
     return out
 
 
@@ -160,20 +161,58 @@ def retry_or_fail_job(job_id:str,error:str)->str:
     conn.commit(); conn.close()
     return state
 
-def complete_job(job_id:str,result:dict)->None:
+def complete_job(job_id:str,result:dict)->bool:
     conn=_db()
-    conn.execute(
-        "UPDATE assessment_jobs SET status='succeeded',result_json=?,completed_at=?,error=NULL,lease_expires_at=NULL WHERE job_id=?",
+    updated=conn.execute(
+        """UPDATE assessment_jobs SET status='succeeded',result_json=?,completed_at=?,error=NULL,lease_expires_at=NULL
+        WHERE job_id=? AND status='running'""",
         (json.dumps(result,ensure_ascii=False,separators=(",",":")),int(time.time()),job_id),
-    )
+    ).rowcount
     conn.commit(); conn.close()
+    return bool(updated)
 
 
-def fail_job(job_id:str,error:str)->None:
+def fail_job(job_id:str,error:str)->bool:
+    conn=_db()
+    updated=conn.execute(
+        """UPDATE assessment_jobs SET status='failed',completed_at=?,error=?,lease_expires_at=NULL
+        WHERE job_id=? AND status IN ('queued','running')""",
+        (int(time.time()),str(error)[:4000],job_id),
+    ).rowcount
+    conn.commit(); conn.close()
+    return bool(updated)
+
+
+def cancel_job(job_id:str,tenant_id:str)->dict|None:
+    conn=_db()
+    now=int(time.time())
+    updated=conn.execute(
+        """UPDATE assessment_jobs SET status='cancelled',completed_at=?,lease_expires_at=NULL,error='cancelled by user'
+        WHERE job_id=? AND tenant_id=? AND status IN ('queued','running')""",
+        (now,job_id,tenant_id),
+    ).rowcount
+    conn.commit(); conn.close()
+    if not updated:
+        return get_job(job_id,tenant_id)
+    return get_job(job_id,tenant_id)
+
+
+def claim_materialization(job_id:str,tenant_id:str)->bool:
+    conn=_db()
+    updated=conn.execute(
+        """UPDATE assessment_jobs SET materialized=2
+        WHERE job_id=? AND tenant_id=? AND status='succeeded' AND materialized=0""",
+        (job_id,tenant_id),
+    ).rowcount
+    conn.commit(); conn.close()
+    return bool(updated)
+
+
+def finish_materialization(job_id:str,tenant_id:str,success:bool)->None:
     conn=_db()
     conn.execute(
-        "UPDATE assessment_jobs SET status='failed',completed_at=?,error=?,lease_expires_at=NULL WHERE job_id=?",
-        (int(time.time()),str(error)[:4000],job_id),
+        "UPDATE assessment_jobs SET materialized=? WHERE job_id=? AND tenant_id=? AND materialized=2",
+        (1 if success else 0,job_id,tenant_id),
     )
     conn.commit(); conn.close()
 
