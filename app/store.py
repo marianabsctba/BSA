@@ -200,5 +200,7 @@ def _demo_state() -> tuple[list[Asset], list[Finding]]:
 
 if _store_path():
     ASSETS, FINDINGS = _load_persisted()
-else:
+elif os.getenv("BSA_DEMO_DATA","0").strip().lower() in {"1","true","yes","on"}:
     ASSETS, FINDINGS = _demo_state()
+else:
+    ASSETS, FINDINGS = [], []
