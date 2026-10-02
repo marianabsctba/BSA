@@ -64,3 +64,93 @@ def test_engine_runtime_readiness_contracts_hide_configuration_details(monkeypat
         assert state["ready"] is True
         assert "binary" not in state
         assert "path" not in state
+
+
+def test_capability_health_reports_backend_coverage_without_provider_names(monkeypatch):
+    from app.assessment_registry import registry
+
+    states={"httpx":True,"tlsx":False}
+    monkeypatch.setattr(
+        registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint":("httpx","tlsx")},
+    )
+    monkeypatch.setattr(
+        registry,
+        "available",
+        lambda name,target=None: states[name],
+    )
+
+    rows=registry.capability_health(
+        "example.com",
+        ("fingerprint",),
+    )
+
+    assert rows==[{
+        "name":"fingerprint",
+        "status":"degraded",
+        "operational":True,
+        "available_backends":1,
+        "backend_count":2,
+        "backend_coverage_percent":50,
+        "redundant_backends":0,
+    }]
+    serialized=str(rows)
+    assert "httpx" not in serialized
+    assert "tlsx" not in serialized
+
+
+def test_profile_health_exposes_missing_and_degraded_capabilities(monkeypatch):
+    from app.engine_health import engine_health
+
+    monkeypatch.setattr(
+        "app.engine_health.registry.available",
+        lambda name,target=None: True,
+    )
+    monkeypatch.setattr(
+        "app.engine_health.registry.capability_health",
+        lambda target=None,capabilities=None: [
+            {
+                "name":"fingerprint",
+                "operational":True,
+                "status":"ready",
+                "available_backends":1,
+                "backend_count":1,
+            },
+            {
+                "name":"certificate_intelligence",
+                "operational":True,
+                "status":"degraded",
+                "available_backends":1,
+                "backend_count":2,
+            },
+            {
+                "name":"vulnerability",
+                "operational":False,
+                "status":"unavailable",
+                "available_backends":0,
+                "backend_count":1,
+            },
+        ] if capabilities==(
+            "fingerprint",
+            "certificate_intelligence",
+            "vulnerability",
+        ) else [
+            {
+                "name":name,
+                "operational":False,
+                "status":"unavailable",
+                "available_backends":0,
+                "backend_count":1,
+            }
+            for name in (capabilities or ())
+        ],
+    )
+
+    rapid=engine_health("example.com")["profiles"]["rapid"]
+
+    assert rapid["coverage_percent"]==67
+    assert rapid["backend_coverage_percent"]==50
+    assert rapid["missing_capabilities"]==["vulnerability"]
+    assert rapid["degraded_capabilities"]==["certificate_intelligence"]
+    assert rapid["ready"] is False
