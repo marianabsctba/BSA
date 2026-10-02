@@ -174,3 +174,26 @@ def test_change_own_password_revokes_existing_sessions(tmp_path, monkeypatch):
         raise AssertionError("old session remained valid after password change")
 
     assert auth.authenticate("pw@example.org","NewCorrectHorseBattery2!","198.51.100.61")
+
+
+def test_login_account_uses_progressive_backoff_without_account_lockout(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
+    sleeps=[]
+    monkeypatch.setattr(auth.time,"sleep",lambda seconds: sleeps.append(seconds))
+
+    for _ in range(4):
+        assert auth.authenticate("missing@example.org","WrongPassword123!","198.51.100.90") is None
+
+    assert sleeps==[0.1,0.2,0.4,0.8]
+    conn=auth._db()
+    row=conn.execute(
+        "SELECT count,blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-account-backoff","missing@example.org:198.51.100.90"),
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert int(row["count"])==4
+    assert int(row["blocked_until"])==0
