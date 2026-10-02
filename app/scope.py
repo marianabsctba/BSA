@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 import ipaddress
 import unicodedata
+import tldextract
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,8 @@ import os
 import secrets
 import time
 from .auth import _db, Principal
+
+_TLD_EXTRACT=tldextract.TLDExtract(suffix_list_urls=())
 
 def ensure_scope_schema():
     conn=_db()
@@ -107,6 +110,33 @@ def _normalize_scope_hostname(value: str) -> str:
         raise ValueError("invalid hostname")
     return candidate
 
+def validate_active_scope_pattern(pattern: str) -> str:
+    raw=str(pattern or "").strip().rstrip(".").lower()
+    if not raw or raw=="*":
+        raise ValueError("active scan scope cannot be global wildcard")
+    if "*" in raw and not raw.startswith("*."):
+        raise ValueError("wildcard is only allowed as a leading subdomain wildcard")
+    base=raw[2:] if raw.startswith("*.") else raw
+    normalized=_normalize_scope_hostname(base)
+    try:
+        ip=ipaddress.ip_address(normalized)
+        if not ip.is_global:
+            raise ValueError("active scan scope must use a public IP")
+        if raw.startswith("*."):
+            raise ValueError("wildcard cannot be used with IP address")
+        return normalized
+    except ValueError as exc:
+        if "public IP" in str(exc) or "wildcard cannot" in str(exc):
+            raise
+    extracted=_TLD_EXTRACT(normalized)
+    if not extracted.suffix or not extracted.domain:
+        raise ValueError("active scan scope requires a registrable public domain")
+    registrable=f"{extracted.domain}.{extracted.suffix}"
+    if normalized==extracted.suffix or registrable==extracted.suffix:
+        raise ValueError("public suffix cannot be used as active scan scope")
+    return ("*." if raw.startswith("*.") else "")+normalized
+
+
 def _scope_pattern_matches(hostname: str, pattern: str) -> bool:
     try:
         normalized=_normalize_scope_hostname(hostname)
@@ -152,8 +182,9 @@ def asset_in_scope(principal: Principal,value:str):
 
 
 def create_scan_scope(principal: Principal,name:str,pattern:str):
-    if not __import__("app.auth",fromlist=["can"]).can(principal,"users:write"):
-        raise PermissionError("users:write required")
+    if principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin required for active scan scope")
+    pattern=validate_active_scope_pattern(pattern)
     ensure_scope_schema(); conn=_db(); sid=secrets.token_hex(10)
     conn.execute(
         "INSERT INTO scan_scopes(id,tenant_id,name,pattern,created_at) VALUES(?,?,?,?,?)",
