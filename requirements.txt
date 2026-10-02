@@ -4,3 +4,4 @@ pydantic==2.10.4
 
 tldextract==5.3.2
 cryptography==50.0.2
+dnspython==2.7.0
