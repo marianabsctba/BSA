@@ -16,12 +16,13 @@ ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
 DB_PATH = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if ENVIRONMENT in {"production","prod"} else str(Path("/tmp") / "bsa_auth.db"))
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 MFA_SECRET_KEY = os.getenv("BSA_MFA_KEY", "")
+MFA_KEY = MFA_SECRET_KEY
 MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 SESSION_IDLE_TIMEOUT = int(os.getenv("BSA_SESSION_IDLE_TIMEOUT", "1800"))
 
 def _mfa_key_material() -> str:
-    material=MFA_SECRET_KEY or (JWT_SECRET if ENVIRONMENT not in {"production","prod"} else "")
+    material=MFA_KEY or MFA_SECRET_KEY or (JWT_SECRET if ENVIRONMENT not in {"production","prod"} else "")
     if not material:
         raise RuntimeError("BSA_MFA_KEY is required for MFA secret encryption in production")
     return material
@@ -64,7 +65,8 @@ class Principal:
 def _require_security_config():
     if ENVIRONMENT in {"production","prod"} and (not JWT_SECRET or len(JWT_SECRET) < 32):
         raise RuntimeError("BSA_JWT_SECRET must be set to a random secret of at least 32 characters in production")
-    if ENVIRONMENT in {"production","prod"} and (not MFA_SECRET_KEY or len(MFA_SECRET_KEY) < 32):
+    configured_mfa_key=MFA_KEY or MFA_SECRET_KEY
+    if ENVIRONMENT in {"production","prod"} and (not configured_mfa_key or len(configured_mfa_key) < 32):
         raise RuntimeError("BSA_MFA_KEY must be set to a random secret of at least 32 characters in production")
 
 
