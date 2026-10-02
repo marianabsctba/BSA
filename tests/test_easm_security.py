@@ -34,10 +34,10 @@ def test_external_target_rejects_non_http_schemes():
 
 def test_easm_bounds_are_enforced():
     h = login()
-    assert client.get("/api/v1/easm/discover/example.com?max_depth=-1", headers=h).status_code == 400
-    assert client.get("/api/v1/easm/discover/example.com?max_depth=4", headers=h).status_code == 400
-    assert client.get("/api/v1/easm/discover/example.com?max_assets=0", headers=h).status_code == 400
-    assert client.get("/api/v1/easm/discover/example.com?max_assets=101", headers=h).status_code == 400
+    assert client.post("/api/v1/easm/discover/example.com?max_depth=-1", headers=h).status_code == 400
+    assert client.post("/api/v1/easm/discover/example.com?max_depth=4", headers=h).status_code == 400
+    assert client.post("/api/v1/easm/discover/example.com?max_assets=0", headers=h).status_code == 400
+    assert client.post("/api/v1/easm/discover/example.com?max_assets=101", headers=h).status_code == 400
 
 
 def test_discovery_routes_use_store_tenant_scope(monkeypatch):
@@ -60,5 +60,5 @@ def test_discovery_routes_use_store_tenant_scope(monkeypatch):
         "/api/v1/discovery/example.com/graph",
         "/api/v1/discovery/example.com/correlation",
     ):
-        response = client.get(path, headers=h)
+        response = client.post(path, headers=h)
         assert response.status_code != 500, path
