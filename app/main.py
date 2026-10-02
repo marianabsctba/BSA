@@ -1071,8 +1071,12 @@ class UserScopeRequest(BaseModel):
 @app.get("/api/v1/users/{user_id}/scopes")
 def users_scopes_list(user_id: str, request: Request):
     p=current_principal(request)
-    try: return list_user_scopes(p,user_id)
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
+    try:
+        return list_user_scopes(p,user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError:
+        raise HTTPException(status_code=404,detail="user not found")
 
 @app.post("/api/v1/users/{user_id}/scopes")
 def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
@@ -1092,6 +1096,8 @@ def users_scan_scopes_list(user_id: str, request: Request):
         return list_user_scan_scopes(p,user_id)
     except PermissionError as exc:
         raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError:
+        raise HTTPException(status_code=404,detail="user not found")
 
 @app.post("/api/v1/users/{user_id}/scan-scopes")
 def users_scan_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
