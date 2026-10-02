@@ -1,5 +1,6 @@
 from dataclasses import dataclass, asdict
 import json
+import sqlite3
 import time
 
 from .auth import _db
@@ -48,10 +49,16 @@ def validate_sla_policy(policy: TenantSLAPolicy) -> list[str]:
 
 def sla_policy_for(tenant_id: str) -> TenantSLAPolicy:
     conn=_db()
-    row=conn.execute(
-        "SELECT version,policy_json FROM tenant_sla_policies WHERE tenant_id=?",
-        (tenant_id,),
-    ).fetchone()
+    try:
+        row=conn.execute(
+            "SELECT version,policy_json FROM tenant_sla_policies WHERE tenant_id=?",
+            (tenant_id,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        conn.close()
+        if "no such table: tenant_sla_policies" in str(exc).lower():
+            return TenantSLAPolicy(tenant_id=tenant_id)
+        raise
     conn.close()
     if not row:
         return TenantSLAPolicy(tenant_id=tenant_id)
