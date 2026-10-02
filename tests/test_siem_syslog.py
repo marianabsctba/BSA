@@ -2,22 +2,36 @@ import json
 
 from app.integration_export import unified_siem_events
 from app.syslog_export import SyslogConfig, rfc5424_message
+from app.models import Asset, AssetType, Finding, Severity
 
 
 def test_unified_siem_stream_contains_findings_and_drp():
-    class A:
-        id="asset-a"; tenant_id="tenant-a"; value="a.example.org"; type=type("T",(),{"value":"domain"})()
-        criticality=4; tags=[]
-    class F:
-        id="finding-a"; tenant_id="tenant-a"; asset_id="asset-a"; detected_at="2026-10-02T10:00:00+00:00"
-        title="Exposure"; severity=type("S",(),{"value":"high"})(); status="open"; confidence=90
-        vulnerability_id=None; cvss=None; epss=None; kev=False; validation_state=None; evidence_quality=None
-        independent_source_count=1; independently_corroborated=False; affected_components=[]
+    asset=Asset(
+        tenant_id="tenant-a",
+        id="asset-a",
+        value="a.example.org",
+        type=AssetType.DOMAIN,
+        confidence=95,
+        criticality=4,
+        source="test",
+        first_seen="2026-10-02T09:00:00+00:00",
+        last_seen="2026-10-02T10:00:00+00:00",
+    )
+    finding=Finding(
+        tenant_id="tenant-a",
+        id="finding-a",
+        asset_id="asset-a",
+        title="Exposure",
+        severity=Severity.HIGH,
+        confidence=90,
+        evidence="observed",
+        detected_at="2026-10-02T10:00:00+00:00",
+    )
 
     stream=unified_siem_events(
         "tenant-a",
-        [A()],
-        [F()],
+        [asset],
+        [finding],
         [{
             "event_id":"drp-1",
             "category":"credential_leak",
@@ -39,7 +53,6 @@ def test_unified_siem_stream_contains_findings_and_drp():
     assert stream["count"]==2
     assert set(stream["event_types"])=={"exposure.finding","digital_risk.credential_leak"}
     assert all(x["tenant_id"]=="tenant-a" for x in stream["events"])
-
 
 def test_rfc5424_payload_filters_secrets_and_hardens_header():
     cfg=SyslogConfig(host="siem.example.org",transport="tls",app_name="bad app\nname")
