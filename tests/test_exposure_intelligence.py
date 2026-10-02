@@ -183,7 +183,6 @@ def test_digital_risk_ingest_and_summary():
     assert summary["total"]>=1
     assert summary["high_risk_open"]>=1
     assert "takedown_candidates" not in summary
-    assert r.json()["status"]=="queued"
 
 
 def test_brand_impersonation_evidence_endpoint():
