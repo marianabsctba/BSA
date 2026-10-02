@@ -21,6 +21,8 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         self._connect=connect or self._default_connect
         self._pending_assets=[]
         self._pending_findings=[]
+        self._tracked_assets={}
+        self._tracked_findings={}
         self._ensure_schema()
 
     @staticmethod
@@ -70,13 +72,25 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT payload_json FROM assets ORDER BY tenant_id,id")
-                return [Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
+                items=[Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
+        for item in items:
+            self._tracked_assets[(item.tenant_id,item.id)]=item
+        return items+[
+            item for item in self._pending_assets
+            if (item.tenant_id,item.id) not in self._tracked_assets
+        ]
 
     def all_findings(self):
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT payload_json FROM findings ORDER BY tenant_id,id")
-                return [Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
+                items=[Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
+        for item in items:
+            self._tracked_findings[(item.tenant_id,item.id)]=item
+        return items+[
+            item for item in self._pending_findings
+            if (item.tenant_id,item.id) not in self._tracked_findings
+        ]
 
     def list_assets(self, tenant_id: str):
         with self._connection() as conn:
@@ -85,7 +99,14 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                     "SELECT payload_json FROM assets WHERE tenant_id=%s ORDER BY id",
                     (tenant_id,),
                 )
-                return [Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
+                items=[Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
+        for item in items:
+            self._tracked_assets[(item.tenant_id,item.id)]=item
+        return items+[
+            item for item in self._pending_assets
+            if item.tenant_id==tenant_id
+            and (item.tenant_id,item.id) not in self._tracked_assets
+        ]
 
     def list_findings(self, tenant_id: str, asset_ids: Iterable[str] | None=None):
         with self._connection() as conn:
@@ -104,7 +125,15 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                         "WHERE tenant_id=%s AND asset_id = ANY(%s) ORDER BY id",
                         (tenant_id,list(ids)),
                     )
-                return [Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
+                items=[Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
+        for item in items:
+            self._tracked_findings[(item.tenant_id,item.id)]=item
+        return items+[
+            item for item in self._pending_findings
+            if item.tenant_id==tenant_id
+            and (asset_ids is None or item.asset_id in set(asset_ids))
+            and (item.tenant_id,item.id) not in self._tracked_findings
+        ]
 
     def find_asset_by_value(self, tenant_id: str, value: str):
         wanted=str(value or "").strip().lower()
@@ -124,7 +153,17 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                     (tenant_id,finding_id),
                 )
                 row=cur.fetchone()
-                return Finding.model_validate(self._payload(row)) if row else None
+        if not row:
+            return next(
+                (
+                    item for item in self._pending_findings
+                    if item.tenant_id==tenant_id and item.id==finding_id
+                ),
+                None,
+            )
+        item=Finding.model_validate(self._payload(row))
+        self._tracked_findings[(item.tenant_id,item.id)]=item
+        return item
 
     def add_asset(self, asset: Asset) -> Asset:
         self._pending_assets.append(asset)
@@ -135,11 +174,19 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         return finding
 
     def persist(self) -> None:
-        if not self._pending_assets and not self._pending_findings:
+        assets={
+            **self._tracked_assets,
+            **{(item.tenant_id,item.id):item for item in self._pending_assets},
+        }
+        findings={
+            **self._tracked_findings,
+            **{(item.tenant_id,item.id):item for item in self._pending_findings},
+        }
+        if not assets and not findings:
             return
         with self._connection() as conn:
             with conn.cursor() as cur:
-                for asset in self._pending_assets:
+                for asset in assets.values():
                     cur.execute(
                         """INSERT INTO assets(tenant_id,id,payload_json,updated_at)
                            VALUES(%s,%s,%s::jsonb,NOW())
@@ -152,7 +199,7 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                             json.dumps(asset.model_dump(mode="json"),ensure_ascii=False),
                         ),
                     )
-                for finding in self._pending_findings:
+                for finding in findings.values():
                     cur.execute(
                         """INSERT INTO findings(tenant_id,id,asset_id,payload_json,updated_at)
                            VALUES(%s,%s,%s,%s::jsonb,NOW())
@@ -169,3 +216,5 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                     )
         self._pending_assets.clear()
         self._pending_findings.clear()
+        self._tracked_assets.clear()
+        self._tracked_findings.clear()
