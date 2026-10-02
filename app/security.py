@@ -15,7 +15,7 @@ def resolve_public(hostname: str) -> list[str]:
         return []
     ips=sorted({item[4][0] for item in infos})
     if not ips:
-        return []
+        raise ValueError("target could not be resolved")
     if any(not _public_ip(ip) for ip in ips):
         raise ValueError("target resolves to non-public address")
     return ips
