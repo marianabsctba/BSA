@@ -246,3 +246,15 @@ def test_mssp_routes_live_outside_main():
     assert '@app.get("/api/v1/mssp/command-center/trend")' not in main_source
     assert '@router.get("/api/v1/mssp/command-center")' in router_source
     assert '@router.get("/api/v1/mssp/command-center/trend")' in router_source
+
+
+def test_reporting_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/reporting.py").read_text(encoding="utf-8")
+    assert "app.include_router(reporting_router)" in main_source
+    assert '@app.get("/api/v1/reports/summary")' not in main_source
+    assert '@app.get("/api/v1/dashboard"' not in main_source
+    assert '@router.get("/api/v1/reports/summary")' in router_source
+    assert '@router.get("/api/v1/dashboard",response_model=Dashboard)' in router_source
