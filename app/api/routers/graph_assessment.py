@@ -315,8 +315,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
 
     scoped_assets,_=tenant_scope(
         principal,
-        repository._assets,
-        repository._findings,
+        repository.all_assets(),
+        repository.all_findings(),
         scope_check=asset_in_scope,
     )
     by_value={asset.value.lower():asset for asset in scoped_assets}
