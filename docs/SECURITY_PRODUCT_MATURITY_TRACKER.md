@@ -102,7 +102,6 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Política de risco realmente persistida por tenant.
 - [ ] SLA MSSP configurável e baseado em janela temporal real.
 - [x] DRP/leaks com score/correlação/evidência.
-- [ ] Takedown com integração real ou posicionamento comercial reduzido.
 - [ ] Avaliação de qualidade da IA local.
 - [x] SIEM API pull.
 - [x] Syslog UDP/TCP/TLS.
