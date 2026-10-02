@@ -46,7 +46,10 @@ def test_pilot_smoke_queue_worker_materialization_and_ctem(tmp_path, monkeypatch
         ],
     }
 
+    monkeypatch.setattr(worker, "current_principal_for_user", lambda user_id, tenant_id: principal)
+    monkeypatch.setattr(worker, "can", lambda principal, permission: True)
     monkeypatch.setattr(worker, "active_scan_in_scope", lambda principal, target: True)
+    monkeypatch.setattr(worker, "authorization_grant_valid", lambda principal, ref, target: True)
     monkeypatch.setattr(worker, "run_public_assessment", lambda *args, **kwargs: assessment_result)
 
     assert worker.run_once() is True
