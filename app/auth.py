@@ -15,15 +15,20 @@ from cryptography.fernet import Fernet, InvalidToken
 ENVIRONMENT = os.getenv("BSA_ENV", "development").lower()
 DB_PATH = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if ENVIRONMENT in {"production","prod"} else str(Path("/tmp") / "bsa_auth.db"))
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
+MFA_KEY = os.getenv("BSA_MFA_KEY", "")
 MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
 _LOGIN_ATTEMPTS = {}
 _IP_LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
 
+def _mfa_key_material() -> str:
+    material=MFA_KEY or (JWT_SECRET if ENVIRONMENT not in {"production","prod"} else "")
+    if not material:
+        raise RuntimeError("BSA_MFA_KEY is required for MFA secret encryption in production")
+    return material
+
 def _mfa_cipher() -> Fernet:
-    if not JWT_SECRET:
-        raise RuntimeError("BSA_JWT_SECRET is required for MFA secret encryption")
-    key=base64.urlsafe_b64encode(hashlib.sha256((JWT_SECRET + ":mfa").encode()).digest())
+    key=base64.urlsafe_b64encode(hashlib.sha256((_mfa_key_material() + ":mfa").encode()).digest())
     return Fernet(key)
 
 def _encrypt_mfa_secret(secret: str) -> str:
@@ -117,6 +122,18 @@ def _db():
         blocked_until INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(bucket,identity)
     )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS mfa_recovery_codes(
+        user_id TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        used_at INTEGER,
+        PRIMARY KEY(user_id,code_hash)
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS tenant_security_policy(
+        tenant_id TEXT PRIMARY KEY,
+        mfa_required_roles TEXT NOT NULL DEFAULT '[]',
+        updated_at INTEGER NOT NULL
+    )""")
     conn.commit()
     return conn
 
@@ -199,19 +216,27 @@ def mfa_status(principal: Principal) -> dict:
     conn.close()
     return {"enabled":bool(row and row["enabled"])}
 
-def mfa_enroll(principal: Principal, current_password: str) -> dict:
+def mfa_enroll(principal: Principal, current_password: str, current_mfa_code: str | None = None) -> dict:
     conn=_db()
     user=conn.execute(
         "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
         (principal.user_id,principal.tenant_id),
     ).fetchone()
+    existing=conn.execute(
+        "SELECT secret,enabled,last_counter FROM users_mfa WHERE user_id=?",
+        (principal.user_id,),
+    ).fetchone()
     if not user:
         conn.close()
         raise ValueError("user not found")
-    password_ok=_verify(current_password,user["password_hash"])
-    if not password_ok:
+    if not _verify(current_password,user["password_hash"]):
         conn.close()
         raise PermissionError("current password verification failed")
+    if existing and existing["enabled"]:
+        counter=verify_totp_counter(_decrypt_mfa_secret(existing["secret"]),current_mfa_code or "")
+        if counter is None or (existing["last_counter"] is not None and counter<=int(existing["last_counter"])):
+            conn.close()
+            raise PermissionError("current MFA verification failed")
     secret=generate_mfa_secret()
     conn.execute(
         """INSERT INTO users_mfa(user_id,secret,enabled,created_at,last_counter)
@@ -220,6 +245,7 @@ def mfa_enroll(principal: Principal, current_password: str) -> dict:
              secret=excluded.secret,enabled=0,created_at=excluded.created_at,last_counter=NULL""",
         (principal.user_id,_encrypt_mfa_secret(secret),int(time.time())),
     )
+    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
     conn.commit(); conn.close()
     label=urllib.parse.quote(f"Be Safe ASM:{principal.email}")
     uri=f"otpauth://totp/{label}?secret={secret}&issuer=Be%20Safe%20ASM"
@@ -270,6 +296,110 @@ def verify_user_mfa_once(user_id: str, code: str) -> bool:
     ).rowcount
     conn.commit(); conn.close()
     return bool(updated)
+
+
+def _recovery_code_hash(code: str) -> str:
+    return hmac.new(
+        hashlib.sha256((_mfa_key_material()+":recovery").encode()).digest(),
+        str(code or "").strip().encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+def generate_mfa_recovery_codes(principal: Principal, current_password: str, current_mfa_code: str) -> list[str]:
+    conn=_db()
+    user=conn.execute(
+        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
+        (principal.user_id,principal.tenant_id),
+    ).fetchone()
+    conn.close()
+    if not user or not _verify(current_password,user["password_hash"]):
+        raise PermissionError("current password verification failed")
+    if not verify_user_mfa_once(principal.user_id,current_mfa_code):
+        raise PermissionError("current MFA verification failed")
+    codes=[secrets.token_urlsafe(9) for _ in range(10)]
+    now=int(time.time())
+    conn=_db()
+    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
+    conn.executemany(
+        "INSERT INTO mfa_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)",
+        [(principal.user_id,_recovery_code_hash(code),now) for code in codes],
+    )
+    conn.commit(); conn.close()
+    return codes
+
+def verify_mfa_recovery_code(user_id: str, code: str) -> bool:
+    code_hash=_recovery_code_hash(code)
+    now=int(time.time())
+    conn=_db()
+    updated=conn.execute(
+        """UPDATE mfa_recovery_codes SET used_at=?
+           WHERE user_id=? AND code_hash=? AND used_at IS NULL""",
+        (now,user_id,code_hash),
+    ).rowcount
+    conn.commit(); conn.close()
+    return bool(updated)
+
+def mfa_disable(principal: Principal, current_password: str, current_mfa_code: str) -> bool:
+    conn=_db()
+    user=conn.execute(
+        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
+        (principal.user_id,principal.tenant_id),
+    ).fetchone()
+    conn.close()
+    if not user or not _verify(current_password,user["password_hash"]):
+        raise PermissionError("current password verification failed")
+    if not verify_user_mfa_once(principal.user_id,current_mfa_code):
+        raise PermissionError("current MFA verification failed")
+    conn=_db()
+    conn.execute("UPDATE users_mfa SET enabled=0 WHERE user_id=?",(principal.user_id,))
+    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
+    conn.commit(); conn.close()
+    return True
+
+def tenant_mfa_policy(tenant_id: str) -> dict:
+    conn=_db()
+    row=conn.execute(
+        "SELECT mfa_required_roles,updated_at FROM tenant_security_policy WHERE tenant_id=?",
+        (tenant_id,),
+    ).fetchone()
+    conn.close()
+    roles=json.loads(row["mfa_required_roles"]) if row else []
+    return {"tenant_id":tenant_id,"mfa_required_roles":roles,"updated_at":row["updated_at"] if row else None}
+
+def set_tenant_mfa_policy(principal: Principal, roles: list[str]) -> dict:
+    if principal.role not in {"admin","superadmin"} and not can(principal,"tenant:manage"):
+        raise PermissionError("admin required")
+    normalized=sorted(set(str(role).strip() for role in roles if str(role).strip()))
+    for role in normalized:
+        if role not in ROLES and not role.startswith(CUSTOM_ROLE_PREFIX):
+            raise ValueError("invalid role in MFA policy")
+        if role.startswith(CUSTOM_ROLE_PREFIX):
+            role_permissions(role,principal.tenant_id)
+    conn=_db()
+    if normalized:
+        placeholders=",".join("?" for _ in normalized)
+        rows=conn.execute(
+            f"""SELECT u.id,u.email,u.role FROM users u
+                LEFT JOIN users_mfa m ON m.user_id=u.id AND m.enabled=1
+                WHERE u.tenant_id=? AND u.active=1 AND u.role IN ({placeholders}) AND m.user_id IS NULL""",
+            (principal.tenant_id,*normalized),
+        ).fetchall()
+        if rows:
+            conn.close()
+            raise ValueError("all active users in required roles must enable MFA before policy enforcement")
+    now=int(time.time())
+    conn.execute(
+        """INSERT INTO tenant_security_policy(tenant_id,mfa_required_roles,updated_at)
+           VALUES(?,?,?)
+           ON CONFLICT(tenant_id) DO UPDATE SET
+             mfa_required_roles=excluded.mfa_required_roles,updated_at=excluded.updated_at""",
+        (principal.tenant_id,json.dumps(normalized,separators=(",",":")),now),
+    )
+    conn.commit(); conn.close()
+    return {"tenant_id":principal.tenant_id,"mfa_required_roles":normalized,"updated_at":now}
+
+def _tenant_role_requires_mfa(tenant_id: str, role: str) -> bool:
+    return role in set(tenant_mfa_policy(tenant_id)["mfa_required_roles"])
 
 def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
     now=int(time.time())
@@ -341,11 +471,15 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     _clear_rate_limit("login-ip",ipkey)
 
     mfa_secret=mfa_secret_for_user(row["id"])
+    if _tenant_role_requires_mfa(row["tenant_id"],row["role"]) and not mfa_secret:
+        return None
     if mfa_secret:
         mfa_identity=f"{row['id']}:{ipkey}"
         if _rate_limit_blocked("mfa-login",mfa_identity):
             return None
-        if not verify_user_mfa_once(row["id"],mfa_code or ""):
+        supplied=mfa_code or ""
+        verified=verify_user_mfa_once(row["id"],supplied) if supplied.isdigit() and len(supplied)==6 else verify_mfa_recovery_code(row["id"],supplied)
+        if not verified:
             rate_limit_action("mfa-login",mfa_identity,limit=5,window_seconds=300)
             return None
         _clear_rate_limit("mfa-login",mfa_identity)
