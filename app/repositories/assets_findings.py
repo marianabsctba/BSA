@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ..store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
+from ..store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 
 
 class AssetFindingRepository:
@@ -36,6 +36,38 @@ class AssetFindingRepository:
             if getattr(finding, "tenant_id", "tenant-demo") == tenant_id
             and (allowed is None or finding.asset_id in allowed)
         ]
+
+    def find_asset_by_value(self, tenant_id: str, value: str):
+        wanted=str(value or "").strip().lower()
+        return next(
+            (
+                asset
+                for asset in self.list_assets(tenant_id)
+                if str(getattr(asset, "value", "")).strip().lower()==wanted
+            ),
+            None,
+        )
+
+    def find_finding(self, tenant_id: str, finding_id: str):
+        return next(
+            (
+                finding
+                for finding in self.list_findings(tenant_id)
+                if finding.id==finding_id
+            ),
+            None,
+        )
+
+    def add_asset(self, asset):
+        self._assets.append(asset)
+        return asset
+
+    def add_finding(self, finding):
+        self._findings.append(finding)
+        return finding
+
+    def persist(self) -> None:
+        persist_state(self._assets,self._findings)
 
 
 def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepository:
