@@ -292,3 +292,14 @@ def test_api_routers_do_not_import_store_directly_except_legacy_none():
         if "from ...store import" in source or "from app.store import" in source:
             offenders.append(str(path))
     assert offenders==[], f"routers import store directly: {offenders}"
+
+
+def test_api_does_not_import_postgres_adapter_directly():
+    from pathlib import Path
+
+    offenders=[]
+    for path in Path("app/api").rglob("*.py"):
+        source=path.read_text(encoding="utf-8")
+        if "postgres_assets_findings" in source:
+            offenders.append(str(path))
+    assert offenders==[], f"API imports PostgreSQL adapter directly: {offenders}"
