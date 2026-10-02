@@ -67,6 +67,7 @@ from .api.routers.ctem import router as ctem_router
 from .api.routers.integrations import router as integrations_router
 from .api.routers.admin import router as admin_router
 from .api.routers.auth import router as auth_router
+from .api.routers.operations import router as operations_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -90,6 +91,7 @@ app.include_router(ctem_router)
 app.include_router(integrations_router)
 app.include_router(admin_router)
 app.include_router(auth_router)
+app.include_router(operations_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -203,90 +205,10 @@ def queue_active_operation(http_request: Request, principal, target: str, operat
     )
 
 
-@app.get("/api/v1/operations/jobs/{job_id}")
-def active_operation_job(job_id: str, request: Request):
-    principal=require(request,"discovery:run")
-    job=get_job(job_id,principal.tenant_id)
-    if not job:
-        raise HTTPException(status_code=404,detail="job not found")
-    return {
-        "job_id":job["job_id"],
-        "job_type":job.get("job_type"),
-        "operation":job.get("operation"),
-        "status":job["status"],
-        "target":job["target"],
-        "created_at":job["created_at"],
-        "started_at":job.get("started_at"),
-        "completed_at":job.get("completed_at"),
-        "error":job.get("error"),
-        "result":job.get("result"),
-    }
-
-
-@app.get("/health")
-def health():
-    return {"status":"ok"}
-
-
-@app.get("/ready")
-def ready():
-    data=runtime_health()
-    status_code=200 if data.get("status")=="healthy" else 503
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            **data,
-            "product":"BSA",
-            "version":__version__,
-            "powered_by":"Mariana BS",
-        },
-    )
-
-
-@app.get("/metrics")
-def metrics(request: Request):
-    principal=require(request,"assets:read")
-    tenant_id=None if principal.role=="superadmin" else principal.tenant_id
-    return Response(
-        content=prometheus_metrics(tenant_id),
-        media_type="text/plain; version=0.0.4; charset=utf-8",
-    )
-
-
-@app.get("/api/v1/operations/alerts")
-def operations_alerts(request: Request):
-    principal=require(request,"assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403,detail="manager role required")
-    tenant_id=None if principal.role=="superadmin" else principal.tenant_id
-    return operational_alerts(tenant_id)
-
-
 @app.get("/api/v1/exposure/engines/health")
 def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
-
-
-@app.get("/api/v1/operations/assessment-queue")
-def operations_assessment_queue(request: Request):
-    principal = require(request, "assets:read")
-    if principal.role not in {"superadmin", "admin", "manager"}:
-        raise HTTPException(status_code=403, detail="manager role required")
-    return {
-        "tenant_id": principal.tenant_id,
-        "queue": queue_metrics(principal.tenant_id),
-        "health": queue_health(principal.tenant_id),
-        "workers": worker_health(),
-    }
-
-
-@app.get("/api/v1/operations/release-readiness")
-def operations_release_readiness(request: Request):
-    principal = require(request, "assets:read")
-    if principal.role not in {"superadmin", "admin", "manager"}:
-        raise HTTPException(status_code=403, detail="manager role required")
-    return release_readiness()
 
 
 @app.get("/api/v1/mssp/command-center/trend")
