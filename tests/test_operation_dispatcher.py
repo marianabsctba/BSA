@@ -95,3 +95,22 @@ def test_dispatcher_routes_technology_operation(monkeypatch):
     result=operation_dispatcher.run_operation("technology.intelligence","example.com",{},object())
     assert result=={"source":"technology"}
     assert calls==[("technology","technology.intelligence","example.com")]
+
+
+def test_dispatcher_routes_easm_operation(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(operation_dispatcher,"supports_assessment_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_intelligence_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_technology_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_easm_operation",lambda operation: operation=="discovery.graph")
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "run_easm_operation",
+        lambda operation,target,payload,principal: calls.append(("easm",operation,target)) or {"source":"easm"},
+    )
+
+    result=operation_dispatcher.run_operation("discovery.graph","example.com",{},object())
+
+    assert result=={"source":"easm"}
+    assert calls==[("easm","discovery.graph","example.com")]
