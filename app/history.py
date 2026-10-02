@@ -812,6 +812,31 @@ def ctem_retest_for_job(job_id: str, tenant_id: str) -> dict | None:
     return out
 
 
+def claim_ctem_retest_reconciliation(job_id: str, tenant_id: str) -> bool:
+    """Atomically claim one queued CTEM retest for reconciliation."""
+    conn=_history_db()
+    updated=conn.execute(
+        """UPDATE ctem_retests
+           SET status='reconciling'
+           WHERE job_id=? AND tenant_id=? AND status='queued' AND outcome IS NULL""",
+        (job_id,tenant_id),
+    ).rowcount
+    conn.commit(); conn.close()
+    return bool(updated)
+
+
+def release_ctem_retest_reconciliation(job_id: str, tenant_id: str) -> None:
+    """Return a failed reconciliation claim to the queue without touching completed rows."""
+    conn=_history_db()
+    conn.execute(
+        """UPDATE ctem_retests
+           SET status='queued'
+           WHERE job_id=? AND tenant_id=? AND status='reconciling' AND outcome IS NULL""",
+        (job_id,tenant_id),
+    )
+    conn.commit(); conn.close()
+
+
 def complete_ctem_retest(job_id: str, tenant_id: str, outcome: str,
                          evidence_refs: list[str]) -> dict | None:
     if outcome not in {"passed","failed","inconclusive"}:
@@ -820,7 +845,7 @@ def complete_ctem_retest(job_id: str, tenant_id: str, outcome: str,
     conn=_history_db()
     conn.execute(
         """UPDATE ctem_retests SET status='reconciled',reconciled_at=?,outcome=?,evidence_refs_json=?
-           WHERE job_id=? AND tenant_id=?""",
+           WHERE job_id=? AND tenant_id=? AND status IN ('queued','reconciling')""",
         (now,outcome,json.dumps(list(evidence_refs or []),ensure_ascii=False),job_id,tenant_id),
     )
     conn.commit()
