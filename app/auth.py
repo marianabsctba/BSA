@@ -550,56 +550,32 @@ def _clear_rate_limit(bucket: str, identity: str) -> None:
     conn.commit(); conn.close()
 
 
-def _account_backoff_delay(identity: str, window_seconds: int = 900) -> float:
-    now=int(time.time())
-    key=str(identity or "unknown").strip().lower()[:512] or "unknown"
-    bucket="login-account-backoff"
-    conn=_db()
-    row=conn.execute(
-        "SELECT count,window_started_at FROM auth_rate_limits WHERE bucket=? AND identity=?",
-        (bucket,key),
-    ).fetchone()
-    if not row or now-int(row["window_started_at"] or 0)>=window_seconds:
-        count=1
-        started=now
-    else:
-        count=int(row["count"] or 0)+1
-        started=int(row["window_started_at"])
-    conn.execute(
-        """INSERT INTO auth_rate_limits(bucket,identity,count,window_started_at,blocked_until)
-           VALUES(?,?,?,?,0)
-           ON CONFLICT(bucket,identity) DO UPDATE SET
-             count=excluded.count,window_started_at=excluded.window_started_at,blocked_until=0""",
-        (bucket,key,count,started),
-    )
-    conn.commit(); conn.close()
-    # Per-account progressive delay only; never a durable account lockout.
-    return min(2.0, 0.10 * (2 ** max(0,min(count-1,5))))
-
-
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
-    account_client=f"{key}:{ipkey}"
-    if _rate_limit_blocked("login-ip",ipkey):
-        return None
 
     conn=_db()
-    row=conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1",(email,)).fetchone()
+    row=conn.execute(
+        "SELECT * FROM users WHERE lower(email)=lower(?) AND active=1",
+        (email,),
+    ).fetchone()
     conn.close()
 
     encoded=row["password_hash"] if row else _DUMMY_PASSWORD_HASH
     password_ok=_verify(password,encoded)
+
     if not row or not password_ok:
-        delay=_account_backoff_delay(account_client)
+        # Track both the shared source and the target account. These buckets
+        # never prevent a valid password from being checked, avoiding a NAT
+        # lockout while still detecting distributed account attacks.
         rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900)
-        time.sleep(delay)
+        rate_limit_action("login-account",key,limit=8,window_seconds=900)
         return None
 
-    # Password is valid: clear only the account-specific backoff. Keep the
-    # shared IP bucket intact so a successful login for one account cannot
-    # erase brute-force history accumulated against other accounts.
-    _clear_rate_limit("login-account-backoff",account_client)
+    # A correct password is never rejected only because other users behind
+    # the same NAT generated failures. Clear only this account's global
+    # failure pressure; keep the shared IP history for abuse detection.
+    _clear_rate_limit("login-account",key)
 
     mfa_secret=mfa_secret_for_user(row["id"])
     if _tenant_role_requires_mfa(row["tenant_id"],row["role"]) and not mfa_secret:
@@ -625,6 +601,7 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     )
     conn.commit(); conn.close()
     return _token({"sub":row["id"],"tenant":row["tenant_id"],"email":row["email"],"name":row["name"],"role":row["role"],"iat":now,"exp":exp,"jti":jti})
+
 
 def principal_from_token(token: str) -> Principal:
     p = _decode(token)
