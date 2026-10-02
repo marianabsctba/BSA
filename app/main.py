@@ -51,6 +51,7 @@ from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
 from .retention import get_retention_policy, set_retention_policy, retention_preview, apply_retention
+from .integration_export import siem_events
 
 bootstrap()
 bootstrap_scope()
@@ -562,6 +563,23 @@ def list_findings(request: Request):
         item["context_score"] = finding_context_score(finding, asset) if asset else None
         result.append(item)
     return result
+
+
+@app.get("/api/v1/integrations/siem/export")
+def integrations_siem_export(
+    request: Request,
+    since: str | None = None,
+    limit: int = 500,
+):
+    principal=require(request,"assets:read")
+    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    return siem_events(
+        principal.tenant_id,
+        assets,
+        findings,
+        since=since,
+        limit=limit,
+    )
 
 
 @app.get("/api/v1/changes")
