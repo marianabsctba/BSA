@@ -495,3 +495,78 @@ def test_public_adaptive_degradation_hides_backend_identity(monkeypatch):
     }
     assert "backend-a" not in str(result)
     assert "backend-b" not in str(result)
+
+
+
+def test_adaptive_execution_policy_allows_half_open_recovery_after_cooldown(monkeypatch):
+    from app import assessment_orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "PROFILES", {"rapid": ("backend-a", "backend-b")})
+    monkeypatch.setattr(orchestrator, "PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint": ("backend-a", "backend-b")},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "provider_reliability",
+        lambda providers, window_hours=168, min_calls=3: {
+            "backend-a": {
+                "status": "unreliable",
+                "last_observed_age_seconds": 3600,
+            },
+            "backend-b": {
+                "status": "stable",
+                "last_observed_age_seconds": 60,
+            },
+        },
+    )
+    monkeypatch.setattr(orchestrator.registry, "available", lambda name, target=None: True)
+
+    suppressed, protected, recovery = orchestrator._adaptive_execution_policy(
+        "rapid",
+        "example.com",
+        recovery_cooldown_seconds=1800,
+    )
+
+    assert suppressed == set()
+    assert recovery == {"backend-a"}
+    assert protected == {"fingerprint"}
+
+
+def test_adaptive_execution_policy_keeps_unstable_backend_open_during_cooldown(monkeypatch):
+    from app import assessment_orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "PROFILES", {"rapid": ("backend-a", "backend-b")})
+    monkeypatch.setattr(orchestrator, "PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint": ("backend-a", "backend-b")},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "provider_reliability",
+        lambda providers, window_hours=168, min_calls=3: {
+            "backend-a": {
+                "status": "unreliable",
+                "last_observed_age_seconds": 300,
+            },
+            "backend-b": {
+                "status": "stable",
+                "last_observed_age_seconds": 60,
+            },
+        },
+    )
+    monkeypatch.setattr(orchestrator.registry, "available", lambda name, target=None: True)
+
+    suppressed, protected, recovery = orchestrator._adaptive_execution_policy(
+        "rapid",
+        "example.com",
+        recovery_cooldown_seconds=1800,
+    )
+
+    assert suppressed == {"backend-a"}
+    assert recovery == set()
+    assert protected == {"fingerprint"}
