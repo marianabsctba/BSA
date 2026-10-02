@@ -1267,3 +1267,10 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .ops-strip>div:nth-child(2) strong,.ops-strip>div:nth-child(3) strong{color:#ff6aa8}
 @media(max-width:1050px){.ops-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.ops-strip{grid-template-columns:1fr}}
+
+
+.ct-card-retest{border-color:#31506f;box-shadow:inset 0 0 0 1px #31506f33}
+.ct-card-regression{border-color:#7a2f4f;box-shadow:inset 0 0 0 1px #ff2d8430,0 0 24px #ff2d840d}
+.ct-retest-badge,.ct-regression-badge{display:inline-flex;align-items:center;gap:5px;width:max-content;margin:8px 0 0;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.08em}
+.ct-retest-badge{color:#9fd1ff;background:#17324a;border:1px solid #31506f}
+.ct-regression-badge{color:#ff8fbd;background:#311522;border:1px solid #7a2f4f}
