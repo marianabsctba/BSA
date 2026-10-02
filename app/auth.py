@@ -65,6 +65,8 @@ class Principal:
 def _require_security_config():
     if ENVIRONMENT in {"production","prod"} and (not JWT_SECRET or len(JWT_SECRET) < 32):
         raise RuntimeError("BSA_JWT_SECRET must be set to a random secret of at least 32 characters in production")
+    if ENVIRONMENT in {"production","prod"} and (not MFA_KEY or len(MFA_KEY) < 32):
+        raise RuntimeError("BSA_MFA_KEY must be set to a random secret of at least 32 characters in production")
 
 
 def _validate_password(password: str):
@@ -305,6 +307,25 @@ def _recovery_code_hash(code: str) -> str:
         hashlib.sha256,
     ).hexdigest()
 
+def issue_mfa_recovery_codes(principal: Principal) -> list[str]:
+    conn=_db()
+    row=conn.execute(
+        "SELECT enabled FROM users_mfa WHERE user_id=?",
+        (principal.user_id,),
+    ).fetchone()
+    if not row or not row["enabled"]:
+        conn.close()
+        raise ValueError("MFA must be enabled before recovery codes are issued")
+    codes=[secrets.token_urlsafe(9) for _ in range(10)]
+    now=int(time.time())
+    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
+    conn.executemany(
+        "INSERT INTO mfa_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)",
+        [(principal.user_id,_recovery_code_hash(code),now) for code in codes],
+    )
+    conn.commit(); conn.close()
+    return codes
+
 def generate_mfa_recovery_codes(principal: Principal, current_password: str, current_mfa_code: str) -> list[str]:
     conn=_db()
     user=conn.execute(
@@ -316,16 +337,7 @@ def generate_mfa_recovery_codes(principal: Principal, current_password: str, cur
         raise PermissionError("current password verification failed")
     if not verify_user_mfa_once(principal.user_id,current_mfa_code):
         raise PermissionError("current MFA verification failed")
-    codes=[secrets.token_urlsafe(9) for _ in range(10)]
-    now=int(time.time())
-    conn=_db()
-    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
-    conn.executemany(
-        "INSERT INTO mfa_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)",
-        [(principal.user_id,_recovery_code_hash(code),now) for code in codes],
-    )
-    conn.commit(); conn.close()
-    return codes
+    return issue_mfa_recovery_codes(principal)
 
 def verify_mfa_recovery_code(user_id: str, code: str) -> bool:
     code_hash=_recovery_code_hash(code)
