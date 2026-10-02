@@ -72,3 +72,53 @@ def siem_events(tenant_id: str, assets: list, findings: list, *, since: str | No
         "next_cursor":next_cursor,
         "events":page,
     }
+
+
+def drp_siem_events(tenant_id: str, events: list[dict], *, since: str | None=None, limit: int=500) -> list[dict]:
+    out=[]
+    for event in events:
+        observed_at=_iso_ts(event.get("last_seen") or event.get("first_seen") or event.get("updated_at"))
+        if since and observed_at <= since:
+            continue
+        safe_evidence=event.get("evidence") if isinstance(event.get("evidence"),dict) else {}
+        out.append({
+            "schema_version":"1.0",
+            "event_type":"digital_risk."+str(event.get("category") or "event"),
+            "event_id":"drp:"+str(event.get("event_id") or ""),
+            "observed_at":observed_at,
+            "tenant_id":tenant_id,
+            "indicator":event.get("indicator"),
+            "asset_id":event.get("asset_id"),
+            "brand":event.get("brand"),
+            "severity":event.get("severity"),
+            "confidence":event.get("confidence"),
+            "risk":{
+                "score":event.get("risk_score"),
+                "band":event.get("risk_band"),
+                "reasons":event.get("risk_reasons") or [],
+            },
+            "status":event.get("status"),
+            "source_name":event.get("source"),
+            "evidence_count":event.get("evidence_count",len(safe_evidence)),
+            "takedown_candidate":bool(event.get("takedown_candidate")),
+            "source":"be-safe-asm",
+        })
+    out.sort(key=lambda x:(x["observed_at"],x["event_id"]))
+    return out[:max(1,min(1000,int(limit or 500)))]
+
+
+def unified_siem_events(tenant_id: str, assets: list, findings: list, drp_events: list[dict], *, since: str|None=None, limit: int=500) -> dict:
+    limit=max(1,min(1000,int(limit or 500)))
+    finding_stream=siem_events(tenant_id,assets,findings,since=since,limit=1000)["events"]
+    drp_stream=drp_siem_events(tenant_id,drp_events,since=since,limit=1000)
+    events=sorted(finding_stream+drp_stream,key=lambda x:(x["observed_at"],x["event_id"]))
+    page=events[:limit]
+    next_cursor=page[-1]["observed_at"] if len(events)>len(page) and page else None
+    return {
+        "schema_version":"1.0",
+        "tenant_id":tenant_id,
+        "count":len(page),
+        "next_cursor":next_cursor,
+        "event_types":sorted({x["event_type"] for x in page}),
+        "events":page,
+    }
