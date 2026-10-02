@@ -347,6 +347,8 @@ def discovery_adaptive(target: str, request: Request, max_rounds: int = 3, max_a
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.adaptive",{"max_rounds":max_rounds,"max_assets":max_assets})
     govern_active_scan(request,principal,target)
     result=adaptive_discovery(target,max_rounds=max_rounds,max_assets=max_assets)
     candidates=[{"kind":"hostname","value":x["value"],"confidence":x["confidence"],
@@ -364,6 +366,8 @@ def discovery_ip_intelligence(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ip_intelligence",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct","ports","rdap","ip_intel"])
     ips=sorted({str(e.get("value")) for e in data["evidence"] if e.get("kind") in {"a_record","aaaa"}})
@@ -393,6 +397,8 @@ def discovery_ai_identity(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_identity",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct","rdap"])
     assets=correlate_evidence(target,data["evidence"])
@@ -408,6 +414,8 @@ def discovery_ai_prioritize(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_prioritize",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     signals=[]
@@ -425,6 +433,8 @@ def discovery_ai_api_surface(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_api_surface",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["http"])
     endpoints=[e for e in data["evidence"] if e.get("kind")=="openapi_endpoint"]
@@ -439,6 +449,8 @@ def discovery_ai_correlate(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_correlate",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
     result=correlate_exposure(target,data["evidence"])
@@ -450,6 +462,8 @@ def discovery_signals(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.signals",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
     values=[str(e.get("value","")) for e in data["evidence"]]
@@ -462,6 +476,8 @@ def discovery_ai_judge(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_judge",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct","ports","rdap"])
     grouped={}
@@ -481,6 +497,8 @@ def discovery_ai_plan(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.ai_plan",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     plan=plan_discovery(target,data)
@@ -493,6 +511,8 @@ def technology_intelligence_api(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"technology.intelligence",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["http","tls"])
     observations=extract_technologies(data["evidence"])
@@ -2212,6 +2232,11 @@ def dast_nuclei(payload: DASTRequest, request: Request):
         raise HTTPException(status_code=400, detail="unsupported DAST profile")
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(
+            request,principal,payload.target,"dast.nuclei",
+            {"profile":payload.profile},payload.authorization_ref,
+        )
     govern_active_scan(request,principal,payload.target,payload.authorization_ref)
     try:
         scan = run_nuclei(payload.target, profile=payload.profile)
@@ -2229,6 +2254,11 @@ def dast_safe_web(payload: DASTRequest, request: Request):
         raise HTTPException(status_code=400, detail="authorization_ref is required")
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(
+            request,principal,payload.target,"dast.safe_web",
+            {},payload.authorization_ref,
+        )
     govern_active_scan(request,principal,payload.target,payload.authorization_ref)
     try:
         return run_safe_web_assessment(payload.target)
@@ -2241,11 +2271,16 @@ def discovery(request: DiscoveryRequest, http_request: Request):
     principal=require(http_request, "discovery:run")
     if not asset_in_scope(principal, request.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    govern_active_scan(http_request,principal,request.target,request.authorization_ref)
     allowed = {"dns", "http", "tls", "ct"}
     checks = list(dict.fromkeys(request.checks))
     if not checks or any(check not in allowed for check in checks):
         raise HTTPException(status_code=400, detail="checks deve conter apenas dns, http, tls e ct")
+    if IS_PRODUCTION:
+        return queue_active_operation(
+            http_request,principal,request.target,"discovery.basic",
+            {"checks":checks},request.authorization_ref,
+        )
+    govern_active_scan(http_request,principal,request.target,request.authorization_ref)
     try:
         return collect_target(request.target, checks)
     except ValueError as exc:
@@ -2257,6 +2292,8 @@ def discovery_changes(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.changes",{})
     govern_active_scan(request,principal,target)
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
@@ -2281,6 +2318,8 @@ def discovery_graph(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.graph",{})
     govern_active_scan(request,principal,target)
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
@@ -2292,6 +2331,8 @@ def discovery_correlation(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.correlation",{})
     govern_active_scan(request,principal,target)
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     """Return normalized asset identities for an explicit discovery target."""
@@ -2331,9 +2372,14 @@ def easm_discover(target: str, request: Request, max_depth: int = 2, max_assets:
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
-    govern_active_scan(request,principal,target)
     if max_depth < 0 or max_depth > 3 or max_assets < 1 or max_assets > 100:
         raise HTTPException(status_code=400,detail="invalid discovery bounds")
+    if IS_PRODUCTION:
+        return queue_active_operation(
+            request,principal,target,"easm.discover",
+            {"max_depth":max_depth,"max_assets":max_assets},
+        )
+    govern_active_scan(request,principal,target)
     result=discover_surface(target,max_depth=max_depth,max_assets=max_assets,scope_validator=lambda candidate: asset_in_scope(principal,candidate))
     return result
 
@@ -2342,6 +2388,8 @@ def easm_lifecycle(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"easm.lifecycle",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     assets=correlate_evidence(data["target"],data["evidence"])
@@ -2526,6 +2574,10 @@ def discovery_infrastructure_graph(target: str, request: Request):
     principal=require(request,"discovery:run")
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.infrastructure_graph",{})
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.infrastructure",{})
     govern_active_scan(request,principal,target)
     data=collect_target(target,["dns","http","tls","ct"])
     item=InfrastructureIndicator(indicator=data["target"],source="bsa_discovery",confidence=data["confidence"])
@@ -2561,6 +2613,8 @@ def discovery_risk_paths(target: str, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
+    if IS_PRODUCTION:
+        return queue_active_operation(request,principal,target,"discovery.risk_paths",{})
     govern_active_scan(request,principal,target)
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
     data = collect_target(target, ["dns", "http", "tls", "ct"])
