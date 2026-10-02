@@ -19,11 +19,12 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, record_ctem_retest, ctem_retest_for_job, complete_ctem_retest, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
+from .ctem_retest import classify_ctem_retest
 from .discovery_orchestrator import plan_candidate_collection
 from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user
 from .asset_view import asset_detail
@@ -1476,15 +1477,17 @@ def exposure_assessment_job(job_id: str, request: Request):
     if not job:
         raise HTTPException(status_code=404,detail="assessment job not found")
     result=job.get("result")
+    job_principal=None
+    if job["status"]=="succeeded" and result is not None:
+        job_principal=Principal(
+            user_id=job["user_id"],
+            tenant_id=job["tenant_id"],
+            email=job["email"],
+            role=job["role"],
+            name=job["name"],
+        )
     if job["status"]=="succeeded" and result is not None and not job.get("materialized"):
         if claim_materialization(job_id,principal.tenant_id):
-            job_principal=Principal(
-                user_id=job["user_id"],
-                tenant_id=job["tenant_id"],
-                email=job["email"],
-                role=job["role"],
-                name=job["name"],
-            )
             try:
                 result["materialization"]=_materialize_assessment_result(job_principal,result)
                 finish_materialization(job_id,principal.tenant_id,True)
@@ -1504,6 +1507,9 @@ def exposure_assessment_job(job_id: str, request: Request):
                 raise
         else:
             job=get_job(job_id,principal.tenant_id) or job
+    ctem_retest_result=None
+    if job["status"]=="succeeded" and result is not None and job_principal is not None and job.get("materialized"):
+        ctem_retest_result=_reconcile_ctem_retest_result(job_principal,job,result)
     return {
         "job_id":job["job_id"],
         "status":job["status"],
@@ -1514,6 +1520,7 @@ def exposure_assessment_job(job_id: str, request: Request):
         "completed_at":job.get("completed_at"),
         "error":job.get("error"),
         "materialized":bool(job.get("materialized")),
+        "ctem_retest":ctem_retest_result,
         "result":result,
     }
 
@@ -2233,6 +2240,90 @@ def discovery_risk_paths(target: str, request: Request):
     }
 
 
+def _reconcile_ctem_retest_result(principal, job: dict, result: dict) -> dict | None:
+    link=ctem_retest_for_job(job["job_id"],principal.tenant_id)
+    if not link:
+        return None
+    if link.get("outcome"):
+        return link
+
+    item=next(
+        (x for x in list_ctem_items(principal.tenant_id) if x.get("item_id")==link.get("item_id")),
+        None,
+    )
+    if item is None:
+        return complete_ctem_retest(
+            job["job_id"],principal.tenant_id,"inconclusive",
+            [f"assessment-job:{job['job_id']}:ctem-item-missing"],
+        )
+
+    decision=classify_ctem_retest(
+        item,result,job_id=job["job_id"],target=job.get("target",""),
+    )
+    outcome=decision["outcome"]
+    refs=list(decision.get("evidence_refs") or [])
+    previous_state=str(item.get("state") or "")
+
+    if outcome in {"passed","failed"}:
+        try:
+            verified=verify_ctem_item(
+                item["item_id"],
+                principal.tenant_id,
+                outcome,
+                refs,
+                f"Automated authorized retest {job['job_id']}: {decision.get('reason','')}",
+            )
+            next_state=str(verified.get("state") or previous_state)
+            record_ctem_transition(
+                item["item_id"],
+                principal.tenant_id,
+                "retest_verified" if outcome=="passed" else "retest_failed",
+                previous_state,
+                next_state,
+                actor_id=str(getattr(principal,"user_id","") or ""),
+                request_id=str(job["job_id"]),
+            )
+        except ValueError:
+            outcome="inconclusive"
+            decision["reason"]="CTEM state is not eligible for automatic verification"
+            refs=sorted(set(refs+[f"assessment-job:{job['job_id']}:state:{previous_state}"]))
+            record_ctem_transition(
+                item["item_id"],
+                principal.tenant_id,
+                "retest_inconclusive",
+                previous_state,
+                previous_state,
+                actor_id=str(getattr(principal,"user_id","") or ""),
+                request_id=str(job["job_id"]),
+            )
+    else:
+        record_ctem_transition(
+            item["item_id"],
+            principal.tenant_id,
+            "retest_inconclusive",
+            previous_state,
+            previous_state,
+            actor_id=str(getattr(principal,"user_id","") or ""),
+            request_id=str(job["job_id"]),
+        )
+
+    complete_ctem_retest(job["job_id"],principal.tenant_id,outcome,refs)
+    audit(
+        principal,
+        "ctem_retest_reconcile",
+        "ctem",
+        item["item_id"],
+        {
+            "job_id":job["job_id"],
+            "outcome":outcome,
+            "coverage_percent":decision.get("coverage_percent",0),
+            "matching_findings":decision.get("matching_findings",0),
+            "partial_coverage":decision.get("partial_coverage",False),
+        },
+    )
+    return {**decision,"outcome":outcome,"evidence_refs":refs}
+
+
 @app.get("/api/v1/ctem/operations")
 def ctem_operations(request: Request):
     principal=require(request,"findings:read")
@@ -2322,6 +2413,13 @@ def ctem_retest(item_id: str, request: Request, payload: dict):
     job=enqueue_assessment(
         principal,
         asset.value,
+        profile,
+        authorization_ref or "development-retest",
+    )
+    record_ctem_retest(
+        job["job_id"],
+        principal.tenant_id,
+        item_id,
         profile,
         authorization_ref or "development-retest",
     )
