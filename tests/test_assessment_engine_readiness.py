@@ -250,3 +250,24 @@ def test_profile_policy_is_exposed_without_internal_provider_identities(monkeypa
     assert "nuclei" not in serialized
     assert "httpx" not in serialized
     assert "tlsx" not in serialized
+
+
+
+def test_runtime_execution_health_persists_capability_status(tmp_path, monkeypatch):
+    from app import history
+
+    monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "engine-health.db"))
+    history.record_capability_execution([
+        {"name": "fingerprint", "calls": 2, "errors": 0, "execution_ms": 20, "raw_results": 0},
+        {"name": "vulnerability", "calls": 1, "errors": 1, "execution_ms": 5, "raw_results": 0},
+    ])
+
+    rows = history.recent_capability_execution_health(
+        ("fingerprint", "vulnerability", "certificate_intelligence"),
+        max_age_minutes=60,
+    )
+    by_name = {row["name"]: row for row in rows}
+
+    assert by_name["fingerprint"]["execution_status"] == "verified"
+    assert by_name["vulnerability"]["execution_status"] == "failing"
+    assert by_name["certificate_intelligence"]["execution_status"] == "unverified"
