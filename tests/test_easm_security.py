@@ -52,8 +52,6 @@ def test_discovery_routes_use_store_tenant_scope(monkeypatch):
         "confidence": 0,
     }
 
-    monkeypatch.setattr("app.main.collect_target", lambda *args, **kwargs: fake)
-    monkeypatch.setattr("app.main.correlate_evidence", lambda *args, **kwargs: [])
 
     for path in (
         "/api/v1/discovery/example.com/changes",
