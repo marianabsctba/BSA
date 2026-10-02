@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
@@ -2250,7 +2250,8 @@ def ctem_audit(item_id: str, request: Request):
     if item is None:
         raise HTTPException(status_code=404,detail="CTEM item not found")
     verifications=ctem_verification_history(item_id,principal.tenant_id)
-    timeline=ctem_audit_timeline(item,verifications)
+    transitions=ctem_transition_history(item_id,principal.tenant_id)
+    timeline=ctem_audit_timeline(item,verifications,transitions)
     return {"item_id":item_id,"outcome":ctem_audit_outcome(item,verifications),"timeline":timeline}
 
 @app.get("/api/v1/ctem/{item_id}/audit/export")
@@ -2261,8 +2262,9 @@ def ctem_audit_export(item_id: str, request: Request):
     if item is None:
         raise HTTPException(status_code=404,detail="CTEM item not found")
     verifications=ctem_verification_history(item_id,principal.tenant_id)
-    timeline=ctem_audit_timeline(item,verifications)
-    integrity=ctem_audit_integrity(item,verifications)
+    transitions=ctem_transition_history(item_id,principal.tenant_id)
+    timeline=ctem_audit_timeline(item,verifications,transitions)
+    integrity=ctem_audit_integrity(item,verifications,transitions)
     outcome=ctem_audit_outcome(item,verifications)
     diffs=[]
     for current in timeline[1:]:
@@ -2335,6 +2337,15 @@ def ctem_retest(item_id: str, request: Request, payload: dict):
             "authorization_ref":authorization_ref or "development",
         },
     )
+    record_ctem_transition(
+        item_id,
+        principal.tenant_id,
+        "queue_retest",
+        str(item.get("state") or ""),
+        str(item.get("state") or ""),
+        actor_id=str(getattr(principal,"user_id","") or ""),
+        request_id=str(job.get("job_id") or ""),
+    )
     return JSONResponse(
         status_code=202,
         content={
@@ -2386,6 +2397,15 @@ def ctem_state(item_id: str, request: Request, payload: dict):
             previous=ctem_operation_result(principal.tenant_id,operation_key)
             return previous or {"status":"already_processed","operation_key":operation_key}
         result=update_ctem_state(item_id,principal.tenant_id,target)
+        record_ctem_transition(
+            item_id,
+            principal.tenant_id,
+            action,
+            str(item.get("state") or ""),
+            target,
+            actor_id=str(getattr(principal,"user_id","") or ""),
+            request_id=request_id or operation_key,
+        )
         audit(principal,"ctem_state_transition","ctem",item_id,{"action":action,"from":item.get("state"),"to":target})
         ctem_store_operation_result(principal.tenant_id,operation_key,result)
         return result
