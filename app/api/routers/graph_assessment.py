@@ -28,7 +28,7 @@ from ...local_ai import (
 from ...models import Asset, AssetType, Finding, Severity
 from ...risk_engine import assess_ctem_priority
 from ...scope import asset_in_scope
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
+from ...repositories.assets_findings import asset_finding_repository
 from ...vulnerability_evidence import (
     normalize_vulnerability_evidence,
     vulnerability_identity_key,
@@ -311,11 +311,12 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
     regressions_reopened=0
     ctem_regressions_reopened=0
     skipped_out_of_scope=0
+    repository=asset_finding_repository()
 
     scoped_assets,_=tenant_scope(
         principal,
-        STORE_ASSETS,
-        STORE_FINDINGS,
+        repository._assets,
+        repository._findings,
         scope_check=asset_in_scope,
     )
     by_value={asset.value.lower():asset for asset in scoped_assets}
@@ -367,7 +368,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 evidence_count=1,
                 sources=["assessment-intelligence"],
             )
-            STORE_ASSETS.append(asset)
+            repository.add_asset(asset)
             by_value[canonical_value]=asset
             created_assets+=1
         else:
@@ -396,7 +397,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         finding=next(
             (
                 item
-                for item in STORE_FINDINGS
+                for item in repository._findings
                 if item.tenant_id==principal.tenant_id
                 and item.id==finding_id
             ),
@@ -438,7 +439,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             )
             if finding.vulnerability_id:
                 finding=enrich_finding(finding)
-            STORE_FINDINGS.append(finding)
+            repository.add_finding(finding)
             created_findings+=1
         else:
             if finding.status in {
@@ -560,7 +561,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             )
             created_ctem+=1
 
-    persist_state(STORE_ASSETS,STORE_FINDINGS)
+    repository.persist()
     return {
         "assets_created":created_assets,
         "findings_created":created_findings,
