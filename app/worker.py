@@ -9,7 +9,7 @@ from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbea
 from .scope import active_scan_in_scope
 from .scan_authorization import authorization_grant_valid
 from .ctem_retest import reconcile_ctem_retest_job
-from .active_operations import run_active_operation
+from .application.services.operation_dispatcher import run_operation
 
 
 def _heartbeat(job_id:str,run_token:str,stop:threading.Event):
@@ -50,7 +50,7 @@ def run_once()->bool:
     try:
         if str(job.get("job_type") or "assessment")=="operation":
             payload=json.loads(job.get("payload_json") or "{}")
-            result=run_active_operation(
+            result=run_operation(
                 str(job.get("operation") or ""),
                 job["target"],
                 payload,
