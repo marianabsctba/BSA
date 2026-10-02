@@ -1,6 +1,16 @@
 from app.release_readiness import release_readiness
 
 
+def _queue_healthy():
+    return {
+        "status":"healthy",
+        "oldest_queued_age_seconds":0,
+        "expired_running_leases":0,
+        "stale_materializations":0,
+        "retry_pressure_jobs":0,
+    }
+
+
 def _engine_state(rapid_ready=True, balanced_ready=True):
     return {
         "profiles": {
@@ -18,6 +28,7 @@ def _governance_ready(monkeypatch):
         "app.release_readiness.get_retention_policy",
         lambda tenant_id: {"retention_days": 180},
     )
+    monkeypatch.setattr("app.release_readiness.queue_health", lambda: _queue_healthy())
 
 
 def test_release_readiness_blocks_without_persistent_security(monkeypatch):
@@ -70,3 +81,31 @@ def test_release_readiness_ready_when_required_controls_and_coverage_pass(monkey
     assert data["state"] == "ready"
     assert data["pilot_ready"] is True
     assert data["warnings"] == []
+
+
+def test_release_readiness_warns_on_degraded_queue(monkeypatch):
+    _governance_ready(monkeypatch)
+    monkeypatch.setenv("BSA_ENV", "production")
+    monkeypatch.setenv("BSA_JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("BSA_AUTH_DB", "/data/bsa_auth.db")
+    monkeypatch.setenv("BSA_ALLOWED_ORIGINS", "https://asm.example.com")
+    monkeypatch.setenv("BSA_ALLOWED_HOSTS", "asm.example.com")
+    monkeypatch.setattr("app.release_readiness._store_path", lambda: "/data/bsa_store.db")
+    monkeypatch.setattr("app.release_readiness._db_path", lambda: "/data/bsa_jobs.db")
+    monkeypatch.setattr("app.release_readiness.engine_health", lambda: _engine_state(True, True))
+    monkeypatch.setattr(
+        "app.release_readiness.queue_health",
+        lambda: {
+            "status":"degraded",
+            "oldest_queued_age_seconds":1200,
+            "expired_running_leases":1,
+            "stale_materializations":1,
+            "retry_pressure_jobs":2,
+        },
+    )
+
+    data=release_readiness()
+
+    assert data["state"]=="degraded"
+    assert data["pilot_ready"] is True
+    assert "assessment_queue_health" in data["warnings"]
