@@ -38,8 +38,9 @@ from .technology_intelligence import extract_technologies, technology_match_qual
 from .risk_engine import assess_risk, assess_ctem_priority, normalize_cpe, cpe_product
 from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
-from .tenant_risk_policy import policy_for, save_policy, serialize_policy, validate_policy, TenantRiskPolicy
-from .tenant_sla_policy import TenantSLAPolicy, sla_policy_for, save_sla_policy, serialize_sla_policy, validate_sla_policy, sla_threshold_hours
+from .tenant_risk_policy import policy_for, serialize_policy
+from .tenant_sla_policy import sla_policy_for, serialize_sla_policy, sla_threshold_hours
+from .policy_service import get_risk_policy_view, build_and_save_risk_policy, get_sla_policy_view, build_and_save_sla_policy
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
@@ -264,7 +265,7 @@ def ready():
         content={
             **data,
             "product":"BSA",
-            "version":"0.3.0",
+            "version":__version__,
             "powered_by":"Mariana BS",
         },
     )
@@ -536,47 +537,41 @@ async def correlate_vulnerabilities(request: Request):
 @app.get("/api/v1/risk/policy")
 def get_risk_policy(request: Request):
     principal=require(request,"assets:read")
-    policy=policy_for(principal.tenant_id)
-    return {"policy":serialize_policy(policy),"validation":validate_policy(policy)}
+    return get_risk_policy_view(principal.tenant_id)
 
 @app.put("/api/v1/risk/policy")
 async def update_risk_policy(request: Request):
     principal=require(request,"remediation:write")
     body=await request.json()
-    base=policy_for(principal.tenant_id)
-    allowed={"likelihood_weight","impact_weight","confidence_weight","internet_multiplier","production_multiplier","remote_access_multiplier","compensating_control_reduction","stale_evidence_days","stale_confidence_penalty","name"}
-    values={k:body[k] for k in allowed if k in body}
-    candidate=TenantRiskPolicy(**{**base.__dict__,**values,"tenant_id":principal.tenant_id,"version":base.version+1})
-    errors=validate_policy(candidate)
-    if errors:
-        raise HTTPException(status_code=400,detail={"errors":errors})
-    save_policy(candidate,updated_by=principal.user_id)
+    try:
+        candidate=build_and_save_risk_policy(principal.tenant_id,principal.user_id,body)
+    except ValueError as exc:
+        detail=exc.args[0] if exc.args else ["invalid risk policy"]
+        raise HTTPException(status_code=400,detail={"errors":detail}) from exc
     audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
     return {"policy":serialize_policy(candidate),"validation":[],"persisted":True}
 
 @app.get("/api/v1/operations/sla-policy")
 def get_tenant_sla_policy(request: Request):
     principal=require(request,"assets:read")
-    policy=sla_policy_for(principal.tenant_id)
-    return {"policy":serialize_sla_policy(policy),"validation":validate_sla_policy(policy)}
+    return get_sla_policy_view(principal.tenant_id)
 
 
 @app.put("/api/v1/operations/sla-policy")
 def update_tenant_sla_policy(payload: TenantSLAPolicyRequest, request: Request):
     principal=require(request,"remediation:write")
-    current=sla_policy_for(principal.tenant_id)
-    candidate=TenantSLAPolicy(
-        tenant_id=principal.tenant_id,
-        version=current.version+1,
-        critical_hours=payload.critical_hours,
-        high_hours=payload.high_hours,
-        medium_hours=payload.medium_hours,
-        low_hours=payload.low_hours,
-    )
-    errors=validate_sla_policy(candidate)
-    if errors:
-        raise HTTPException(status_code=400,detail={"errors":errors})
-    save_sla_policy(candidate,updated_by=principal.user_id)
+    try:
+        candidate=build_and_save_sla_policy(
+            principal.tenant_id,
+            principal.user_id,
+            payload.critical_hours,
+            payload.high_hours,
+            payload.medium_hours,
+            payload.low_hours,
+        )
+    except ValueError as exc:
+        detail=exc.args[0] if exc.args else ["invalid SLA policy"]
+        raise HTTPException(status_code=400,detail={"errors":detail}) from exc
     audit(principal,"sla_policy_update","tenant_sla_policy",metadata=serialize_sla_policy(candidate))
     return {"policy":serialize_sla_policy(candidate),"validation":[],"persisted":True}
 
