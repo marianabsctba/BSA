@@ -52,6 +52,7 @@ def test_worker_fails_when_current_user_loses_discovery_permission(tmp_path, mon
 def test_worker_fails_when_scan_grant_revoked_before_execution(tmp_path, monkeypatch):
     principal=_setup_user(tmp_path,monkeypatch)
     monkeypatch.setenv("BSA_JOBS_DB",str(tmp_path/"jobs.db"))
+    monkeypatch.setenv("BSA_ENV","production")
 
     grant=grants.create_authorization_grant(principal,"u1","AUTH-1","example.org",ttl_seconds=300)
 
