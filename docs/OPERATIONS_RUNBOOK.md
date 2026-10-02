@@ -130,3 +130,47 @@ Escalone como incidente de prioridade alta quando houver:
 - falha obrigatória no release-readiness;
 - perda de isolamento entre tenants;
 - falha em prova de posse ou autorização de scan.
+
+
+## Motores de assessment em produção
+
+Os motores de assessment são opcionais e a disponibilidade real deve ser consultada em runtime. Não presuma que todos os backends estejam instalados ou configurados apenas porque a API expõe o perfil.
+
+Endpoints de validação:
+
+- `GET /api/v1/exposure/engines/health` — estado público dos perfis e percentual de cobertura;
+- `GET /api/v1/exposure/assessment/capabilities?target=<alvo>` — capacidades operacionais para o alvo;
+- `GET /api/v1/operations/release-readiness` — consolida `rapid_assessment_coverage` e `balanced_assessment_coverage`.
+
+Estados de perfil:
+
+- `ready` — todas as capacidades core do perfil têm pelo menos um backend operacional;
+- `partial` — somente parte das capacidades core está operacional;
+- `unavailable` — nenhuma capacidade core está operacional.
+
+`partial` não significa falha do produto: significa cobertura incompleta. O relatório, console e operação devem tratar isso como cobertura parcial e não como resultado conclusivo de ausência de exposição.
+
+### Restrição temporária do Nuclei em produção
+
+Até existir fixação de IP por execução ou controle equivalente de egress, `POST /api/v1/dast/nuclei` aceita em produção somente alvo com IP público explícito.
+
+Exemplos:
+
+- permitido: `https://203.0.113.10/` quando o IP estiver autorizado e dentro do Scan Scope;
+- bloqueado em produção: `https://app.exemplo.com/`;
+- bloqueado em qualquer ambiente: loopback, RFC1918, link-local, CGNAT, nomes internos e outros alvos não públicos.
+
+A validação ocorre antes do enfileiramento e é repetida no engine. Não contorne essa proteção no worker.
+
+### Safe Web e demais capacidades
+
+`dast.safe-web` continua sendo o caminho de avaliação web segura baseado nos probes internos de baixo impacto. Outros providers só contribuem quando o binário e sua configuração estiverem presentes no worker e o endpoint de capabilities os reportar como operacionais.
+
+Antes de liberar um piloto ou janela de scan:
+
+1. valide `release-readiness`;
+2. consulte o health dos engines;
+3. registre o percentual de cobertura do perfil escolhido;
+4. confirme Scan Scope e authorization_ref;
+5. se o perfil estiver `partial`, informe a limitação no relatório operacional;
+6. não apresente ausência de finding como ausência de risco quando houver capability indisponível.
