@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main
 from app.api import dependencies as api_dependencies
+from app.api.routers import vulnerabilities as vulnerabilities_router
 from app import history, worker, job_queue
 
 
@@ -28,6 +29,7 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
     monkeypatch.setattr(main,"require",lambda request,permission:principal)
     monkeypatch.setattr(main,"current_principal",lambda request:principal)
     monkeypatch.setattr(api_dependencies,"require",lambda request,permission:principal)
+    monkeypatch.setattr(vulnerabilities_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(main,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(api_dependencies,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
