@@ -28,10 +28,13 @@ def test_network_active_post_routes_queue_in_production():
 def test_active_operation_queue_has_worker_dispatch():
     queue=Path("app/job_queue.py").read_text(encoding="utf-8")
     worker=Path("app/worker.py").read_text(encoding="utf-8")
-    dispatcher=Path("app/active_operations.py").read_text(encoding="utf-8")
+    dispatcher=Path("app/application/services/operation_dispatcher.py").read_text(encoding="utf-8")
+    legacy=Path("app/active_operations.py").read_text(encoding="utf-8")
 
     assert "def enqueue_operation(" in queue
     assert 'job_type TEXT NOT NULL DEFAULT \'assessment\'' in queue
     assert '=="operation"' in worker
-    assert "run_active_operation(" in worker
-    assert "def run_active_operation(" in dispatcher
+    assert "run_operation(" in worker
+    assert "def run_operation(" in dispatcher
+    assert "run_legacy_operation" in dispatcher
+    assert "def run_active_operation(" in legacy
