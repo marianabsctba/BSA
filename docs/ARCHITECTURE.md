@@ -24,3 +24,20 @@ O ownership será calculado por evidências e poderá exigir validação humana 
 ## Segurança operacional
 
 Collectors devem obedecer ao escopo. Novos probes ativos devem ser explicitamente classificados, limitados por taxa e desabilitados por padrão quando puderem produzir impacto.
+
+
+## Cobertura e disponibilidade de motores
+
+A arquitetura separa capacidade de produto de backend concreto. Perfis de assessment trabalham com capacidades lógicas e podem ser executados com cobertura `ready`, `partial` ou `unavailable`, conforme os providers realmente instalados e configurados no worker.
+
+A API não deve inferir cobertura pelo nome do perfil. O estado é calculado pelo registry e exposto pelos endpoints de health/capabilities.
+
+Em produção:
+
+- engines ativos executam no worker com rede de egress dedicada;
+- a API permanece sem egress direto para os motores;
+- o Nuclei aceita apenas IP público explícito enquanto não houver pinning de IP por execução;
+- hostname resolvido dinamicamente não deve ser repassado ao Nuclei nesse estágio;
+- resultados de perfil parcial devem preservar a indicação de cobertura incompleta.
+
+Esse desenho evita transformar indisponibilidade de um backend opcional em falso negativo silencioso.
