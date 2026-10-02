@@ -48,8 +48,11 @@ def test_production_compose_isolates_ollama_from_api():
     compose=Path("docker-compose.production.yml").read_text(encoding="utf-8")
     assert "networks: [bsa_ai_backend]" in compose
     assert "networks: [bsa_ai_backend, bsa_ai_client]" in compose
-    assert "networks: [bsa_ai_client, bsa_app, bsa_egress]" in compose
     api_block=compose.split("  api:",1)[1].split("\n  worker:",1)[0]
+    worker_block=compose.split("  worker:",1)[1].split("\n  backup:",1)[0]
+    assert "networks: [bsa_ai_client, bsa_app]" in api_block
+    assert "bsa_egress" not in api_block
+    assert "networks: [bsa_egress]" in worker_block
     assert "http://ai-proxy:11435" in api_block
     assert "http://ollama:11434" not in api_block
     assert "BSA_OLLAMA_PROXY_TOKEN:" in api_block
