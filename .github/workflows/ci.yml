@@ -17,7 +17,15 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall app
-      - run: pytest -q
+      - name: Backend tests with coverage baseline
+        run: pytest -q --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+
+      - name: Ruff critical lint
+        run: ruff check app tests --select E9,F63,F7,F82
+
+      - name: Mypy critical modules
+        run: |
+          mypy             app/observability.py             app/runtime_health.py             app/metrics.py             app/backup.py             app/backup_scheduler.py             --ignore-missing-imports             --follow-imports=skip
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
