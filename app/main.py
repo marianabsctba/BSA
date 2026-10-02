@@ -55,6 +55,8 @@ from .scan_authorization import create_authorization_grant, list_authorization_g
 from .retention import get_retention_policy, set_retention_policy, retention_preview, apply_retention
 from .integration_export import siem_events, unified_siem_events, audit_siem_events
 from .syslog_export import config_from_env, send_event, send_events
+from .observability import request_id_from_header, identity_from_request, log_http_event, monotonic_ms
+from .runtime_health import runtime_health
 
 bootstrap()
 bootstrap_scope()
@@ -82,6 +84,32 @@ app.add_middleware(
     allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allow_headers=["Authorization","Content-Type","X-Requested-With","X-Authorization-Ref"],
 )
+
+
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    request_id=request_id_from_header(request.headers.get("X-Request-ID"))
+    request.state.request_id=request_id
+    started=monotonic_ms()
+    tenant_id,user_id=identity_from_request(request)
+    status_code=500
+    try:
+        response=await call_next(request)
+        status_code=response.status_code
+        return response
+    finally:
+        duration_ms=max(0,monotonic_ms()-started)
+        log_http_event(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+        if "response" in locals():
+            response.headers["X-Request-ID"]=request_id
 
 @app.middleware("http")
 async def csrf_origin_guard(request: Request, call_next):
@@ -210,7 +238,13 @@ def auth_logout(request: Request):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": "BSA", "version": "0.3.0", "powered_by": "Mariana BS"}
+    data=runtime_health()
+    return {
+        **data,
+        "product":"BSA",
+        "version":"0.3.0",
+        "powered_by":"Mariana BS",
+    }
 
 
 @app.get("/api/v1/exposure/engines/health")
