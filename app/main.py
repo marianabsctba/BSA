@@ -40,8 +40,6 @@ from .cve_correlation import CVERange, match_cve
 from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy
 from .tenant_sla_policy import sla_policy_for, serialize_sla_policy, sla_threshold_hours
-from .application.services.policy_service import get_risk_policy_view, build_and_save_risk_policy, get_sla_policy_view, build_and_save_sla_policy
-from .application.services.risk_service import build_risk_register, build_risk_overview
 from .application.services.ctem_service import build_ctem_operations, build_ctem_queue_page, list_ctem_queue
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
@@ -63,18 +61,12 @@ from .observability import request_id_from_header, identity_from_request, log_ht
 from .runtime_health import runtime_health
 from .metrics import record_http_metric, prometheus_metrics, operational_alerts
 from .version import __version__
+from .api.routers.risk import router as risk_router
 
 bootstrap()
 bootstrap_scope()
 
 IS_PRODUCTION=os.getenv("BSA_ENV","development").lower() in {"production","prod"}
-
-class TenantSLAPolicyRequest(BaseModel):
-    critical_hours: int = Field(default=24, ge=1, le=8760)
-    high_hours: int = Field(default=48, ge=1, le=8760)
-    medium_hours: int = Field(default=168, ge=1, le=8760)
-    low_hours: int = Field(default=336, ge=1, le=8760)
-
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
@@ -84,6 +76,9 @@ app = FastAPI(
     redoc_url=None if IS_PRODUCTION else "/redoc",
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
+
+
+app.include_router(risk_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -535,62 +530,6 @@ async def correlate_vulnerabilities(request: Request):
         matches=match_cve(product,version,cpe,candidates)
         results.append({"product":product,"version":version,"cpe":cpe,"matches":[m.__dict__ for m in matches]})
     return {"results":results,"summary":{"observations":len(results),"confirmed":sum(1 for r in results for m in r["matches"] if m["state"]=="confirmed_affected"),"potential":sum(1 for r in results for m in r["matches"] if m["state"]=="potential"),"not_affected":sum(1 for r in results for m in r["matches"] if m["state"]=="not_affected")}}
-
-@app.get("/api/v1/risk/policy")
-def get_risk_policy(request: Request):
-    principal=require(request,"assets:read")
-    return get_risk_policy_view(principal.tenant_id)
-
-@app.put("/api/v1/risk/policy")
-async def update_risk_policy(request: Request):
-    principal=require(request,"remediation:write")
-    body=await request.json()
-    try:
-        candidate=build_and_save_risk_policy(principal.tenant_id,principal.user_id,body)
-    except ValueError as exc:
-        detail=exc.args[0] if exc.args else ["invalid risk policy"]
-        raise HTTPException(status_code=400,detail={"errors":detail}) from exc
-    audit(principal,"risk_policy_update","risk_policy",metadata=serialize_policy(candidate))
-    return {"policy":serialize_policy(candidate),"validation":[],"persisted":True}
-
-@app.get("/api/v1/operations/sla-policy")
-def get_tenant_sla_policy(request: Request):
-    principal=require(request,"assets:read")
-    return get_sla_policy_view(principal.tenant_id)
-
-
-@app.put("/api/v1/operations/sla-policy")
-def update_tenant_sla_policy(payload: TenantSLAPolicyRequest, request: Request):
-    principal=require(request,"remediation:write")
-    try:
-        candidate=build_and_save_sla_policy(
-            principal.tenant_id,
-            principal.user_id,
-            payload.critical_hours,
-            payload.high_hours,
-            payload.medium_hours,
-            payload.low_hours,
-        )
-    except ValueError as exc:
-        detail=exc.args[0] if exc.args else ["invalid SLA policy"]
-        raise HTTPException(status_code=400,detail={"errors":detail}) from exc
-    audit(principal,"sla_policy_update","tenant_sla_policy",metadata=serialize_sla_policy(candidate))
-    return {"policy":serialize_sla_policy(candidate),"validation":[],"persisted":True}
-
-
-@app.get("/api/v1/risk/register")
-def risk_register(request: Request):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    return build_risk_register(principal.tenant_id,assets,findings)
-
-
-@app.get("/api/v1/risk/overview")
-def risk_overview(request: Request):
-    principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    return build_risk_overview(assets,findings)
-
 
 @app.get("/api/v1/vulnerabilities/intelligence")
 def vulnerability_intelligence_api(request: Request):
