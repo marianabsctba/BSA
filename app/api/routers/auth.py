@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ...auth import (
     TOKEN_TTL,
+    _rate_limit_blocked,
     audit,
     authenticate,
     can,
@@ -29,6 +30,7 @@ from ..dependencies import current_principal
 
 
 router=APIRouter()
+LOGIN_RATE_LIMIT_WINDOW_SECONDS=900
 
 
 class LoginRequest(BaseModel):
@@ -75,6 +77,20 @@ def _client_ip(request: Request) -> str:
         return str(ipaddress.ip_address(forwarded)) if forwarded else peer
     except ValueError:
         return peer
+
+
+def _login_rate_limited(email: str, client_ip: str) -> bool:
+    account=(email or "").strip().lower()
+    source=(client_ip or "").strip() or "unknown"
+    return _rate_limit_blocked("login-account",account) or _rate_limit_blocked("login-ip",source)
+
+
+def _login_rate_limit_error() -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail="too many login attempts",
+        headers={"Retry-After":str(LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
+    )
 
 
 @router.post("/api/v1/auth/logout")
@@ -199,13 +215,22 @@ def tenant_mfa_policy_update(request: Request, payload: MFAPolicyRequest):
 
 @router.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
+    client_ip=_client_ip(request)
+    if _login_rate_limited(payload.email,client_ip):
+        raise _login_rate_limit_error()
+
     token=authenticate(
         payload.email,
         payload.password,
-        _client_ip(request),
+        client_ip,
         payload.mfa_code,
     )
     if not token:
+        # authenticate() persists both per-account and per-source pressure. If
+        # this request crossed either threshold, surface the throttle now so a
+        # subsequent correct password cannot bypass the active block.
+        if _login_rate_limited(payload.email,client_ip):
+            raise _login_rate_limit_error()
         raise HTTPException(status_code=401,detail="invalid credentials")
     principal=principal_from_token(token)
     audit(principal,"login","session")
