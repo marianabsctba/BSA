@@ -62,9 +62,15 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
         "/api/v1/discovery",
         json={"target":"pilot.example.org","checks":["dns","http"],"authorization_ref":"development"},
     )
-    assert discovery.status_code==200
-    assert discovery.json()["target"]=="pilot.example.org"
-    assert discovery.json()["evidence_count"]==2
+    assert discovery.status_code==202
+    queued=discovery.json()
+    assert queued["target"]=="pilot.example.org"
+    assert queued["status"]=="queued"
+    assert queued["operation"]=="discovery.basic"
+    assert queued["job_id"]
+
+    job=job_queue.get_job(queued["job_id"],principal.tenant_id)
+    assert job and job["status"]=="queued"
 
     findings=client.get("/api/v1/findings")
     assert findings.status_code==200
