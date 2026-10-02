@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app.models import Asset, AssetType, Finding, Severity
-from app.repositories.assets_findings import AssetFindingRepository
+from app.repositories.assets_findings import AssetFindingRepository, asset_finding_repository
 
 
 def _asset(tenant_id: str, asset_id: str, value: str):
@@ -65,3 +65,55 @@ def test_repository_write_boundary_appends_and_persists(monkeypatch):
     assert assets==[asset]
     assert findings==[finding]
     assert captured=={"assets":[asset],"findings":[finding]}
+
+
+def test_repository_factory_defaults_to_legacy(monkeypatch):
+    monkeypatch.delenv("BSA_ASSET_REPOSITORY_BACKEND",raising=False)
+    monkeypatch.delenv("BSA_DATABASE_URL",raising=False)
+    repository=asset_finding_repository([],[])
+    assert isinstance(repository,AssetFindingRepository)
+
+
+def test_repository_factory_requires_postgres_dsn(monkeypatch):
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","postgres")
+    monkeypatch.delenv("BSA_DATABASE_URL",raising=False)
+
+    try:
+        asset_finding_repository()
+    except RuntimeError as exc:
+        assert "BSA_DATABASE_URL" in str(exc)
+    else:
+        raise AssertionError("missing PostgreSQL DSN must fail closed")
+
+
+def test_repository_factory_selects_postgres(monkeypatch):
+    from app.repositories import postgres_assets_findings as postgres_module
+
+    captured={}
+    sentinel=object()
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","postgres")
+    monkeypatch.setenv(
+        "BSA_DATABASE_URL",
+        "postgresql://bsa:secret@postgres:5432/bsa",
+    )
+    monkeypatch.setattr(
+        postgres_module,
+        "PostgresAssetFindingRepository",
+        lambda dsn: captured.setdefault("dsn",dsn) or sentinel,
+    )
+
+    repository=asset_finding_repository()
+
+    assert captured["dsn"]=="postgresql://bsa:secret@postgres:5432/bsa"
+    assert repository is not None
+
+
+def test_repository_factory_rejects_unknown_backend(monkeypatch):
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","unknown")
+
+    try:
+        asset_finding_repository()
+    except RuntimeError as exc:
+        assert "unsupported asset repository backend" in str(exc)
+    else:
+        raise AssertionError("unknown repository backend must fail closed")
