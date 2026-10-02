@@ -1,10 +1,11 @@
 import time
 import threading
 
-from .auth import Principal
+from .auth import current_principal_for_user, can
 from .assessment_orchestrator import run_public_assessment
 from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbeat_job
 from .scope import active_scan_in_scope
+from .scan_authorization import authorization_grant_valid
 
 
 def _heartbeat(job_id:str,stop:threading.Event):
@@ -17,15 +18,23 @@ def run_once()->bool:
     job=claim_next_job()
     if not job:
         return False
-    principal=Principal(
-        user_id=job["user_id"],
-        tenant_id=job["tenant_id"],
-        email=job["email"],
-        role=job["role"],
-        name=job["name"],
-    )
+    try:
+        principal=current_principal_for_user(job["user_id"],job["tenant_id"])
+    except ValueError as exc:
+        from .job_queue import fail_job
+        fail_job(job["job_id"],f"background principal invalid: {exc}")
+        return True
+    if not can(principal,"discovery:run"):
+        from .job_queue import fail_job
+        fail_job(job["job_id"],"background principal no longer has discovery:run")
+        return True
     if not active_scan_in_scope(principal,job["target"]):
-        retry_or_fail_job(job["job_id"],"active scan authorization no longer valid")
+        from .job_queue import fail_job
+        fail_job(job["job_id"],"active scan scope no longer valid")
+        return True
+    if not authorization_grant_valid(principal,job["authorization_ref"],job["target"]):
+        from .job_queue import fail_job
+        fail_job(job["job_id"],"active scan authorization grant expired or revoked")
         return True
     stop=threading.Event()
     heartbeat=threading.Thread(target=_heartbeat,args=(job["job_id"],stop),daemon=True)
@@ -34,7 +43,10 @@ def run_once()->bool:
         result=run_public_assessment(
             job["target"],
             profile=job["profile"],
-            authorize=lambda target: active_scan_in_scope(principal,target),
+            authorize=lambda target: (
+                active_scan_in_scope(principal,target)
+                and authorization_grant_valid(principal,job["authorization_ref"],target)
+            ),
         )
         complete_job(job["job_id"],result)
     except Exception as exc:
