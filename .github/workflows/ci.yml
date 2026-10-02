@@ -36,6 +36,7 @@ jobs:
           npm cache verify
           npm install --no-fund --prefer-online
           npm audit --audit-level=high
+          npm test
           npm run build
 
       - name: Dependency audit
