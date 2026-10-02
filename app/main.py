@@ -46,7 +46,7 @@ from .assessment_orchestrator import run_public_assessment
 from .engine_health import public_engine_health
 from .release_readiness import release_readiness
 from .assessment_registry import registry
-from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization
+from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization, queue_metrics
 from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
@@ -157,6 +157,17 @@ def health():
 def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
+
+
+@app.get("/api/v1/operations/assessment-queue")
+def operations_assessment_queue(request: Request):
+    principal = require(request, "assets:read")
+    if principal.role not in {"superadmin", "admin", "manager"}:
+        raise HTTPException(status_code=403, detail="manager role required")
+    return {
+        "tenant_id": principal.tenant_id,
+        "queue": queue_metrics(principal.tenant_id),
+    }
 
 
 @app.get("/api/v1/operations/release-readiness")
