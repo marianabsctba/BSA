@@ -2,7 +2,7 @@ import secrets
 import time
 
 from .auth import _db, can, Principal
-from .scope import _scope_hostname_from_value, _scope_pattern_matches, validate_active_scope_pattern
+from .scope import _scope_hostname_from_value, _scope_pattern_matches, validate_active_scope_pattern, ensure_scope_schema
 
 
 def ensure_authorization_schema():
@@ -42,6 +42,7 @@ def create_authorization_grant(principal: Principal, user_id: str, authorization
         raise PermissionError("grants longer than 24 hours require superadmin approval")
     ttl=max(60,min(requested_ttl,30*24*3600))
     ensure_authorization_schema()
+    ensure_scope_schema()
     conn=_db()
     user=conn.execute("SELECT id,tenant_id,active FROM users WHERE id=?",(user_id,)).fetchone()
     if not user or user["tenant_id"]!=principal.tenant_id or not user["active"]:
