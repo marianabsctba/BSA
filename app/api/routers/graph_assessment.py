@@ -313,10 +313,15 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
     skipped_out_of_scope=0
     repository=asset_finding_repository()
 
+    tenant_assets=repository.list_assets(principal.tenant_id)
+    tenant_findings=repository.list_findings(
+        principal.tenant_id,
+        {asset.id for asset in tenant_assets},
+    )
     scoped_assets,_=tenant_scope(
         principal,
-        repository.all_assets(),
-        repository.all_findings(),
+        tenant_assets,
+        tenant_findings,
         scope_check=asset_in_scope,
     )
     by_value={asset.value.lower():asset for asset in scoped_assets}
@@ -394,14 +399,9 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
         )
         finding_digest=sha256(finding_identity.encode()).hexdigest()[:16]
         finding_id=f"fdg-{finding_digest}"
-        finding=next(
-            (
-                item
-                for item in repository.all_findings()
-                if item.tenant_id==principal.tenant_id
-                and item.id==finding_id
-            ),
-            None,
+        finding=repository.find_finding(
+            principal.tenant_id,
+            finding_id,
         )
         regression_reopened=False
 
