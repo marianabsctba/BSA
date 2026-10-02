@@ -70,6 +70,7 @@ from .api.routers.auth import router as auth_router
 from .api.routers.operations import router as operations_router
 from .api.routers.scopes import router as scopes_router
 from .api.routers.governance import router as governance_router
+from .api.routers.digital_risk import router as digital_risk_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -96,6 +97,7 @@ app.include_router(auth_router)
 app.include_router(operations_router)
 app.include_router(scopes_router)
 app.include_router(governance_router)
+app.include_router(digital_risk_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -966,88 +968,6 @@ def asset_timeline(asset_id: str, request: Request):
         "history": [h.__dict__ for h in history_for(asset.fingerprint,principal.tenant_id)],
     }
 
-
-
-@app.post("/api/v1/digital-risk/infrastructure/analyze")
-def digital_risk_infrastructure(payload: InfrastructureIndicator, request: Request):
-    principal=require(request,"assets:read")
-    result=build_infrastructure_links(payload)
-    ai=analyze_infrastructure_cluster(payload.indicator,result["links"])
-    if ai:
-        result["ai_analysis"]=ai
-    event=upsert_event(principal.tenant_id,{
-        "category":"infrastructure_cluster","title":f"Infrastructure correlation for {payload.indicator}",
-        "indicator":payload.indicator,"source":payload.source,"severity":"medium" if result["cluster_strength"]>=60 else "low",
-        "confidence":result["cluster_strength"],"evidence":result,"status":"open"})
-    result["event_id"]=event["event_id"]
-    return result
-
-@app.post("/api/v1/digital-risk/brand/analyze")
-def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
-    principal=require(request,"assets:read")
-    result=analyze_brand_impersonation(principal.tenant_id,payload)
-    ai=analyze_brand_context(payload.brand,payload.indicator,result["evidence"])
-    if ai:
-        result["ai_analysis"]=ai
-    if result["verdict"]=="likely_impersonation":
-        event=upsert_event(principal.tenant_id,{
-            "category":"brand_abuse","title":f"Possible {payload.brand} impersonation",
-            "indicator":payload.indicator,"source":"bsa_brand_engine","severity":"high" if result["score"]>=85 else "medium",
-            "confidence":result["score"],"evidence":result["evidence"],"status":"open","brand":payload.brand})
-        result["event_id"]=event["event_id"]
-    return result
-
-@app.get("/api/v1/digital-risk")
-def digital_risk(request: Request, category: str|None=None):
-    principal=require(request,"assets:read")
-    events=list_events(principal.tenant_id,category)
-    ordered=sorted(
-        events,
-        key=lambda e:(int(e.get("risk_score",0)),int(e.get("confidence",0))),
-        reverse=True,
-    )
-    return {
-        "events":ordered,
-        "summary":summarize_events(events),
-        "top_risk":ordered[:10],
-    }
-
-@app.post("/api/v1/digital-risk/leaks")
-def digital_risk_leak_ingest(payload: LeakSignal, request: Request):
-    principal=require(request,"assets:write")
-    analyzed=analyze_leak_signal(payload)
-    assets,_=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    asset=None
-    if analyzed.get("asset_id"):
-        asset=next((a for a in assets if a.id==analyzed["asset_id"]),None)
-        if asset is None:
-            raise HTTPException(status_code=404,detail="asset not found")
-    elif payload.domain:
-        domain=payload.domain.lower().strip()
-        asset=next((a for a in assets if str(a.value).lower()==domain or str(a.value).lower().endswith("."+domain)),None)
-        if asset:
-            analyzed["asset_id"]=asset.id
-    analyzed["title"]=(
-        f"Credential exposure linked to {asset.value if asset else payload.domain or payload.indicator}"
-        if analyzed["category"]=="credential_leak"
-        else f"External leak signal for {asset.value if asset else payload.domain or payload.indicator}"
-    )
-    item=upsert_event(principal.tenant_id,analyzed)
-    audit(principal,"create","digital_risk.leak",item["event_id"],{
-        "category":item["category"],
-        "asset_id":item.get("asset_id"),
-        "risk_score":item.get("risk_score"),
-        "account_count":item.get("account_count",0),
-        "secret_count":item.get("secret_count",0),
-    })
-    return item
-
-@app.post("/api/v1/digital-risk/events")
-def digital_risk_ingest(payload: DigitalRiskEvent, request: Request):
-    principal=require(request,"assets:write")
-    item=upsert_event(principal.tenant_id,payload.model_dump())
-    audit(principal,"create","digital_risk",item["event_id"],{"category":item["category"],"source":item["source"]})
-    return item
 
 
 @app.get("/api/v1/exposure/storyline")
