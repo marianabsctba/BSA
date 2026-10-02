@@ -43,6 +43,12 @@ def _history_db():
         action TEXT NOT NULL, from_state TEXT NOT NULL, to_state TEXT NOT NULL,
         actor_id TEXT, request_id TEXT, transitioned_at TEXT NOT NULL)""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_transition_tenant_item ON ctem_transitions(tenant_id,item_id,transitioned_at,id)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_retests(
+        job_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
+        profile TEXT NOT NULL, authorization_ref TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued', queued_at TEXT NOT NULL,
+        reconciled_at TEXT, outcome TEXT, evidence_refs_json TEXT NOT NULL DEFAULT '[]')""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_retest_tenant_item ON ctem_retests(tenant_id,item_id,queued_at)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
@@ -770,6 +776,64 @@ def ctem_audit_integrity(item: dict, verifications: list[dict], transitions: lis
         "event_count":len(timeline),
         "evidence_ref_count":sum(len(x.get("evidence_refs",[]) or []) for x in timeline),
     }
+
+
+def record_ctem_retest(job_id: str, tenant_id: str, item_id: str, profile: str,
+                       authorization_ref: str) -> dict:
+    """Link an authorized assessment job to one CTEM retest without crossing tenant boundaries."""
+    now=datetime.now(timezone.utc).isoformat()
+    conn=_history_db()
+    conn.execute(
+        """INSERT OR IGNORE INTO ctem_retests(
+            job_id,tenant_id,item_id,profile,authorization_ref,status,queued_at
+        ) VALUES(?,?,?,?,?,'queued',?)""",
+        (job_id,tenant_id,item_id,profile,authorization_ref,now),
+    )
+    conn.commit()
+    row=conn.execute(
+        "SELECT * FROM ctem_retests WHERE job_id=? AND tenant_id=?",
+        (job_id,tenant_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def ctem_retest_for_job(job_id: str, tenant_id: str) -> dict | None:
+    conn=_history_db()
+    row=conn.execute(
+        "SELECT * FROM ctem_retests WHERE job_id=? AND tenant_id=?",
+        (job_id,tenant_id),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    out=dict(row)
+    out["evidence_refs"]=json.loads(out.pop("evidence_refs_json") or "[]")
+    return out
+
+
+def complete_ctem_retest(job_id: str, tenant_id: str, outcome: str,
+                         evidence_refs: list[str]) -> dict | None:
+    if outcome not in {"passed","failed","inconclusive"}:
+        raise ValueError("invalid CTEM retest outcome")
+    now=datetime.now(timezone.utc).isoformat()
+    conn=_history_db()
+    conn.execute(
+        """UPDATE ctem_retests SET status='reconciled',reconciled_at=?,outcome=?,evidence_refs_json=?
+           WHERE job_id=? AND tenant_id=?""",
+        (now,outcome,json.dumps(list(evidence_refs or []),ensure_ascii=False),job_id,tenant_id),
+    )
+    conn.commit()
+    row=conn.execute(
+        "SELECT * FROM ctem_retests WHERE job_id=? AND tenant_id=?",
+        (job_id,tenant_id),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    out=dict(row)
+    out["evidence_refs"]=json.loads(out.pop("evidence_refs_json") or "[]")
+    return out
 
 
 def record_ctem_transition(item_id: str, tenant_id: str, action: str, from_state: str,
