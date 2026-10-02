@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.35.0
     container_name: bsa-ollama
     restart: unless-stopped
     volumes:
@@ -18,6 +18,7 @@ services:
       BSA_HISTORY_DB: /data/bsa_history.db
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
+      BSA_DEMO_DATA: "0"
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
@@ -47,6 +48,7 @@ services:
       BSA_HISTORY_DB: /data/bsa_history.db
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
+      BSA_DEMO_DATA: "0"
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
