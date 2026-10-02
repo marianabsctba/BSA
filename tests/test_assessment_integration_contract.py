@@ -478,3 +478,19 @@ def test_balanced_health_does_not_require_optional_external_enrichments(monkeypa
     assert balanced["coverage_percent"] == 100
     assert balanced["optional_capabilities"] == 2
     assert balanced["optional_operational_capabilities"] == 0
+
+
+
+def test_credentialed_external_providers_never_define_core_readiness():
+    from app.assessment_orchestrator import PROFILE_CAPABILITIES, PROFILE_OPTIONAL_CAPABILITIES
+    from app.assessment_registry import EXTERNAL_CREDENTIAL_PROVIDERS, registry
+
+    credentialed_capabilities = {
+        capability
+        for capability, providers in registry.CAPABILITY_PROVIDERS.items()
+        if set(providers) & set(EXTERNAL_CREDENTIAL_PROVIDERS)
+    }
+
+    for profile, capabilities in PROFILE_CAPABILITIES.items():
+        optional = set(PROFILE_OPTIONAL_CAPABILITIES.get(profile, ()))
+        assert credentialed_capabilities.intersection(capabilities) <= optional
