@@ -1,5 +1,9 @@
 name: Engine Bundle CI
 
+concurrency:
+  group: engine-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -19,8 +23,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build full engine image
-        run: docker build -f Dockerfile.engines -t bsa-engines-ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.engines
+          load: true
+          tags: bsa-engines-ci:latest
+          cache-from: type=gha,scope=engine-bundle
+          cache-to: type=gha,mode=max,scope=engine-bundle
+          provenance: false
       - name: Verify integrated binaries
         run: |
           docker run --rm --entrypoint sh bsa-engines-ci -lc '
