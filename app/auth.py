@@ -17,9 +17,8 @@ DB_PATH = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if ENVIRONMENT in {"produ
 JWT_SECRET = os.getenv("BSA_JWT_SECRET", "")
 MFA_KEY = os.getenv("BSA_MFA_KEY", "")
 MIN_PASSWORD_LENGTH = int(os.getenv("BSA_MIN_PASSWORD_LENGTH", "14" if ENVIRONMENT in {"production","prod"} else "12"))
-_LOGIN_ATTEMPTS = {}
-_IP_LOGIN_ATTEMPTS = {}
 TOKEN_TTL = int(os.getenv("BSA_TOKEN_TTL", "28800"))
+SESSION_IDLE_TIMEOUT = int(os.getenv("BSA_SESSION_IDLE_TIMEOUT", "1800"))
 
 def _mfa_key_material() -> str:
     material=MFA_KEY or (JWT_SECRET if ENVIRONMENT not in {"production","prod"} else "")
@@ -124,7 +123,12 @@ def _db():
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        last_seen_at INTEGER,
         revoked_at INTEGER)""")
+    session_cols={r["name"] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "last_seen_at" not in session_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER")
+        conn.execute("UPDATE sessions SET last_seen_at=created_at WHERE last_seen_at IS NULL")
     conn.execute("""CREATE TABLE IF NOT EXISTS auth_rate_limits(
         bucket TEXT NOT NULL,
         identity TEXT NOT NULL,
@@ -568,8 +572,8 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     exp=now+TOKEN_TTL
     conn=_db()
     conn.execute(
-        "INSERT INTO sessions(jti,user_id,tenant_id,created_at,expires_at) VALUES(?,?,?,?,?)",
-        (jti,row["id"],row["tenant_id"],now,exp),
+        "INSERT INTO sessions(jti,user_id,tenant_id,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?)",
+        (jti,row["id"],row["tenant_id"],now,exp,now),
     )
     conn.commit(); conn.close()
     return _token({"sub":row["id"],"tenant":row["tenant_id"],"email":row["email"],"name":row["name"],"role":row["role"],"iat":now,"exp":exp,"jti":jti})
@@ -580,14 +584,24 @@ def principal_from_token(token: str) -> Principal:
         raise ValueError("invalid token claims")
     conn = _db()
     session = conn.execute(
-        "SELECT revoked_at,expires_at FROM sessions WHERE jti=? AND user_id=? AND tenant_id=?",
+        "SELECT revoked_at,expires_at,last_seen_at,created_at FROM sessions WHERE jti=? AND user_id=? AND tenant_id=?",
         (p["jti"],p["sub"],p["tenant"])
     ).fetchone()
     user = conn.execute("SELECT active,role,tenant_id FROM users WHERE id=?", (p["sub"],)).fetchone()
     tenant = conn.execute("SELECT active FROM tenants WHERE id=?", (p["tenant"],)).fetchone()
     conn.close()
-    if not session or session["revoked_at"] is not None or int(session["expires_at"]) < int(time.time()):
+    now=int(time.time())
+    if not session or session["revoked_at"] is not None or int(session["expires_at"]) < now:
         raise ValueError("session revoked or expired")
+    last_seen=int(session["last_seen_at"] or session["created_at"] or 0)
+    if SESSION_IDLE_TIMEOUT > 0 and now-last_seen > SESSION_IDLE_TIMEOUT:
+        conn=_db()
+        conn.execute("UPDATE sessions SET revoked_at=? WHERE jti=?",(now,p["jti"]))
+        conn.commit(); conn.close()
+        raise ValueError("session idle timeout exceeded")
+    conn=_db()
+    conn.execute("UPDATE sessions SET last_seen_at=? WHERE jti=?",(now,p["jti"]))
+    conn.commit(); conn.close()
     if not user or not user["active"] or user["tenant_id"] != p["tenant"]:
         raise ValueError("user inactive or tenant mismatch")
     if not tenant or not tenant["active"]:
@@ -705,6 +719,30 @@ def set_user_active(principal: Principal, user_id: str, active: bool) -> dict:
     out=dict(conn.execute("SELECT id,tenant_id,email,name,role,active,created_at FROM users WHERE id=?", (user_id,)).fetchone())
     conn.close()
     return out
+
+def change_own_password(principal: Principal, current_password: str, new_password: str) -> dict:
+    _validate_password(new_password)
+    conn=_db()
+    row=conn.execute(
+        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
+        (principal.user_id,principal.tenant_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("user not found")
+    if not _verify(current_password,row["password_hash"]):
+        conn.close()
+        raise PermissionError("current password verification failed")
+    conn.execute(
+        "UPDATE users SET password_hash=? WHERE id=? AND tenant_id=?",
+        (_hash(new_password),principal.user_id,principal.tenant_id),
+    )
+    conn.execute(
+        "UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",
+        (int(time.time()),principal.user_id,principal.tenant_id),
+    )
+    conn.commit(); conn.close()
+    return {"ok":True,"sessions_revoked":True}
 
 def reset_user_password(principal: Principal, user_id: str, password: str) -> dict:
     if principal.role not in {"admin", "superadmin"}: raise PermissionError("admin required")
