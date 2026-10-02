@@ -64,8 +64,8 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [x] /health real para DB/fila/dependências essenciais.
 - [x] Backup SQLite online verificado.
 - [x] Teste automatizado de restauração.
-- [ ] Backup agendado e retenção operacional documentada.
-- [ ] Runbook de incidentes/falhas de worker/restore.
+- [x] Backup agendado e retenção operacional documentada.
+- [x] Runbook de incidentes/falhas de worker/restore.
 
 ### Qualidade e CI/CD
 - [ ] Medição de cobertura + threshold mínimo.
