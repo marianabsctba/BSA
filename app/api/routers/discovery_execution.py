@@ -15,6 +15,20 @@ from ..operation_queue import queue_active_operation
 router=APIRouter()
 
 
+class DiscoveryRequest(BaseModel):
+    target:str=Field(min_length=1,max_length=253)
+    checks:list[str]=Field(
+        default_factory=lambda:["dns","http","tls","ct"]
+    )
+    authorization_ref:str=Field(default="",max_length=200)
+
+
+class DASTRequest(BaseModel):
+    target:str=Field(min_length=1,max_length=2048)
+    authorization_ref:str=Field(min_length=1,max_length=200)
+    profile:str=Field(default="safe",max_length=20)
+
+
 
 @router.post("/api/v1/dast/nuclei")
 def dast_nuclei(payload: DASTRequest, request: Request):
