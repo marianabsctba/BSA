@@ -79,7 +79,13 @@ def test_login_rate_limit_persists_in_database(tmp_path, monkeypatch):
         assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is True
     assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is False
 
-    auth._LOGIN_ATTEMPTS.clear()
-    auth._IP_LOGIN_ATTEMPTS.clear()
-
+    # Persistence is proven by reopening the SQLite-backed limiter state.
+    conn=auth._db()
+    row=conn.execute(
+        "SELECT count,blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-email",identity),
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert int(row["blocked_until"])>0
     assert auth.rate_limit_action("login-email",identity,limit=5,window_seconds=300) is False
