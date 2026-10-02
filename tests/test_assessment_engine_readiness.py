@@ -464,8 +464,8 @@ def test_public_adaptive_degradation_hides_backend_identity(monkeypatch):
     )
     monkeypatch.setattr(
         orchestrator,
-        "_adaptive_suppressed_providers",
-        lambda profile, target: ({"backend-a"}, {"fingerprint"}),
+        "_adaptive_execution_policy",
+        lambda profile, target: ({"backend-a"}, {"fingerprint"}, set()),
     )
     monkeypatch.setattr(orchestrator.registry, "available", lambda name, target=None: True)
     monkeypatch.setattr(orchestrator.registry, "execute", lambda name, target: [])
@@ -490,6 +490,7 @@ def test_public_adaptive_degradation_hides_backend_identity(monkeypatch):
 
     assert adaptive == {
         "deferred_backend_count": 1,
+        "recovery_probe_count": 0,
         "protected_capabilities": ["fingerprint"],
         "coverage_preserved": True,
     }
