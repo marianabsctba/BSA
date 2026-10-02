@@ -28,7 +28,6 @@ def _ensure_policy_schema() -> None:
 
 
 def policy_for(tenant_id: str) -> TenantRiskPolicy:
-    _ensure_policy_schema()
     conn=_db()
     row=conn.execute(
         "SELECT version,policy_json FROM tenant_risk_policies WHERE tenant_id=?",
