@@ -131,6 +131,8 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
     """Idempotently reconcile one completed assessment back into its CTEM item."""
     from .history import (
         ctem_retest_for_job,
+        claim_ctem_retest_reconciliation,
+        release_ctem_retest_reconciliation,
         complete_ctem_retest,
         list_ctem_items,
         record_ctem_transition,
@@ -143,6 +145,8 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
         return None
     if link.get("outcome"):
         return link
+    if not claim_ctem_retest_reconciliation(job["job_id"],tenant_id):
+        return ctem_retest_for_job(job["job_id"],tenant_id)
 
     item=next(
         (x for x in list_ctem_items(tenant_id) if x.get("item_id")==link.get("item_id")),
@@ -152,10 +156,11 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
         refs=[f"assessment-job:{job['job_id']}:ctem-item-missing"]
         return complete_ctem_retest(job["job_id"],tenant_id,"inconclusive",refs)
 
-    decision=classify_ctem_retest(
-        item,result,job_id=job["job_id"],target=job.get("target",""),
-    )
-    outcome=decision["outcome"]
+    try:
+        decision=classify_ctem_retest(
+            item,result,job_id=job["job_id"],target=job.get("target",""),
+        )
+        outcome=decision["outcome"]
     refs=list(decision.get("evidence_refs") or [])
     previous_state=str(item.get("state") or "")
 
@@ -212,4 +217,7 @@ def reconcile_ctem_retest_job(principal, job: dict, result: dict, audit_callback
     }
     if audit_callback is not None:
         audit_callback(principal,"ctem_retest_reconcile","ctem",item["item_id"],payload)
-    return {**decision,"outcome":outcome,"evidence_refs":refs}
+        return {**decision,"outcome":outcome,"evidence_refs":refs}
+    except Exception:
+        release_ctem_retest_reconciliation(job["job_id"],tenant_id)
+        raise
