@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 import os
+import ipaddress
 from hashlib import sha256
 
 from .changes import seed_changes
@@ -113,6 +114,23 @@ async def security_headers(request: Request, call_next):
     if request.url.scheme=="https":
         response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
     return response
+
+
+def _client_ip(request: Request) -> str:
+    peer=(request.client.host if request.client else "") or "unknown"
+    if os.getenv("BSA_TRUST_PROXY_HEADERS","0") != "1":
+        return peer
+    try:
+        peer_ip=ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    if not (peer_ip.is_private or peer_ip.is_loopback):
+        return peer
+    forwarded=(request.headers.get("X-Real-IP") or "").strip()
+    try:
+        return str(ipaddress.ip_address(forwarded)) if forwarded else peer
+    except ValueError:
+        return peer
 
 
 def govern_active_scan(http_request: Request, principal, target: str, authorization_ref: str | None = None):
@@ -847,7 +865,7 @@ def auth_mfa_enable(request: Request, payload: MFAEnableRequest):
     
 @app.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
-    token = authenticate(payload.email, payload.password, request.client.host if request.client else "", payload.mfa_code)
+    token = authenticate(payload.email, payload.password, _client_ip(request), payload.mfa_code)
     if not token:
         raise HTTPException(status_code=401, detail="invalid credentials")
     principal = principal_from_token(token)
@@ -1507,15 +1525,12 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
     principal = require(request, "discovery:run")
     if not asset_in_scope(principal, payload.target):
         raise HTTPException(status_code=403, detail="target outside assigned scope")
-    if not active_scan_in_scope(principal, payload.target):
-        raise HTTPException(status_code=403, detail="target outside active scan scope")
+    authorization_ref=govern_active_scan(request,principal,payload.target,payload.authorization_ref)
     if not rate_limit_action("exposure-assessment", principal.user_id, limit=8, window_seconds=300):
         raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
 
     if IS_PRODUCTION:
-        if not authorization_grant_valid(principal,payload.authorization_ref,payload.target):
-            raise HTTPException(status_code=403,detail="authorization_ref is expired, revoked, or not valid for target")
-        job=enqueue_assessment(principal,payload.target,payload.profile,payload.authorization_ref)
+        job=enqueue_assessment(principal,payload.target,payload.profile,authorization_ref)
         audit(
             principal,"queue","exposure_assessment",payload.target,
             {"profile":payload.profile,"authorization_ref":payload.authorization_ref,"job_id":job["job_id"]},
@@ -1534,7 +1549,7 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
         result = run_public_assessment(
             payload.target,
             profile=payload.profile,
-            authorize=lambda target: asset_in_scope(principal, target),
+            authorize=lambda target: asset_in_scope(principal, target) and active_scan_in_scope(principal,target),
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -1547,7 +1562,7 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
         payload.target,
         {
             "profile": payload.profile,
-            "authorization_ref": payload.authorization_ref,
+            "authorization_ref": authorization_ref,
             "finding_count": result.get("finding_count", 0),
             "partial_coverage": result.get("partial_coverage", False),
         },
