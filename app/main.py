@@ -23,7 +23,7 @@ from .correlation import correlate_evidence
 from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, record_ctem_retest, ctem_retest_for_job, complete_ctem_retest, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
-from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable, mfa_disable, issue_mfa_recovery_codes, generate_mfa_recovery_codes, tenant_mfa_policy, set_tenant_mfa_policy, TOKEN_TTL
+from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, verify_audit_chain, revoke_session, mfa_status, mfa_enroll, mfa_enable, mfa_disable, issue_mfa_recovery_codes, generate_mfa_recovery_codes, tenant_mfa_policy, set_tenant_mfa_policy, TOKEN_TTL
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .ctem_retest import reconcile_ctem_retest_job
 from .discovery_orchestrator import plan_candidate_collection
@@ -53,7 +53,7 @@ from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
 from .retention import get_retention_policy, set_retention_policy, retention_preview, apply_retention
-from .integration_export import siem_events, unified_siem_events
+from .integration_export import siem_events, unified_siem_events, audit_siem_events
 from .syslog_export import config_from_env, send_event, send_events
 
 bootstrap()
@@ -1106,6 +1106,54 @@ def audit_events(request: Request, limit: int = 100):
         return list_audit(p, limit)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/audit/integrity")
+def audit_integrity(request: Request):
+    p=current_principal(request)
+    try:
+        return verify_audit_chain(p)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+
+
+@app.get("/api/v1/audit/export")
+def audit_export(request: Request, limit: int=500):
+    p=current_principal(request)
+    try:
+        rows=list_audit(p,limit)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    integrity=verify_audit_chain(p)
+    return {
+        "schema_version":"1.0",
+        "count":len(rows),
+        "integrity":integrity,
+        "events":audit_siem_events(rows,limit=limit),
+    }
+
+
+@app.post("/api/v1/audit/syslog/push")
+def audit_syslog_push(request: Request, limit: int=500):
+    p=current_principal(request)
+    if p.role not in {"superadmin","admin","manager"}:
+        raise HTTPException(status_code=403,detail="manager role required")
+    cfg=config_from_env()
+    if cfg is None:
+        raise HTTPException(status_code=400,detail="syslog not configured")
+    rows=list_audit(p,limit)
+    integrity=verify_audit_chain(p)
+    if not integrity.get("valid"):
+        raise HTTPException(status_code=409,detail="audit integrity check failed")
+    events=audit_siem_events(rows,limit=limit)
+    result=send_events(events,cfg,limit=limit)
+    audit(p,"push","audit.syslog",None,{
+        "requested":len(events),
+        "delivered":result.get("delivered",0),
+        "failed":result.get("failed",0),
+        "transport":cfg.transport,
+    })
+    return {"stream_count":len(events),"integrity":integrity,**result}
 
 
 @app.get("/api/v1/tenant/retention")
