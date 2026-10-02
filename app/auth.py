@@ -299,6 +299,17 @@ def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds
     conn.commit(); conn.close()
     return blocked_until==0
 
+def _rate_limit_blocked(bucket: str, identity: str) -> bool:
+    now=int(time.time())
+    key=str(identity or "unknown").strip().lower()[:512] or "unknown"
+    conn=_db()
+    row=conn.execute(
+        "SELECT blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        (bucket,key),
+    ).fetchone()
+    conn.close()
+    return bool(row and int(row["blocked_until"] or 0)>now)
+
 def _clear_rate_limit(bucket: str, identity: str) -> None:
     conn=_db()
     conn.execute("DELETE FROM auth_rate_limits WHERE bucket=? AND identity=?",(bucket,str(identity or "unknown").strip().lower()[:512] or "unknown"))
@@ -308,9 +319,7 @@ def _clear_rate_limit(bucket: str, identity: str) -> None:
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
-    if not rate_limit_action("login-email",key,limit=5,window_seconds=300):
-        return None
-    if not rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900):
+    if _rate_limit_blocked("login-email",key) or _rate_limit_blocked("login-ip",ipkey):
         return None
 
     conn=_db()
@@ -320,6 +329,8 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     encoded=row["password_hash"] if row else _DUMMY_PASSWORD_HASH
     password_ok=_verify(password,encoded)
     if not row or not password_ok:
+        rate_limit_action("login-email",key,limit=5,window_seconds=300)
+        rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900)
         return None
 
     # Password is valid: clear primary credential throttles before entering
@@ -331,9 +342,10 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     mfa_secret=mfa_secret_for_user(row["id"])
     if mfa_secret:
         mfa_identity=f"{row['id']}:{ipkey}"
-        if not rate_limit_action("mfa-login",mfa_identity,limit=5,window_seconds=300):
+        if _rate_limit_blocked("mfa-login",mfa_identity):
             return None
         if not verify_user_mfa_once(row["id"],mfa_code or ""):
+            rate_limit_action("mfa-login",mfa_identity,limit=5,window_seconds=300)
             return None
         _clear_rate_limit("mfa-login",mfa_identity)
 
