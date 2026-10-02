@@ -4,8 +4,12 @@ from urllib.parse import urlparse
 
 _TLD_EXTRACT=tldextract.TLDExtract(suffix_list_urls=None)
 
+_CGNAT=ipaddress.ip_network("100.64.0.0/10")
+
 def _public_ip(ip):
     obj=ipaddress.ip_address(ip)
+    if obj.version==4 and obj in _CGNAT:
+        return False
     if obj.is_loopback or obj.is_private or obj.is_link_local or obj.is_multicast or obj.is_reserved or obj.is_unspecified:
         return False
     return obj.is_global
@@ -55,3 +59,14 @@ def validate_redirect(url: str) -> None:
     except ValueError as exc:
         if "blocked" in str(exc): raise
         resolve_public(host)
+
+
+def validated_external_binding(target: str) -> dict:
+    """Resolve an external target once and return the exact approved IP set."""
+    host, origin=validate_external_target(target)
+    try:
+        ip=ipaddress.ip_address(host)
+        ips=[str(ip)]
+    except ValueError:
+        ips=resolve_public(host)
+    return {"host":host,"origin":origin,"approved_ips":tuple(ips)}
