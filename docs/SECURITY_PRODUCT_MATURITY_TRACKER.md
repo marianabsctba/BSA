@@ -40,8 +40,8 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 
 ### Arquitetura e escalabilidade
 - [ ] Eliminar listas globais de assets/findings como fonte operacional.
-- [ ] Migrar assets/findings para PostgreSQL.
-- [ ] Introduzir camada de repository.
+- [x] Adapter PostgreSQL para assets/findings implementado, opt-in por ambiente; migração controlada SQLite → PostgreSQL com dry-run e reconciliação adicionada. Cutover real em ambiente ainda pendente.
+- [x] Camada de repository introduzida com port de aplicação; routers desacoplados do store direto.
 - [ ] Migrações versionadas com Alembic.
 - [ ] Remover ALTER TABLE oportunista do caminho normal de conexão.
 - [ ] Reduzir custo linear de tenant_scope.
@@ -50,7 +50,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [x] Toda coleta ativa relevante passa por fila.
 - [x] Workers/executores separados por classe de operação com dispatcher próprio.
 - [x] API isolada da rede de egress; motores ativos executam no worker com egress dedicado e validação/pinning de alvos.
-- [ ] API stateless preparada para múltiplas réplicas.
+- [ ] API stateless preparada para múltiplas réplicas. Assets/findings já possuem backend PostgreSQL compartilhável; auth/history/jobs ainda exigem evolução.
 - [ ] Estratégia de failover/HA.
 
 ### Operação e observabilidade
@@ -142,7 +142,23 @@ Este tracker só pode ser considerado concluído quando:
 - [x] BSA-02 residual — Nuclei com hostname bloqueado em produção até pinning/egress equivalente.
 - [x] R2-02 — limitação e cobertura dos motores em produção documentadas no runbook e arquitetura.
 - [x] R2-03 — superadmin pode registrar aprovação de IP para tenant-alvo explícito.
-- [ ] R2-04 — remover atraso bloqueante no login e validar em CI.
-- [ ] R3-02 — evitar bloqueio indevido de usuário válido atrás de NAT compartilhado.
-- [ ] BSA-05 residual — pressão global por conta contra ataques distribuídos, sem lockout abusável.
-- [ ] R3-03 — repository layer para assets/findings, unificação de tenant_scope e preparação PostgreSQL.
+- [x] R2-04 — atraso bloqueante removido; CI verde. Reteste independente pendente.
+- [x] R3-02 — login válido não é rejeitado apenas por pressão de NAT compartilhado; CI verde. Reteste independente pendente.
+- [x] BSA-05 residual — pressão global por conta adicionada sem lockout rígido do titular; CI verde. Reteste independente pendente.
+- [x] R3-03 — repository layer, tenant_scope unificado, port de aplicação, adapter PostgreSQL, overlay opt-in e migração verificada implementados. Cutover real/múltiplas réplicas e reteste independente ainda pendentes.
+
+
+## Próxima onda — evolução de produto e motores
+
+Prioridade após consolidar as pendências de parecer e validar o cutover de persistência:
+
+1. Discovery/EASM: cobertura, deduplicação, confiança, ownership, expansão inteligente e correlação histórica.
+2. Vulnerability/Assessment: cobertura real de providers, normalização de evidência, correlação CVE/CPE/CVSS e redução de falso positivo.
+3. CTI/DRP/Leaks: fontes, correlação entre eventos, credenciais vazadas, brand abuse, evidência e workflow de resposta.
+4. Risk/Exposure: contextualização por criticidade, attack paths, exposição externa, probabilidade, impacto e explicabilidade.
+5. SIEM/Integrações: outbox/retry persistente, webhooks e conectores operacionais.
+6. IA local: avaliação de qualidade, guardrails, explicabilidade e uso assistivo no discovery/correlação, sem decisão autônoma de alto impacto.
+7. Escala: mover auth/history/jobs para backend compartilhado, múltiplas réplicas, HA e migrações versionadas.
+8. UX: modularizar App.jsx e melhorar fluxo operacional por persona sem esconder evidência técnica.
+
+Regra: cada evolução de motor deve entrar com telemetria, testes de regressão, critério de cobertura e release-readiness correspondente.
