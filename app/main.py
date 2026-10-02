@@ -25,7 +25,7 @@ from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, revoke_session, mfa_status, mfa_enroll, mfa_enable
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .discovery_orchestrator import plan_candidate_collection
-from .scope import bootstrap_scope, asset_in_scope, create_scope, list_scopes, assign_scope, create_group, list_groups, list_user_scopes, assign_scope_to_user
+from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user
 from .asset_view import asset_detail
 from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
@@ -113,6 +113,8 @@ def govern_active_scan(http_request: Request, principal, target: str, authorizat
     ref=(authorization_ref or http_request.headers.get("X-Authorization-Ref","")).strip()
     if IS_PRODUCTION and not ref:
         raise HTTPException(status_code=400,detail="authorization_ref is required for active scans")
+    if not active_scan_in_scope(principal,target):
+        raise HTTPException(status_code=403,detail="target not authorized for active scanning")
     rate_key=f"{principal.tenant_id}:{principal.user_id}"
     if not rate_limit_action("active-scan",rate_key,limit=30,window_seconds=300):
         raise HTTPException(status_code=429,detail="active scan rate limit exceeded")
@@ -777,6 +779,34 @@ def scopes_assign(request: Request, payload: ScopeAssignRequest):
     except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
     except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc)) from exc
 
+
+@app.get("/api/v1/scan-scopes")
+def scan_scopes(request: Request):
+    p=require(request,"users:read")
+    return list_scan_scopes(p)
+
+@app.post("/api/v1/scan-scopes")
+def scan_scopes_create(request: Request, payload: ScopeCreateRequest):
+    p=current_principal(request)
+    try:
+        result=create_scan_scope(p,payload.name,payload.pattern)
+        audit(p,"create","scan_scope",result["id"],{"pattern":payload.pattern})
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+
+@app.post("/api/v1/scan-scopes/assign")
+def scan_scopes_assign(request: Request, payload: ScopeAssignRequest):
+    p=current_principal(request)
+    try:
+        assign_scan_scope(p,payload.user_id,payload.scope_id)
+        audit(p,"assign","scan_scope",payload.scope_id,{"user_id":payload.user_id})
+        return {"ok":True}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
 @app.get("/api/v1/groups")
 def groups(request: Request):
     p=require(request,"users:read")
@@ -893,6 +923,27 @@ def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
         return result
     except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
     except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
+
+
+@app.get("/api/v1/users/{user_id}/scan-scopes")
+def users_scan_scopes_list(user_id: str, request: Request):
+    p=current_principal(request)
+    try:
+        return list_user_scan_scopes(p,user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc))
+
+@app.post("/api/v1/users/{user_id}/scan-scopes")
+def users_scan_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
+    p=current_principal(request)
+    try:
+        result=assign_scan_scope_to_user(p,user_id,payload.scope_id)
+        audit(p,"scan_scope_change","user",user_id,result)
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
 
 class CustomRoleRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
