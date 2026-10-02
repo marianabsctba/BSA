@@ -64,6 +64,8 @@ class Finding(BaseModel):
     affected_component: str | None = None
     affected_components: list[str] = Field(default_factory=list)
     source_refs: list[str] = Field(default_factory=list)
+    independent_source_count: int = Field(default=1, ge=0, le=50)
+    independently_corroborated: bool = False
     false_positive_confidence: int = Field(default=0, ge=0, le=100)
     validation_state: str = "observed"
     evidence_quality: int = Field(default=50, ge=0, le=100)
