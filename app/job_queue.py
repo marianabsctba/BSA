@@ -135,7 +135,8 @@ def queue_health(tenant_id:str|None=None, now:int|None=None,
     path=_db_path()
     if not Path(path).exists():
         return {
-            "status":"unavailable",
+            "status":"healthy",
+            "initialized":False,
             "tenant_id":tenant_id,
             "total_jobs":0,
             "queued":0,
@@ -145,7 +146,7 @@ def queue_health(tenant_id:str|None=None, now:int|None=None,
             "stale_materializations":0,
             "retry_pressure_jobs":0,
             "retry_exhausted_running":0,
-            "reason":"job queue database does not exist",
+            "reason":"job queue database is not initialized",
         }
     try:
         conn=sqlite3.connect(path,timeout=5)
@@ -154,6 +155,7 @@ def queue_health(tenant_id:str|None=None, now:int|None=None,
     except (OSError,sqlite3.Error) as exc:
         return {
             "status":"unavailable",
+            "initialized":False,
             "tenant_id":tenant_id,
             "total_jobs":0,
             "queued":0,
@@ -167,12 +169,29 @@ def queue_health(tenant_id:str|None=None, now:int|None=None,
         }
     where="WHERE tenant_id=?" if tenant_id else ""
     params=(tenant_id,) if tenant_id else ()
-    rows=conn.execute(
-        f"""SELECT status,attempts,max_attempts,created_at,started_at,completed_at,
-                   lease_expires_at,materialized,materialization_started_at
-            FROM assessment_jobs {where}""",
-        params,
-    ).fetchall()
+    try:
+        rows=conn.execute(
+            f"""SELECT status,attempts,max_attempts,created_at,started_at,completed_at,
+                       lease_expires_at,materialized,materialization_started_at
+                FROM assessment_jobs {where}""",
+            params,
+        ).fetchall()
+    except sqlite3.Error:
+        conn.close()
+        return {
+            "status":"healthy",
+            "initialized":False,
+            "tenant_id":tenant_id,
+            "total_jobs":0,
+            "queued":0,
+            "running":0,
+            "oldest_queued_age_seconds":0,
+            "expired_running_leases":0,
+            "stale_materializations":0,
+            "retry_pressure_jobs":0,
+            "retry_exhausted_running":0,
+            "reason":"job queue schema is not initialized",
+        }
     conn.close()
 
     queued=[r for r in rows if r["status"]=="queued"]
@@ -210,6 +229,7 @@ def queue_health(tenant_id:str|None=None, now:int|None=None,
 
     return {
         "status":status,
+        "initialized":True,
         "tenant_id":tenant_id,
         "total_jobs":len(rows),
         "queued":len(queued),
