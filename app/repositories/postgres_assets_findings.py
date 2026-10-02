@@ -109,21 +109,21 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         ]
 
     def list_findings(self, tenant_id: str, asset_ids: Iterable[str] | None=None):
+        allowed=None if asset_ids is None else tuple(asset_ids)
         with self._connection() as conn:
             with conn.cursor() as cur:
-                if asset_ids is None:
+                if allowed is None:
                     cur.execute(
                         "SELECT payload_json FROM findings WHERE tenant_id=%s ORDER BY id",
                         (tenant_id,),
                     )
                 else:
-                    ids=tuple(asset_ids)
-                    if not ids:
+                    if not allowed:
                         return []
                     cur.execute(
                         "SELECT payload_json FROM findings "
                         "WHERE tenant_id=%s AND asset_id = ANY(%s) ORDER BY id",
-                        (tenant_id,list(ids)),
+                        (tenant_id,list(allowed)),
                     )
                 items=[Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
         for item in items:
@@ -131,7 +131,7 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         return items+[
             item for item in self._pending_findings
             if item.tenant_id==tenant_id
-            and (asset_ids is None or item.asset_id in set(asset_ids))
+            and (allowed is None or item.asset_id in allowed)
             and (item.tenant_id,item.id) not in self._tracked_findings
         ]
 
