@@ -1180,3 +1180,76 @@ def recent_capability_execution_health(
         return out
     finally:
         conn.close()
+
+
+
+def capability_reliability(
+    capabilities: tuple[str, ...] | list[str],
+    *,
+    window_hours: int = 168,
+    min_calls: int = 3,
+) -> list[dict]:
+    """Summarize historical capability reliability without exposing provider identities."""
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=max(1, int(window_hours)))
+    required_calls = max(1, int(min_calls))
+    conn = _history_db()
+    try:
+        out = []
+        for capability in capabilities:
+            rows = conn.execute(
+                """SELECT observed_at,calls,errors
+                   FROM capability_execution_health
+                   WHERE capability=? AND observed_at>=?
+                   ORDER BY observed_at ASC,id ASC""",
+                (capability, cutoff.isoformat()),
+            ).fetchall()
+            calls = sum(int(row["calls"]) for row in rows)
+            errors = sum(int(row["errors"]) for row in rows)
+            successes = max(0, calls - errors)
+            success_rate = round(100 * successes / max(1, calls))
+
+            states = []
+            for row in rows:
+                row_calls = max(0, int(row["calls"]))
+                row_errors = max(0, min(row_calls, int(row["errors"])))
+                if row_calls <= 0:
+                    continue
+                states.append("failure" if row_errors >= row_calls else "success")
+
+            transitions = sum(
+                1 for previous, current in zip(states, states[1:])
+                if previous != current
+            )
+            consecutive_failures = 0
+            for state in reversed(states):
+                if state != "failure":
+                    break
+                consecutive_failures += 1
+
+            if calls < required_calls:
+                status = "insufficient_data"
+            elif consecutive_failures >= 2 or success_rate < 60:
+                status = "unreliable"
+            elif transitions >= 3 and len(states) >= 5:
+                status = "flapping"
+            elif success_rate < 90:
+                status = "degraded"
+            else:
+                status = "stable"
+
+            out.append({
+                "name": capability,
+                "reliability_status": status,
+                "success_rate_percent": success_rate if calls else None,
+                "calls": calls,
+                "errors": errors,
+                "consecutive_failures": consecutive_failures,
+                "state_transitions": transitions,
+                "window_hours": max(1, int(window_hours)),
+            })
+        return out
+    finally:
+        conn.close()
