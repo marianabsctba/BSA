@@ -40,3 +40,18 @@ def test_sla_thresholds_follow_priority_band():
     assert sla_threshold_hours(75,policy)==24
     assert sla_threshold_hours(50,policy)==72
     assert sla_threshold_hours(20,policy)==240
+
+
+def test_sla_policy_read_does_not_run_schema_ddl(tmp_path, monkeypatch):
+    from app import tenant_sla_policy
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
+    save_sla_policy(TenantSLAPolicy(tenant_id="tenant-read"),updated_by="admin")
+
+    monkeypatch.setattr(
+        tenant_sla_policy,
+        "_ensure_schema",
+        lambda: (_ for _ in ()).throw(AssertionError("DDL helper called during read")),
+    )
+    assert sla_policy_for("tenant-read").tenant_id=="tenant-read"
