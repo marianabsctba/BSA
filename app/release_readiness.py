@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .engine_health import engine_health
 from .store import _store_path
-from .job_queue import _db_path, queue_health
+from .job_queue import _db_path, queue_health, worker_health
 from .retention import get_retention_policy
 from .scan_authorization import ensure_authorization_schema
 
@@ -37,6 +37,7 @@ def release_readiness() -> dict:
     rapid = health.get("profiles", {}).get("rapid", {})
     balanced = health.get("profiles", {}).get("balanced", {})
     queue = queue_health()
+    workers = worker_health()
 
     checks = [
         {
@@ -110,6 +111,16 @@ def release_readiness() -> dict:
             "expired_running_leases": int(queue.get("expired_running_leases",0) or 0),
             "stale_materializations": int(queue.get("stale_materializations",0) or 0),
             "retry_pressure_jobs": int(queue.get("retry_pressure_jobs",0) or 0),
+        },
+        {
+            "name": "assessment_worker_health",
+            "status": "pass" if workers.get("status")=="healthy" else "warn",
+            "required": False,
+            "worker_status": workers.get("status"),
+            "workers": int(workers.get("workers",0) or 0),
+            "active_workers": int(workers.get("active_workers",0) or 0),
+            "stale_workers": int(workers.get("stale_workers",0) or 0),
+            "last_seen_age_seconds": workers.get("last_seen_age_seconds"),
         },
         {
             "name": "scan_authorization_store",
