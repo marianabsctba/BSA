@@ -1302,3 +1302,9 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .ctem-audit-timeline b{font-size:10px;color:#fff}
 .ctem-audit-timeline span{margin-top:3px;color:#8994a3;font:8px "DM Mono"}
 .ctem-audit-timeline small{margin-top:4px;color:#687384;font:7px "DM Mono"}
+
+
+.ctem-lifecycle-actions{display:grid;gap:9px;margin:18px 24px 24px;padding-top:16px;border-top:1px solid var(--line)}
+.ctem-lifecycle-actions input{width:100%;background:#080b10;border:1px solid var(--line);border-radius:9px;color:#fff;padding:10px 11px;font-size:10px;outline:0}
+.ctem-lifecycle-actions input:focus{border-color:#ff2d8450}
+.ctem-lifecycle-actions .primary{justify-content:center}
