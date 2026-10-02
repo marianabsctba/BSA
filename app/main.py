@@ -41,6 +41,8 @@ from .risk_policy import calculate_risk, DEFAULT_POLICY
 from .tenant_risk_policy import policy_for, serialize_policy
 from .tenant_sla_policy import sla_policy_for, serialize_sla_policy, sla_threshold_hours
 from .application.services.policy_service import get_risk_policy_view, build_and_save_risk_policy, get_sla_policy_view, build_and_save_sla_policy
+from .application.services.risk_service import build_risk_register, build_risk_overview
+from .application.services.ctem_service import build_ctem_operations, build_ctem_queue_page, list_ctem_queue
 from .digital_risk import DigitalRiskEvent, BrandAnalysis, InfrastructureIndicator, LeakSignal, analyze_brand_impersonation, analyze_leak_signal, build_infrastructure_links, build_infrastructure_graph, upsert_event, list_events, summarize_events
 from .exposure_signals import cloud_signals, takeover_signals, summarize_signals
 from .ip_intelligence import ip_exposure_signal
@@ -580,48 +582,15 @@ def update_tenant_sla_policy(payload: TenantSLAPolicyRequest, request: Request):
 def risk_register(request: Request):
     principal=require(request,"assets:read")
     assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    amap={a.id:a for a in assets}
-    policy=policy_for(principal.tenant_id)
-    items=[]
-    for f in findings:
-        if f.status!="open": continue
-        a=amap.get(f.asset_id)
-        risk=calculate_risk(f,a,policy)
-        items.append({"finding_id":f.id,"asset_id":f.asset_id,"asset":a.value if a else None,
-                      "title":f.title,"risk":risk})
-    items.sort(key=lambda x:(x["risk"]["residual_score"],x["risk"]["score"]),reverse=True)
-    return {"policy":serialize_policy(policy),"summary":{
-        "findings":len(items),
-        "critical":sum(x["risk"]["band"]=="critical" for x in items),
-        "high":sum(x["risk"]["band"]=="high" for x in items),
-        "medium":sum(x["risk"]["band"]=="medium" for x in items),
-        "low":sum(x["risk"]["band"]=="low" for x in items),
-        "validation_required":sum(x["risk"]["validation_required"] for x in items),
-        "average_inherent":round(sum(x["risk"]["inherent_score"] for x in items)/len(items)) if items else 0,
-        "average_residual":round(sum(x["risk"]["residual_score"] for x in items)/len(items)) if items else 0,
-    },"items":items}
+    return build_risk_register(principal.tenant_id,assets,findings)
+
 
 @app.get("/api/v1/risk/overview")
 def risk_overview(request: Request):
     principal=require(request,"assets:read")
     assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
-    amap={a.id:a for a in assets}
-    items=[]
-    for f in findings:
-        if f.status!="open": continue
-        a=amap.get(f.asset_id)
-        risk=assess_risk(f,a)
-        items.append({"finding_id":f.id,"asset_id":f.asset_id,"asset":a.value if a else None,
-                      "vulnerability_id":f.vulnerability_id,"cpe":normalize_cpe(f.cpe),
-                      "cpe_product":cpe_product(f.cpe)[0],"cpe_version":cpe_product(f.cpe)[1],
-                      "risk":asdict(risk)})
-    items.sort(key=lambda x:x["risk"]["score"],reverse=True)
-    return {"summary":{"findings":len(items),
-        "critical":sum(x["risk"]["band"]=="critical" for x in items),
-        "high":sum(x["risk"]["band"]=="high" for x in items),
-        "medium":sum(x["risk"]["band"]=="medium" for x in items),
-        "low":sum(x["risk"]["band"]=="low" for x in items),
-        "average":round(sum(x["risk"]["score"] for x in items)/len(items)) if items else 0},"items":items}
+    return build_risk_overview(assets,findings)
+
 
 @app.get("/api/v1/vulnerabilities/intelligence")
 def vulnerability_intelligence_api(request: Request):
@@ -2526,11 +2495,7 @@ def discovery_risk_paths(target: str, request: Request):
 @app.get("/api/v1/ctem/operations")
 def ctem_operations(request: Request):
     principal=require(request,"findings:read")
-    items=list_ctem_items(principal.tenant_id)
-    summary=ctem_operational_summary(items,sla_policy=sla_policy_for(principal.tenant_id))
-    summary["remediation_coverage"]=ctem_remediation_coverage(items)
-    summary["queue"]=ctem_queue_view(items)
-    return {"summary":summary,"items":items}
+    return build_ctem_operations(principal.tenant_id)
 
 @app.get("/api/v1/ctem/{item_id}/audit")
 def ctem_audit(item_id: str, request: Request):
@@ -2570,17 +2535,19 @@ def ctem_audit_export(item_id: str, request: Request):
 def ctem_queue_page_api(request: Request, state: str | None = None, bucket: str | None = None,
                         min_leverage: int | None = None, page: int = 1, page_size: int = 50):
     principal=require(request,"findings:read")
-    items=list_ctem_items(principal.tenant_id)
-    filtered=ctem_queue_filter(items,state=state,bucket=bucket,min_leverage=min_leverage)
-    result=ctem_queue_page(filtered,page=page,page_size=page_size)
-    result["items"]=[{**item,"next_action":ctem_next_action(item)} for item in result["items"]]
-    return result
+    return build_ctem_queue_page(
+        principal.tenant_id,
+        state=state,
+        bucket=bucket,
+        min_leverage=min_leverage,
+        page=page,
+        page_size=page_size,
+    )
 
 @app.get("/api/v1/ctem")
 def ctem_queue(request: Request, state: str | None = None):
     principal=require(request,"findings:read")
-    states={state} if state else None
-    return {"items":list_ctem_items(principal.tenant_id,states)}
+    return list_ctem_queue(principal.tenant_id,state)
 
 @app.post("/api/v1/ctem/{item_id}/retest")
 def ctem_retest(item_id: str, request: Request, payload: dict):
