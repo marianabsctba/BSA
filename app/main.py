@@ -63,6 +63,7 @@ from .metrics import record_http_metric, prometheus_metrics, operational_alerts
 from .version import __version__
 from .api.routers.risk import router as risk_router
 from .api.routers.vulnerabilities import router as vulnerabilities_router
+from .api.routers.ctem import router as ctem_router
 
 bootstrap()
 bootstrap_scope()
@@ -81,6 +82,7 @@ app = FastAPI(
 
 app.include_router(risk_router)
 app.include_router(vulnerabilities_router)
+app.include_router(ctem_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -2396,63 +2398,6 @@ def discovery_risk_paths(target: str, request: Request):
     if not asset_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     return queue_active_operation(request,principal,target,"discovery.risk_paths")
-
-@app.get("/api/v1/ctem/operations")
-def ctem_operations(request: Request):
-    principal=require(request,"findings:read")
-    return build_ctem_operations(principal.tenant_id)
-
-@app.get("/api/v1/ctem/{item_id}/audit")
-def ctem_audit(item_id: str, request: Request):
-    principal=require(request,"findings:read")
-    items=list_ctem_items(principal.tenant_id)
-    item=next((x for x in items if x.get("item_id")==item_id),None)
-    if item is None:
-        raise HTTPException(status_code=404,detail="CTEM item not found")
-    verifications=ctem_verification_history(item_id,principal.tenant_id)
-    transitions=ctem_transition_history(item_id,principal.tenant_id)
-    timeline=ctem_audit_timeline(item,verifications,transitions)
-    return {"item_id":item_id,"outcome":ctem_audit_outcome(item,verifications),"timeline":timeline}
-
-@app.get("/api/v1/ctem/{item_id}/audit/export")
-def ctem_audit_export(item_id: str, request: Request):
-    principal=require(request,"findings:read")
-    items=list_ctem_items(principal.tenant_id)
-    item=next((x for x in items if x.get("item_id")==item_id),None)
-    if item is None:
-        raise HTTPException(status_code=404,detail="CTEM item not found")
-    verifications=ctem_verification_history(item_id,principal.tenant_id)
-    transitions=ctem_transition_history(item_id,principal.tenant_id)
-    timeline=ctem_audit_timeline(item,verifications,transitions)
-    integrity=ctem_audit_integrity(item,verifications,transitions)
-    outcome=ctem_audit_outcome(item,verifications)
-    diffs=[]
-    for current in timeline[1:]:
-        if current.get("event")=="verification":
-            diffs.append({"event":"verification","timestamp":current.get("timestamp"),
-                          "result":current.get("result"),
-                          "diff":ctem_audit_diff(timeline[0],current)})
-    return {"format":"ctem-audit-v1","tenant_id":principal.tenant_id,
-            "item_id":item_id,"generated_at":datetime.now(timezone.utc).isoformat(),
-            "integrity":integrity,"outcome":outcome,"timeline":timeline,"diffs":diffs}
-
-@app.get("/api/v1/ctem/queue")
-def ctem_queue_page_api(request: Request, state: str | None = None, bucket: str | None = None,
-                        min_leverage: int | None = None, page: int = 1, page_size: int = 50):
-    principal=require(request,"findings:read")
-    return build_ctem_queue_page(
-        principal.tenant_id,
-        state=state,
-        bucket=bucket,
-        min_leverage=min_leverage,
-        page=page,
-        page_size=page_size,
-    )
-
-@app.get("/api/v1/ctem")
-def ctem_queue(request: Request, state: str | None = None):
-    principal=require(request,"findings:read")
-    return list_ctem_queue(principal.tenant_id,state)
 
 @app.post("/api/v1/ctem/{item_id}/retest")
 def ctem_retest(item_id: str, request: Request, payload: dict):
