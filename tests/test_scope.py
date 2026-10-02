@@ -23,3 +23,30 @@ def test_scope_blocks_unassigned_non_admin():
     from app.auth import Principal
     p=Principal("u","tenant-demo","u@example.org","analyst","Analyst")
     assert asset_in_scope(p,"example.org") is False
+
+
+def test_active_scan_scope_is_separate_from_visibility_scope(tmp_path, monkeypatch):
+    import app.auth as auth
+    import app.scope as scope
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(scope,"_db",auth._db)
+    monkeypatch.setenv("BSA_ENV","production")
+
+    conn=auth._db()
+    conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)",("tenant-x","Tenant X"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("u1","tenant-x","u1@example.org","U1",auth._hash("VeryStrongPass123!"),"admin",1),
+    )
+    conn.commit(); conn.close()
+
+    p=auth.Principal("u1","tenant-x","u1@example.org","admin","U1")
+    visible=scope.create_scope(p,"Visible","*.example.org")
+    scope.assign_scope(p,"u1",visible["id"])
+    assert scope.asset_in_scope(p,"api.example.org") is True
+    assert scope.active_scan_in_scope(p,"api.example.org") is False
+
+    active=scope.create_scan_scope(p,"Active","api.example.org")
+    scope.assign_scan_scope(p,"u1",active["id"])
+    assert scope.active_scan_in_scope(p,"api.example.org") is True
+    assert scope.active_scan_in_scope(p,"other.example.org") is False
