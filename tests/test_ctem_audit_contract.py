@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import app.main as main
+from app.api.routers import ctem as ctem_router
 
 
 def _principal(tenant_id="tenant-a"):
@@ -11,9 +12,9 @@ def _principal(tenant_id="tenant-a"):
 
 def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
     principal=_principal()
-    monkeypatch.setattr(main, "require", lambda request, permission: principal)
+    monkeypatch.setattr(ctem_router, "require", lambda request, permission: principal)
     monkeypatch.setattr(
-        main,
+        ctem_router,
         "list_ctem_items",
         lambda tenant_id: [
             {
@@ -27,7 +28,7 @@ def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
         ] if tenant_id=="tenant-a" else [],
     )
     monkeypatch.setattr(
-        main,
+        ctem_router,
         "ctem_transition_history",
         lambda item_id, tenant_id: [
             {
@@ -44,7 +45,7 @@ def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        main,
+        ctem_router,
         "ctem_verification_history",
         lambda item_id, tenant_id: [
             {
@@ -56,7 +57,7 @@ def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
         ],
     )
 
-    result=main.ctem_audit("item-a",None)
+    result=ctem_router.ctem_audit("item-a",None)
 
     assert result["item_id"]=="item-a"
     assert result["outcome"]["verification_count"]==1
@@ -69,10 +70,10 @@ def test_ctem_audit_endpoint_is_tenant_scoped(monkeypatch):
 
 def test_ctem_audit_does_not_resolve_other_tenant_item(monkeypatch):
     principal=_principal("tenant-a")
-    monkeypatch.setattr(main, "require", lambda request, permission: principal)
+    monkeypatch.setattr(ctem_router, "require", lambda request, permission: principal)
     monkeypatch.setattr(main, "list_ctem_items", lambda tenant_id: [])
 
-    with pytest.raises(main.HTTPException) as exc:
+    with pytest.raises(ctem_router.HTTPException) as exc:
         main.ctem_audit("tenant-b-item",None)
 
     assert exc.value.status_code==404
