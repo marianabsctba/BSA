@@ -28,6 +28,7 @@ def test_active_scan_governance_audits_and_rate_limits(monkeypatch):
     monkeypatch.setattr(main,"IS_PRODUCTION",True)
     calls=[]
     monkeypatch.setattr(main,"rate_limit_action",lambda *args,**kwargs: calls.append(("rate",args,kwargs)) or True)
+    monkeypatch.setattr(main,"authorization_grant_valid",lambda principal,ref,target: True)
     monkeypatch.setattr(main,"audit",lambda *args,**kwargs: calls.append(("audit",args,kwargs)))
     request=SimpleNamespace(
         headers={"X-Authorization-Ref":"AUTH-001"},
