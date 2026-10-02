@@ -27,17 +27,21 @@ def test_dispatcher_routes_migrated_discovery_operation(monkeypatch):
 
 def test_dispatcher_keeps_legacy_fallback(monkeypatch):
     calls=[]
+    monkeypatch.setattr(operation_dispatcher,"supports_assessment_operation",lambda operation: False)
     monkeypatch.setattr(operation_dispatcher,"supports_discovery_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_intelligence_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_technology_operation",lambda operation: False)
+    monkeypatch.setattr(operation_dispatcher,"supports_easm_operation",lambda operation: False)
     monkeypatch.setattr(
         operation_dispatcher,
         "run_legacy_operation",
         lambda operation,target,payload,principal: calls.append(operation) or {"source":"legacy"},
     )
 
-    result=operation_dispatcher.run_operation("discovery.graph","example.com",{},object())
+    result=operation_dispatcher.run_operation("legacy.operation","example.com",{},object())
 
     assert result=={"source":"legacy"}
-    assert calls==["discovery.graph"]
+    assert calls==["legacy.operation"]
 
 
 def test_dispatcher_routes_discovery_intelligence_operation(monkeypatch):
