@@ -237,6 +237,65 @@ def analyze_brand_impersonation(tenant_id, analysis: BrandAnalysis):
             "human_review_required":verdict!="likely_impersonation"}
 
 
+class LeakSignal(BaseModel):
+    leak_type: str = Field(pattern="^(credential|data|secret|token|combo)$")
+    indicator: str
+    source: str="manual"
+    domain: str|None=None
+    asset_id: str|None=None
+    account_count: int=Field(default=1,ge=0,le=100000000)
+    secret_count: int=Field(default=0,ge=0,le=100000000)
+    first_seen: str=""
+    last_seen: str=""
+    confidence: int=Field(default=70,ge=0,le=100)
+    evidence: dict={}
+
+def analyze_leak_signal(item: LeakSignal) -> dict:
+    category={
+        "credential":"credential_leak",
+        "combo":"credential_leak",
+        "data":"data_leak",
+        "secret":"secret_exposure",
+        "token":"secret_exposure",
+    }[item.leak_type]
+    account_count=max(0,int(item.account_count or 0))
+    secret_count=max(0,int(item.secret_count or 0))
+    volume=min(100,round((account_count**0.5)*8 + (secret_count**0.5)*12))
+    confidence=max(0,min(100,int(item.confidence or 0)))
+    score=min(100,round(confidence*0.45 + volume*0.35 + (15 if item.asset_id or item.domain else 0) + (10 if secret_count else 0)))
+    if score>=85: severity="critical"
+    elif score>=70: severity="high"
+    elif score>=45: severity="medium"
+    else: severity="low"
+    safe_evidence={
+        k:v for k,v in (item.evidence or {}).items()
+        if str(k).lower() not in {"password","secret","token","credential","raw","value"}
+    }
+    reasons=[f"type:{item.leak_type}",f"confidence:{confidence}",f"accounts:{account_count}",f"secrets:{secret_count}"]
+    if item.domain: reasons.append("linked_domain")
+    if item.asset_id: reasons.append("linked_asset")
+    return {
+        "category":category,
+        "indicator":item.indicator,
+        "source":item.source,
+        "domain":item.domain,
+        "asset_id":item.asset_id,
+        "account_count":account_count,
+        "secret_count":secret_count,
+        "confidence":confidence,
+        "severity":severity,
+        "risk_score":score,
+        "risk_band":"critical" if score>=85 else "high" if score>=70 else "medium" if score>=45 else "low",
+        "risk_reasons":reasons,
+        "evidence":safe_evidence,
+        "first_seen":item.first_seen,
+        "last_seen":item.last_seen,
+        "status":"open",
+        "contains_raw_secret":False,
+        "human_review_required":True,
+    }
+
+
 class InfrastructureIndicator(BaseModel):
     indicator: str
     indicator_type: str="domain"
