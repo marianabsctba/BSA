@@ -51,14 +51,21 @@ class AssessmentRegistry:
         self.providers: Dict[str, Type[AssessmentProvider]] = {}
         self.capabilities = {
             "discovery": EngineCapability("discovery", "surface", "External asset discovery and enumeration"),
+            "dns_intelligence": EngineCapability("dns_intelligence", "surface", "DNS validation and relationship intelligence"),
+            "network_intelligence": EngineCapability("network_intelligence", "network", "ASN and network ownership intelligence"),
             "fingerprint": EngineCapability("fingerprint", "technology", "Technology and service identification"),
+            "certificate_intelligence": EngineCapability("certificate_intelligence", "certificate", "Certificate and TLS identity intelligence"),
+            "tls_assessment": EngineCapability("tls_assessment", "security", "TLS posture assessment"),
+            "technology_intelligence": EngineCapability("technology_intelligence", "technology", "Technology fingerprint intelligence"),
+            "historical_surface": EngineCapability("historical_surface", "surface", "Historical web exposure intelligence"),
+            "web_surface": EngineCapability("web_surface", "application", "Bounded web surface discovery"),
+            "web_assessment": EngineCapability("web_assessment", "application", "Safe web exposure assessment"),
+            "cloud_exposure": EngineCapability("cloud_exposure", "cloud", "Cloud exposure validation"),
             "vulnerability": EngineCapability("vulnerability", "security", "Evidence-based vulnerability assessment"),
             "service_exposure": EngineCapability("service_exposure", "network", "Externally reachable service validation"),
-            "web_assessment": EngineCapability("web_assessment", "application", "Safe web exposure assessment"),
-            "intelligence": EngineCapability("intelligence", "cti", "Threat intelligence correlation"),
+            "cloud_intelligence": EngineCapability("cloud_intelligence", "cloud", "Cloud footprint and attribution intelligence"),
             "credential_exposure": EngineCapability("credential_exposure", "identity", "Credential exposure intelligence"),
-            "cloud_intelligence": EngineCapability("cloud_intelligence", "cloud", "Cloud footprint and exposure intelligence"),
-            "network_intelligence": EngineCapability("network_intelligence", "network", "ASN and network ownership intelligence"),
+            "intelligence": EngineCapability("intelligence", "cti", "Threat intelligence correlation"),
         }
         self._register_defaults()
 
@@ -124,20 +131,34 @@ class AssessmentRegistry:
             for item in self.capabilities.values()
         ]
 
-    def capability_health(self, target: str | None = None) -> list[dict]:
-        mapping = {
-            "discovery": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx"),
-            "fingerprint": ("httpx", "whatweb"),
-            "vulnerability": ("nuclei", "openvas"),
-            "service_exposure": ("naabu", "nmap"),
-            "web_assessment": ("safeweb", "zap", "katana"),
-            "intelligence": ("cti", "threatfox"),
-            "credential_exposure": ("leak", "hibp", "hudsonrock", "trufflehog"),
-            "cloud_intelligence": ("cloud",),
-            "network_intelligence": ("asnmap",),
-        }
+    CAPABILITY_PROVIDERS = {
+        "discovery": ("subfinder", "amass", "assetfinder", "alterx"),
+        "dns_intelligence": ("puredns", "dnsx"),
+        "network_intelligence": ("asnmap",),
+        "fingerprint": ("httpx",),
+        "certificate_intelligence": ("tlsx",),
+        "tls_assessment": ("testssl",),
+        "technology_intelligence": ("whatweb",),
+        "historical_surface": ("gau",),
+        "web_surface": ("katana",),
+        "web_assessment": ("safeweb", "zap"),
+        "cloud_exposure": ("cloud",),
+        "vulnerability": ("nuclei", "openvas"),
+        "service_exposure": ("naabu", "nmap"),
+        "cloud_intelligence": ("cloud",),
+        "credential_exposure": ("leak", "hibp", "hudsonrock", "trufflehog"),
+        "intelligence": ("cti", "threatfox"),
+    }
+
+    def capability_health(
+        self,
+        target: str | None = None,
+        capabilities: tuple[str, ...] | list[str] | None = None,
+    ) -> list[dict]:
+        requested = list(capabilities) if capabilities is not None else list(self.CAPABILITY_PROVIDERS)
         rows = []
-        for capability, providers in mapping.items():
+        for capability in requested:
+            providers = self.CAPABILITY_PROVIDERS.get(capability, ())
             states = []
             for provider in providers:
                 try:
@@ -145,9 +166,11 @@ class AssessmentRegistry:
                 except Exception:
                     states.append(False)
             available = sum(1 for state in states if state)
+            operational = available > 0
             rows.append({
                 "name": capability,
-                "status": "ready" if available == len(states) else "partial" if available else "unavailable",
+                "status": "ready" if providers and available == len(states) else "partial" if operational else "unavailable",
+                "operational": operational,
                 "available_backends": available,
                 "backend_count": len(states),
             })
