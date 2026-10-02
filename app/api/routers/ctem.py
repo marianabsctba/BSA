@@ -10,7 +10,6 @@ from ...application.services.ctem_service import (
 )
 from ...auth import audit
 from ...job_queue import enqueue_assessment
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ...history import (
     ctem_audit_diff,
     ctem_audit_integrity,
@@ -30,7 +29,8 @@ from ...history import (
     verify_ctem_item,
 )
 from ..active_scan import govern_active_scan
-from ..dependencies import require, tenant_scope
+from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
@@ -212,7 +212,7 @@ def ctem_retest(item_id: str, request: Request, payload: dict):
         raise HTTPException(status_code=400,detail="CTEM item is not ready for retest")
 
     asset_id=str(item.get("asset_id") or "")
-    assets,_=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,_=tenant_scope(principal)
     asset=next((entry for entry in assets if entry.id==asset_id),None)
     if asset is None:
         raise HTTPException(status_code=404,detail="CTEM asset not found")
