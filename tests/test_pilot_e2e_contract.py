@@ -39,21 +39,7 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
     monkeypatch.setattr(reporting_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(api_dependencies,"asset_in_scope",lambda p,target:True)
-    monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
     monkeypatch.setattr(discovery_execution_router,"queue_active_operation",lambda request,p,target,operation,payload=None,authorization_ref=None: __import__("fastapi").responses.JSONResponse(status_code=202,content={"job_id":job_queue.enqueue_operation(p,target,operation,authorization_ref or "development",payload or {})["job_id"],"status":"queued","target":target,"operation":operation}))
-    monkeypatch.setattr(
-        main,
-        "collect_target",
-        lambda target,checks:{
-            "target":target,
-            "evidence":[
-                {"kind":"a_record","value":"203.0.113.10","confidence":95},
-                {"kind":"http_status","value":"200","confidence":90},
-            ],
-            "evidence_count":2,
-            "confidence":92,
-        },
-    )
     monkeypatch.setattr(
         reporting_router,
         "public_engine_health",
@@ -153,7 +139,6 @@ def test_pilot_ctem_retest_closes_verified_with_full_evidence(tmp_path, monkeypa
     monkeypatch.setattr(ctem_router,"govern_active_scan",lambda request,p,target,authorization_ref=None:"AUTH-PILOT")
     monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(main,"active_scan_in_scope",lambda p,target:True)
-    monkeypatch.setattr(main,"govern_active_scan",lambda request,p,target,authorization_ref=None:"AUTH-PILOT")
 
     item=history.upsert_ctem_item(
         {
