@@ -1274,3 +1274,12 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .ct-retest-badge,.ct-regression-badge{display:inline-flex;align-items:center;gap:5px;width:max-content;margin:8px 0 0;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.08em}
 .ct-retest-badge{color:#9fd1ff;background:#17324a;border:1px solid #31506f}
 .ct-regression-badge{color:#ff8fbd;background:#311522;border:1px solid #7a2f4f}
+
+
+/* PILOT UI CONSISTENCY PASS */
+.table-panel>.panel-head{padding:18px 18px 0}
+.grid-main:not(.lower)>section:last-child{grid-column:1/-1}
+.explorer-body{padding-bottom:18px}
+.explorer-body .radar-canvas{min-height:470px}
+.explorer-body .graph-node{max-width:150px}
+.chart-panel .chart{margin-top:6px;height:249px}
