@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from ..application.ports.asset_finding_repository import AssetFindingRepositoryPort
 from ..store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 
 
@@ -76,5 +77,5 @@ class AssetFindingRepository:
         persist_state(self._assets,self._findings)
 
 
-def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepository:
+def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepositoryPort:
     return AssetFindingRepository(assets=assets, findings=findings)
