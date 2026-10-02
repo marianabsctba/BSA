@@ -105,6 +105,14 @@ def _db():
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         revoked_at INTEGER)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS auth_rate_limits(
+        bucket TEXT NOT NULL,
+        identity TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        window_started_at INTEGER NOT NULL,
+        blocked_until INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(bucket,identity)
+    )""")
     conn.commit()
     return conn
 
@@ -118,6 +126,8 @@ def _verify(password: str, encoded: str) -> bool:
     salt, expected = raw[:16], raw[16:]
     actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310000)
     return hmac.compare_digest(actual, expected)
+
+_DUMMY_PASSWORD_HASH = _hash("bsa-auth-dummy-password", b"\0"*16)
 
 def _b64(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
@@ -209,51 +219,56 @@ def mfa_secret_for_user(user_id: str) -> str | None:
     return secret
 
 def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
-    now = time.time()
-    key = f"{bucket}:{identity}"
-    state = _LOGIN_ATTEMPTS.get(key, {"count": 0, "until": 0})
-    if state["until"] > now:
+    now=int(time.time())
+    key=str(identity or "unknown").strip().lower()[:512] or "unknown"
+    conn=_db()
+    row=conn.execute(
+        "SELECT count,window_started_at,blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        (bucket,key),
+    ).fetchone()
+    if row and int(row["blocked_until"] or 0)>now:
+        conn.close()
         return False
-    if state["until"] and state["until"] <= now:
-        state = {"count": 0, "until": 0}
-    state["count"] += 1
-    if state["count"] > limit:
-        state["until"] = now + window_seconds
-        _LOGIN_ATTEMPTS[key] = state
-        return False
-    _LOGIN_ATTEMPTS[key] = state
-    return True
+    if not row or now-int(row["window_started_at"] or 0)>=window_seconds:
+        count=1
+        started=now
+    else:
+        count=int(row["count"] or 0)+1
+        started=int(row["window_started_at"])
+    blocked_until=now+window_seconds if count>limit else 0
+    conn.execute(
+        """INSERT INTO auth_rate_limits(bucket,identity,count,window_started_at,blocked_until)
+           VALUES(?,?,?,?,?)
+           ON CONFLICT(bucket,identity) DO UPDATE SET
+             count=excluded.count,window_started_at=excluded.window_started_at,blocked_until=excluded.blocked_until""",
+        (bucket,key,count,started,blocked_until),
+    )
+    conn.commit(); conn.close()
+    return blocked_until==0
+
+def _clear_rate_limit(bucket: str, identity: str) -> None:
+    conn=_db()
+    conn.execute("DELETE FROM auth_rate_limits WHERE bucket=? AND identity=?",(bucket,str(identity or "unknown").strip().lower()[:512] or "unknown"))
+    conn.commit(); conn.close()
 
 
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
-    now=time.time()
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
-    attempts=_LOGIN_ATTEMPTS.get(key, {"count":0,"until":0})
-    ip_attempts=_IP_LOGIN_ATTEMPTS.get(ipkey, {"count":0,"until":0})
-    if attempts["until"] > now or ip_attempts["until"] > now: return None
-    # Bound in-memory login throttling to avoid unbounded growth from attacker-controlled identifiers.
-    if len(_LOGIN_ATTEMPTS) > 10000:
-        for stale_key, state in list(_LOGIN_ATTEMPTS.items()):
-            if state.get("until", 0) <= now:
-                _LOGIN_ATTEMPTS.pop(stale_key, None)
-    if len(_IP_LOGIN_ATTEMPTS) > 10000:
-        for stale_key, state in list(_IP_LOGIN_ATTEMPTS.items()):
-            if state.get("until", 0) <= now:
-                _IP_LOGIN_ATTEMPTS.pop(stale_key, None)
-    conn = _db()
-    row = conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1", (email,)).fetchone()
-    conn.close()
-    if not row or not _verify(password, row["password_hash"]):
-        attempts["count"]+=1
-        ip_attempts["count"]+=1
-        if attempts["count"]>=5:
-            attempts={"count":attempts["count"],"until":now+300}
-        _LOGIN_ATTEMPTS[key]=attempts
-        if ip_attempts["count"]>=20:
-            ip_attempts={"count":ip_attempts["count"],"until":now+900}
-        _IP_LOGIN_ATTEMPTS[ipkey]=ip_attempts
+    if not rate_limit_action("login-email",key,limit=5,window_seconds=300):
         return None
+    if not rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900):
+        return None
+
+    conn=_db()
+    row=conn.execute("SELECT * FROM users WHERE lower(email)=lower(?) AND active=1",(email,)).fetchone()
+    conn.close()
+
+    encoded=row["password_hash"] if row else _DUMMY_PASSWORD_HASH
+    password_ok=_verify(password,encoded)
+    if not row or not password_ok:
+        return None
+
     mfa_secret=mfa_secret_for_user(row["id"])
     if mfa_secret:
         mfa_identity=f"{row['id']}:{ipkey}"
@@ -261,17 +276,20 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
             return None
         if not verify_totp(mfa_secret,mfa_code or ""):
             return None
-    _LOGIN_ATTEMPTS.pop(key,None)
-    _IP_LOGIN_ATTEMPTS.pop(ipkey,None)
-    _LOGIN_ATTEMPTS.pop(f"mfa-login:{row['id']}:{ipkey}",None)
-    now = int(time.time())
+        _clear_rate_limit("mfa-login",mfa_identity)
+
+    _clear_rate_limit("login-email",key)
+    _clear_rate_limit("login-ip",ipkey)
+    now=int(time.time())
     jti=secrets.token_urlsafe(24)
-    exp=now + TOKEN_TTL
-    conn = _db()
-    conn.execute("INSERT INTO sessions(jti,user_id,tenant_id,created_at,expires_at) VALUES(?,?,?,?,?)",
-                 (jti,row["id"],row["tenant_id"],now,exp))
+    exp=now+TOKEN_TTL
+    conn=_db()
+    conn.execute(
+        "INSERT INTO sessions(jti,user_id,tenant_id,created_at,expires_at) VALUES(?,?,?,?,?)",
+        (jti,row["id"],row["tenant_id"],now,exp),
+    )
     conn.commit(); conn.close()
-    return _token({"sub": row["id"], "tenant": row["tenant_id"], "email": row["email"], "name": row["name"], "role": row["role"], "iat": now, "exp": exp, "jti": jti})
+    return _token({"sub":row["id"],"tenant":row["tenant_id"],"email":row["email"],"name":row["name"],"role":row["role"],"iat":now,"exp":exp,"jti":jti})
 
 def principal_from_token(token: str) -> Principal:
     p = _decode(token)
