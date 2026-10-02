@@ -85,4 +85,6 @@ def test_assessment_execution_persists_runtime_health_end_to_end(tmp_path, monke
 
     public_text = str(result["public"])
     assert "httpx" not in public_text
-    assert "provider" not in public_text.lower()
+    assert "_source_backend" not in public_text
+    assert "provider_name" not in public_text.lower()
+    assert "tool_name" not in public_text.lower()
