@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from "react";
 import{Search,ShieldCheck,Globe2,Activity,AlertTriangle,Boxes,Waypoints,Clock3,ChevronRight,RefreshCw,LogOut,Command,Menu,X,Plus,UserRound,Layers3,BrainCircuit,ArrowUpRight,LockKeyhole,Eye,CheckCircle2,PanelLeftClose,Radar,ShieldAlert,TriangleAlert,Target,SlidersHorizontal,Cpu,Inbox,Sparkles,FileText,Printer}from"lucide-react";
 import{AreaChart,Area,ResponsiveContainer,Tooltip,XAxis,YAxis,CartesianGrid}from"recharts";
+import{pollActiveRequest}from"./activeRequest.js";
 
 const api="";
 const cx=(...x)=>x.filter(Boolean).join(" ");
@@ -19,24 +20,7 @@ async function req(path,opts={}){
  if(r.status===401){window.dispatchEvent(new Event("bsa:unauthorized"));throw new Error("unauthorized")}
  return r;
 }
-function responseLike(data,status=200){
- return {ok:status>=200&&status<300,status,json:async()=>data};
-}
-async function reqActive(path,opts={}){
- const initial=await req(path,opts);
- if(!initial.ok)return initial;
- const body=await initial.json();
- if(!body?.job_id)return responseLike(body,initial.status);
- for(let attempt=0;attempt<120;attempt++){
-  const poll=await req("/api/v1/operations/jobs/"+encodeURIComponent(body.job_id));
-  if(!poll.ok)return poll;
-  const job=await poll.json();
-  if(job.status==="succeeded")return responseLike(job.result??{},200);
-  if(job.status==="failed"||job.status==="cancelled")return responseLike({detail:job.error||job.status},409);
-  await new Promise(resolve=>setTimeout(resolve,1000));
- }
- return responseLike({detail:"operation timeout"},504);
-}
+const reqActive=(path,opts={})=>pollActiveRequest(req,path,opts);
 function App(){
  const[authenticated,setAuthenticated]=useState(true);
  const[me,setMe]=useState(null),[locale,setLocale]=useState("pt-BR"),[dash,setDash]=useState(null),[assets,setAssets]=useState([]),[exposure,setExposure]=useState([]),[ctem,setCtem]=useState([]),[impact,setImpact]=useState([]),[story,setStory]=useState([]),[selected,setSelected]=useState(null),[mssp,setMssp]=useState({tenants:[],summary:{}}),[msspTrend,setMsspTrend]=useState({tenants:[]}),[controls,setControls]=useState({coverage:{},controls:[],choke_points:[]}),[aiStatus,setAiStatus]=useState(null),[pathAI,setPathAI]=useState(null),[pathAILoading,setPathAILoading]=useState(false),[drp,setDrp]=useState({events:[],summary:{}}),[brandAI,setBrandAI]=useState(null),[infra,setInfra]=useState(null),[infraGraph,setInfraGraph]=useState(null),[easm,setEasm]=useState({summary:{},inventory:[],changes:{},risk:{}}),[graph,setGraph]=useState({nodes:[],edges:[],top_risk_paths:[]}),[opsQueue,setOpsQueue]=useState({}),[engineHealth,setEngineHealth]=useState({profiles:{}}),[search,setSearch]=useState(""),[active,setActive]=useState("overview"),[loading,setLoading]=useState(false),[sidebar,setSidebar]=useState(()=>typeof window==="undefined"?true:window.innerWidth>1050),[target,setTarget]=useState(""),[discovery,setDiscovery]=useState(null),[question,setQuestion]=useState(""),[copilot,setCopilot]=useState(null),[copilotBusy,setCopilotBusy]=useState(false),[copilotError,setCopilotError]=useState(""),[login,setLogin]=useState({email:"",password:""}),[loginError,setLoginError]=useState(""),[commandOpen,setCommandOpen]=useState(false),[ctemContext,setCtemContext]=useState(null),[globalLoadError,setGlobalLoadError]=useState(false);
