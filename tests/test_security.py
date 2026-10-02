@@ -97,7 +97,7 @@ def test_totp_helpers_validate_codes():
 
 def test_client_ip_trusts_forwarded_header_only_from_internal_proxy(monkeypatch):
     from starlette.requests import Request
-    from app import main
+    from app.api.routers import auth as auth_router
 
     monkeypatch.setenv("BSA_TRUST_PROXY_HEADERS","1")
 
@@ -106,14 +106,14 @@ def test_client_ip_trusts_forwarded_header_only_from_internal_proxy(monkeypatch)
         "headers":[(b"x-real-ip",b"198.51.100.44")],
         "client":("172.18.0.5",12345),"server":("test",80),"scheme":"http","query_string":b"",
     })
-    assert main._client_ip(internal)=="198.51.100.44"
+    assert auth_router._client_ip(internal)=="198.51.100.44"
 
     direct=Request({
         "type":"http","method":"POST","path":"/api/v1/auth/login",
         "headers":[(b"x-real-ip",b"203.0.113.99")],
         "client":("8.8.8.8",12345),"server":("test",80),"scheme":"http","query_string":b"",
     })
-    assert main._client_ip(direct)=="8.8.8.8"
+    assert auth_router._client_ip(direct)=="8.8.8.8"
 
 
 def test_distributed_failures_do_not_globally_lock_account(tmp_path, monkeypatch):
