@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .assessment_registry import registry
-from .assessment_orchestrator import PROFILES, PROFILE_CAPABILITIES
+from .assessment_orchestrator import PROFILES, PROFILE_CAPABILITIES, PROFILE_OPTIONAL_CAPABILITIES
 
 
 def engine_health(target: str | None = None) -> dict:
@@ -28,16 +28,29 @@ def engine_health(target: str | None = None) -> dict:
     by_name = {row["name"]: row["available"] for row in rows}
     profiles = {}
     for profile, providers in PROFILES.items():
+        capability_health = registry.capability_health(target, PROFILE_CAPABILITIES[profile])
+        optional = set(PROFILE_OPTIONAL_CAPABILITIES.get(profile, ()))
+        core_rows = [row for row in capability_health if row.get("name") not in optional]
+        optional_rows = [row for row in capability_health if row.get("name") in optional]
+
         available_count = sum(1 for name in providers if by_name.get(name, False))
         requested_count = len(providers)
-        coverage_percent = round(100 * available_count / max(1, requested_count))
+        core_operational = sum(1 for row in core_rows if row.get("operational"))
+        core_requested = len(core_rows)
+        coverage_percent = round(100 * core_operational / max(1, core_requested))
+        optional_operational = sum(1 for row in optional_rows if row.get("operational"))
+
         profiles[profile] = {
             "available_engines": available_count,
             "requested_engines": requested_count,
             "coverage_percent": coverage_percent,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
-            "state": "ready" if available_count == requested_count else "partial" if available_count else "unavailable",
-            "ready": available_count == requested_count,
+            "core_capabilities": core_requested,
+            "core_operational_capabilities": core_operational,
+            "optional_capabilities": len(optional_rows),
+            "optional_operational_capabilities": optional_operational,
+            "state": "ready" if core_requested and core_operational == core_requested else "partial" if core_operational else "unavailable",
+            "ready": bool(core_requested) and core_operational == core_requested,
         }
 
     return {
