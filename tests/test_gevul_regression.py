@@ -9,8 +9,8 @@ from app.history import (
 
 def test_verified_finding_reappearance_reopens_gevul_and_ctem(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "history.db"))
-    monkeypatch.setattr(main, "STORE_ASSETS", [])
-    monkeypatch.setattr(main, "STORE_FINDINGS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_ASSETS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_FINDINGS", [])
     monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
     monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
     monkeypatch.setattr(graph_assessment_router, "audit", lambda *args, **kwargs: None)
