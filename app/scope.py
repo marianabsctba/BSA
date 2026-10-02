@@ -65,6 +65,18 @@ def ensure_scope_schema():
     )""")
     conn.execute("""CREATE INDEX IF NOT EXISTS idx_domain_ownership_lookup
         ON domain_ownership_proofs(tenant_id,domain,verified_at,expires_at)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS ip_ownership_approvals(
+        approval_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        ip TEXT NOT NULL,
+        authorization_ref TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        approved_by TEXT NOT NULL
+    )""")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_ip_ownership_lookup
+        ON ip_ownership_approvals(tenant_id,ip,authorization_ref,expires_at)""")
     conn.commit(); conn.close()
 
 def bootstrap_scope(tenant_id="tenant-demo"):
@@ -412,7 +424,73 @@ def _domain_overlap_tenants(tenant_id: str, domain: str) -> list[str]:
     return sorted(overlaps)
 
 
-def create_scan_scope(principal: Principal,name:str,pattern:str):
+def create_ip_ownership_approval(
+    principal: Principal,
+    ip_value: str,
+    authorization_ref: str,
+    evidence_type: str="contract",
+    ttl_seconds: int=86400,
+) -> dict:
+    if principal.role!="superadmin":
+        raise PermissionError("superadmin required for public IP ownership approval")
+    normalized=validate_active_scope_pattern(ip_value)
+    try:
+        ip=ipaddress.ip_address(normalized)
+    except ValueError as exc:
+        raise ValueError("IP ownership approval requires a public IP") from exc
+    if not ip.is_global:
+        raise ValueError("IP ownership approval requires a public IP")
+    ref=str(authorization_ref or "").strip()
+    if len(ref)<3 or len(ref)>200:
+        raise ValueError("contractual authorization_ref is required for public IP ownership")
+    evidence=str(evidence_type or "").strip().lower()
+    if evidence not in {"contract","rdap","whois","asn","ptr"}:
+        raise ValueError("unsupported IP ownership evidence type")
+    ttl=max(300,min(int(ttl_seconds),30*24*3600))
+    ensure_scope_schema()
+    approval_id=secrets.token_hex(12)
+    now=int(time.time())
+    conn=_db()
+    conn.execute(
+        """INSERT INTO ip_ownership_approvals(
+           approval_id,tenant_id,ip,authorization_ref,evidence_type,created_at,expires_at,approved_by
+           ) VALUES(?,?,?,?,?,?,?,?)""",
+        (approval_id,principal.tenant_id,str(ip),ref,evidence,now,now+ttl,principal.user_id),
+    )
+    conn.commit(); conn.close()
+    return {
+        "approval_id":approval_id,
+        "tenant_id":principal.tenant_id,
+        "ip":str(ip),
+        "authorization_ref":ref,
+        "evidence_type":evidence,
+        "created_at":now,
+        "expires_at":now+ttl,
+        "approved_by":principal.user_id,
+    }
+
+
+def ip_ownership_verified(tenant_id: str, ip_value: str, authorization_ref: str | None) -> bool:
+    ref=str(authorization_ref or "").strip()
+    if not ref:
+        return False
+    try:
+        ip=str(ipaddress.ip_address(ip_value))
+    except ValueError:
+        return False
+    ensure_scope_schema()
+    conn=_db()
+    row=conn.execute(
+        """SELECT 1 FROM ip_ownership_approvals
+           WHERE tenant_id=? AND ip=? AND authorization_ref=? AND expires_at>?
+           ORDER BY created_at DESC LIMIT 1""",
+        (tenant_id,ip,ref,int(time.time())),
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+
+def create_scan_scope(principal: Principal,name:str,pattern:str,ownership_ref: str | None=None):
     if principal.role not in {"admin","superadmin"}:
         raise PermissionError("admin required for active scan scope")
     pattern=validate_active_scope_pattern(pattern)
@@ -425,6 +503,9 @@ def create_scan_scope(principal: Principal,name:str,pattern:str):
         overlap_tenants=_domain_overlap_tenants(principal.tenant_id,registrable)
         if overlap_tenants and principal.role!="superadmin":
             raise PermissionError("domain already assigned to another tenant; superadmin approval required")
+    if production and not registrable:
+        if not ip_ownership_verified(principal.tenant_id,pattern,ownership_ref):
+            raise PermissionError("verified public IP ownership approval with contractual reference required")
     ensure_scope_schema(); conn=_db(); sid=secrets.token_hex(10)
     conn.execute(
         "INSERT INTO scan_scopes(id,tenant_id,name,pattern,created_at) VALUES(?,?,?,?,?)",
@@ -433,7 +514,11 @@ def create_scan_scope(principal: Principal,name:str,pattern:str):
     conn.commit(); conn.close()
     return {
         "id":sid,"tenant_id":principal.tenant_id,"name":name,"pattern":pattern,"active":True,
-        "ownership_verified":bool(registrable and (not production or domain_ownership_verified(principal.tenant_id,registrable))),
+        "ownership_verified":bool(
+            (registrable and (not production or domain_ownership_verified(principal.tenant_id,registrable)))
+            or (not registrable and (not production or ip_ownership_verified(principal.tenant_id,pattern,ownership_ref)))
+        ),
+        "ownership_ref":ownership_ref if not registrable else None,
         "overlap_approved_by_superadmin":bool(overlap_tenants and principal.role=="superadmin"),
     }
 
