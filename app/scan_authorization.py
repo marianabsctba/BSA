@@ -44,10 +44,13 @@ def create_authorization_grant(principal: Principal, user_id: str, authorization
     ensure_authorization_schema()
     ensure_scope_schema()
     conn=_db()
-    user=conn.execute("SELECT id,tenant_id,active FROM users WHERE id=?",(user_id,)).fetchone()
+    user=conn.execute("SELECT id,tenant_id,active,role FROM users WHERE id=?",(user_id,)).fetchone()
     if not user or user["tenant_id"]!=principal.tenant_id or not user["active"]:
         conn.close()
         raise ValueError("user outside tenant or inactive")
+    if user["role"] in {"admin","superadmin"} and principal.role!="superadmin":
+        conn.close()
+        raise PermissionError("authorization grants for administrative users require superadmin approval")
     assigned=conn.execute("""SELECT s.pattern FROM scan_scopes s
         JOIN user_scan_scopes us ON us.scope_id=s.id
         WHERE us.user_id=? AND s.tenant_id=? AND s.active=1""",
