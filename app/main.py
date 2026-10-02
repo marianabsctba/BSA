@@ -74,6 +74,7 @@ from .api.routers.digital_risk import router as digital_risk_router
 from .api.routers.mssp import router as mssp_router
 from .api.routers.reporting import router as reporting_router
 from .api.routers.assets import router as assets_router
+from .api.routers.remediation import router as remediation_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -104,6 +105,7 @@ app.include_router(digital_risk_router)
 app.include_router(mssp_router)
 app.include_router(reporting_router)
 app.include_router(assets_router)
+app.include_router(remediation_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -1206,53 +1208,3 @@ def discovery_risk_paths(target: str, request: Request):
         raise HTTPException(status_code=403,detail="target outside assigned scope")
     return queue_active_operation(request,principal,target,"discovery.risk_paths")
 
-@app.get("/api/v1/prioritization")
-def prioritization(request: Request):
-    principal = require(request, "findings:read")
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset_map = {a.id: a for a in ASSETS}
-    result = []
-    for finding in FINDINGS:
-        asset = asset_map.get(finding.asset_id)
-        item = prioritize_finding(finding, asset)
-        result.append({
-            "finding_id": finding.id,
-            "finding": finding.title,
-            "asset": asset.value if asset else None,
-            "priority": item.priority,
-            "score": item.score,
-            "impact": item.impact,
-            "urgency": item.urgency,
-            "confidence": item.confidence,
-            "reasons": item.reasons,
-            "recommended_action": item.action,
-        })
-    return sorted(result, key=lambda x: (-x["score"], x["priority"]))
-
-
-@app.get("/api/v1/remediation")
-def remediation(request: Request):
-    principal = require(request, "remediation:write")
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset_map = {a.id: a for a in ASSETS}
-    result = []
-    for finding in FINDINGS:
-        asset = asset_map.get(finding.asset_id)
-        if not asset or finding.status != "open":
-            continue
-        plan = build_remediation_plan(finding, asset)
-        result.append({
-            "finding_id": plan.finding_id,
-            "asset_id": plan.asset_id,
-            "asset": asset.value,
-            "priority": plan.priority,
-            "current_score": plan.current_score,
-            "residual_score": plan.residual_score,
-            "risk_reduction": plan.risk_reduction,
-            "action": plan.action,
-            "validation": plan.validation,
-            "owner": plan.owner,
-            "effort": plan.effort,
-            "rationale": plan.rationale,
-        })
-    return sorted(result, key=lambda x: (-x["risk_reduction"], x["residual_score"]))
