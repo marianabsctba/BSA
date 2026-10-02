@@ -20,7 +20,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 from .correlation import correlate_evidence
-from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, record_ctem_retest, ctem_retest_for_job, complete_ctem_retest, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, history_for, record_lifecycle, lifecycle_for
+from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, reopen_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_transition_history, record_ctem_transition, record_ctem_retest, ctem_retest_for_job, complete_ctem_retest, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, history_for, record_lifecycle, lifecycle_for, recent_change_events
 from .prioritization import prioritize_finding
 from .remediation import build_remediation_plan
 from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissions, list_custom_roles, create_custom_role, create_user, list_users, update_user, set_user_active, reset_user_password, change_own_password, principal_from_token, create_tenant, list_tenants, tenant_settings, update_tenant_locale, audit, list_audit, verify_audit_chain, revoke_session, mfa_status, mfa_enroll, mfa_enable, mfa_disable, issue_mfa_recovery_codes, generate_mfa_recovery_codes, tenant_mfa_policy, set_tenant_mfa_policy, TOKEN_TTL
@@ -750,10 +750,18 @@ def integrations_siem_syslog_push(
 
 
 @app.get("/api/v1/changes")
-def list_changes(request: Request):
+def list_changes(request: Request, hours: int = 24, limit: int = 200):
     principal = require(request, "assets:read")
-    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    return seed_changes(assets)
+    assets,_ = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
+    by_fingerprint={a.fingerprint:a for a in assets if getattr(a,"fingerprint",None)}
+    events=recent_change_events(principal.tenant_id,hours=hours,limit=limit)
+    for event in events:
+        asset=by_fingerprint.get(event.get("fingerprint"))
+        if asset is not None:
+            event["asset_id"]=asset.id
+            event["asset"]=asset.value
+            event["type"]=asset.type.value
+    return {"hours":max(1,min(int(hours),24*90)),"count":len(events),"items":events}
 
 
 class RemediationSimulationRequest(BaseModel):
@@ -2482,7 +2490,7 @@ def report_summary(request: Request):
 def dashboard(request: Request):
     principal = require(request, "assets:read")
     ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    changes = seed_changes(ASSETS)
+    changes = recent_change_events(principal.tenant_id,hours=24,limit=1000)
     ownership = [ownership_confidence(a) for a in ASSETS]
     score = exposure_score(FINDINGS, ASSETS)
 
