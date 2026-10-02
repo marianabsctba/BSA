@@ -16,5 +16,5 @@ def test_discovery_ai_plan_endpoint_contract():
     from app.main import app
     from fastapi.testclient import TestClient
     client=TestClient(app)
-    response=client.get("/api/v1/discovery/ai-plan/example.com",headers={"Authorization":"Bearer test"})
+    response=client.post("/api/v1/discovery/ai-plan/example.com",headers={"Authorization":"Bearer test"})
     assert response.status_code in (200,401,403)
