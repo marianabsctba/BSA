@@ -2148,7 +2148,15 @@ def report_summary(request: Request):
                 "critical":ctem_queue.get("buckets",{}).get("critical",{}).get("count",0),
                 "high":ctem_queue.get("buckets",{}).get("high",{}).get("count",0),
                 "retest":sum(1 for x in ctem_items if x.get("state")=="resolved"),
-                "regressions":sum(1 for x in ctem_items if x.get("state")=="in_progress" and x.get("verified_at") is None and x.get("resolved_at") is None),
+                "regressions":sum(
+                    1
+                    for x in ctem_items
+                    if x.get("state")=="in_progress"
+                    and any(
+                        v.get("result")=="failed"
+                        for v in ctem_verification_history(x.get("item_id"),principal.tenant_id)
+                    )
+                ),
             },
         },
     }
