@@ -98,3 +98,31 @@ def test_ctem_retest_linkage_is_tenant_scoped(tmp_path,monkeypatch):
     assert done["outcome"]=="inconclusive"
     assert done["status"]=="reconciled"
     assert done["evidence_refs"]==["assessment-job:job-a:coverage:50"]
+
+
+def test_retest_matches_url_evidence_to_hostname_target():
+    item={
+        "item_id":"item-a",
+        "asset_id":"asset-a",
+        "title":"Surface change requiring CTEM attention",
+        "finding_id":None,
+    }
+    result={
+        "partial_coverage":False,
+        "coverage":{"capability_coverage_percent":100},
+        "findings":[{
+            "title":"Exposed admin endpoint",
+            "severity":"high",
+            "evidence":{
+                "matched_at":"https://app.example.com:443/admin",
+                "references":["evidence://url-match"],
+            },
+        }],
+    }
+
+    out=retest.classify_ctem_retest(
+        item,result,job_id="job-url",target="app.example.com",
+    )
+
+    assert out["outcome"]=="failed"
+    assert "evidence://url-match" in out["evidence_refs"]
