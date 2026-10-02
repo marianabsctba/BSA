@@ -65,6 +65,7 @@ from .api.routers.risk import router as risk_router
 from .api.routers.vulnerabilities import router as vulnerabilities_router
 from .api.routers.ctem import router as ctem_router
 from .api.routers.integrations import router as integrations_router
+from .api.routers.admin import router as admin_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -86,6 +87,7 @@ app.include_router(risk_router)
 app.include_router(vulnerabilities_router)
 app.include_router(ctem_router)
 app.include_router(integrations_router)
+app.include_router(admin_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -657,11 +659,6 @@ class GroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     pattern: str = Field(min_length=1, max_length=253)
 
-class UserCreateRequest(BaseModel):
-    email: str
-    name: str = Field(min_length=1, max_length=120)
-    password: str = Field(min_length=12, max_length=256)
-    role: str
 
 
 def tenant_scope(principal, assets, findings):
@@ -825,18 +822,8 @@ def me(request: Request):
 
 
 
-class TenantCreateRequest(BaseModel):
-    id: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]+$")
-    name: str = Field(min_length=1, max_length=120)
-    locale: str = Field(default="pt-BR", pattern=r"^(pt-BR|en|es)$")
-
 class TenantLocaleRequest(BaseModel):
     locale: str = Field(pattern=r"^(pt-BR|en|es)$")
-
-
-class TenantPurgeRequest(BaseModel):
-    execute: bool = False
-    preserve_audit: bool = True
 
 
 class ScanGrantCreateRequest(BaseModel):
@@ -1121,82 +1108,6 @@ def tenant_settings_update(request: Request, payload: TenantLocaleRequest):
         raise HTTPException(status_code=400,detail=str(exc)) from exc
 
 
-@app.post("/api/v1/tenants/{tenant_id}/retire")
-def tenant_retire(tenant_id: str, request: Request):
-    principal=current_principal(request)
-    try:
-        result=retire_tenant(principal,tenant_id)
-        audit(principal,"retire","tenant",tenant_id,{})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-
-@app.post("/api/v1/tenants/{tenant_id}/purge")
-def tenant_purge(tenant_id: str, request: Request, payload: TenantPurgeRequest):
-    principal=current_principal(request)
-    if principal.role!="superadmin":
-        raise HTTPException(status_code=403,detail="superadmin required")
-    try:
-        if not payload.execute:
-            return {"dry_run":True,**tenant_purge_preview(tenant_id,preserve_audit=payload.preserve_audit)}
-        result=purge_tenant(principal,tenant_id,preserve_audit=payload.preserve_audit)
-        audit(principal,"purge","tenant",tenant_id,{"preserve_audit":payload.preserve_audit})
-        return {"dry_run":False,**result}
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-@app.get("/api/v1/tenants")
-def tenants(request: Request):
-    p = current_principal(request)
-    if p.role != "superadmin":
-        raise HTTPException(status_code=403, detail="superadmin required")
-    return list_tenants(p)
-
-
-@app.post("/api/v1/tenants")
-def tenants_create(request: Request, payload: TenantCreateRequest):
-    p = current_principal(request)
-    if p.role != "superadmin":
-        raise HTTPException(status_code=403, detail="superadmin required")
-    try:
-        result = create_tenant(p, payload.id, payload.name, payload.locale)
-        audit(p, "create", "tenant", payload.id)
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=409, detail="tenant already exists or invalid data") from exc
-
-
-@app.get("/api/v1/users")
-def users(request: Request):
-    p = require(request, "users:read")
-    try:
-        return list_users(p)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-@app.post("/api/v1/users")
-def users_create(request: Request, payload: UserCreateRequest):
-    p = current_principal(request)
-    if p.role not in {"admin", "superadmin"}:
-        raise HTTPException(status_code=403, detail="admin required")
-    try:
-        result = create_user(p, payload.email, payload.name, payload.password, payload.role)
-        audit(p, "create", "user", result["id"], {"role": payload.role})
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=409, detail="user already exists or invalid data") from exc
-
-
 @app.get("/api/v1/auth/permissions")
 def auth_permissions(request: Request):
     p=current_principal(request)
@@ -1204,120 +1115,6 @@ def auth_permissions(request: Request):
         return {"role":p.role,"permissions":role_permissions(p.role,p.tenant_id)}
     except ValueError as exc:
         raise HTTPException(status_code=403,detail="invalid role permissions") from exc
-
-@app.get("/api/v1/rbac/permissions")
-def rbac_permissions():
-    from .auth import PERMISSION_CATALOG
-    return {"permissions": PERMISSION_CATALOG}
-
-class UserScopeRequest(BaseModel):
-    scope_id: str = Field(min_length=1, max_length=120)
-    active: bool = True
-
-@app.get("/api/v1/users/{user_id}/scopes")
-def users_scopes_list(user_id: str, request: Request):
-    p=current_principal(request)
-    try:
-        return list_user_scopes(p,user_id)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError:
-        raise HTTPException(status_code=404,detail="user not found")
-
-@app.post("/api/v1/users/{user_id}/scopes")
-def users_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
-    p=current_principal(request)
-    try:
-        result=assign_scope_to_user(p,user_id,payload.scope_id)
-        audit(p,"scope_change","user",user_id,result)
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
-
-
-@app.get("/api/v1/users/{user_id}/scan-scopes")
-def users_scan_scopes_list(user_id: str, request: Request):
-    p=current_principal(request)
-    try:
-        return list_user_scan_scopes(p,user_id)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError:
-        raise HTTPException(status_code=404,detail="user not found")
-
-@app.post("/api/v1/users/{user_id}/scan-scopes")
-def users_scan_scopes_set(user_id: str, request: Request, payload: UserScopeRequest):
-    p=current_principal(request)
-    try:
-        result=assign_scan_scope_to_user(p,user_id,payload.scope_id)
-        audit(p,"scan_scope_change","user",user_id,result)
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-
-class CustomRoleRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    permissions: list[str] = Field(min_length=1, max_length=50)
-
-@app.get("/api/v1/rbac/custom-roles")
-def custom_roles_list(request: Request):
-    p=current_principal(request)
-    try: return list_custom_roles(p)
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-
-@app.post("/api/v1/rbac/custom-roles")
-def custom_roles_create(request: Request, payload: CustomRoleRequest):
-    p=current_principal(request)
-    try:
-        result=create_custom_role(p,payload.name,payload.permissions)
-        audit(p,"create","custom_role",result["name"],{"permissions":result["permissions"]})
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
-
-class UserUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    role: str | None = None
-
-class UserActiveRequest(BaseModel):
-    active: bool
-
-class UserPasswordResetRequest(BaseModel):
-    password: str = Field(min_length=12, max_length=256)
-
-@app.patch("/api/v1/users/{user_id}")
-def users_update(user_id: str, request: Request, payload: UserUpdateRequest):
-    p=current_principal(request)
-    try:
-        result=update_user(p,user_id,payload.name,payload.role)
-        audit(p,"update","user",user_id,{"role":payload.role} if payload.role else {})
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
-
-@app.patch("/api/v1/users/{user_id}/active")
-def users_active(user_id: str, request: Request, payload: UserActiveRequest):
-    p=current_principal(request)
-    try:
-        result=set_user_active(p,user_id,payload.active)
-        audit(p,"activate" if payload.active else "deactivate","user",user_id)
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
-
-@app.post("/api/v1/users/{user_id}/reset-password")
-def users_reset_password(user_id: str, request: Request, payload: UserPasswordResetRequest):
-    p=current_principal(request)
-    if not rate_limit_action("password-reset", p.user_id, limit=5, window_seconds=300):
-        raise HTTPException(status_code=429, detail="too many password reset attempts")
-    try:
-        result=reset_user_password(p,user_id,payload.password)
-        audit(p,"reset_password","user",user_id)
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc))
 
 class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
