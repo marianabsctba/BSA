@@ -11,11 +11,19 @@ def engine_health(target: str | None = None) -> dict:
     rows = []
     for name in names:
         available = False
+        readiness = None
         try:
-            available = registry.available(name, target)
+            provider = registry.provider(name)
+            readiness_fn = getattr(provider, "readiness", None)
+            if callable(readiness_fn):
+                readiness = dict(readiness_fn())
+                available = bool(readiness.get("ready"))
+            else:
+                available = registry.available(name, target)
         except Exception:
             available = False
-        rows.append({"name": name, "available": bool(available)})
+            readiness = {"ready": False}
+        rows.append({"name": name, "available": bool(available), "readiness": readiness})
 
     by_name = {row["name"]: row["available"] for row in rows}
     profiles = {}
