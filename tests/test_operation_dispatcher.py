@@ -38,3 +38,28 @@ def test_dispatcher_keeps_legacy_fallback(monkeypatch):
 
     assert result=={"source":"legacy"}
     assert calls==["discovery.graph"]
+
+
+def test_dispatcher_routes_discovery_intelligence_operation(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(operation_dispatcher,"supports_discovery_operation",lambda operation: False)
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "supports_discovery_intelligence_operation",
+        lambda operation: operation=="discovery.correlation",
+    )
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "run_discovery_intelligence_operation",
+        lambda operation,target,payload,principal: calls.append(("intel",operation,target)) or {"source":"intel"},
+    )
+    monkeypatch.setattr(
+        operation_dispatcher,
+        "run_legacy_operation",
+        lambda operation,target,payload,principal: {"source":"legacy"},
+    )
+
+    result=operation_dispatcher.run_operation("discovery.correlation","example.com",{},object())
+
+    assert result=={"source":"intel"}
+    assert calls==[("intel","discovery.correlation","example.com")]
