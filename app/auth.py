@@ -322,6 +322,12 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     if not row or not password_ok:
         return None
 
+    # Password is valid: clear primary credential throttles before entering
+    # the independent MFA challenge so MFA failures cannot poison the
+    # password/IP bucket or prevent the MFA limiter from taking effect.
+    _clear_rate_limit("login-email",key)
+    _clear_rate_limit("login-ip",ipkey)
+
     mfa_secret=mfa_secret_for_user(row["id"])
     if mfa_secret:
         mfa_identity=f"{row['id']}:{ipkey}"
@@ -331,8 +337,6 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
             return None
         _clear_rate_limit("mfa-login",mfa_identity)
 
-    _clear_rate_limit("login-email",key)
-    _clear_rate_limit("login-ip",ipkey)
     now=int(time.time())
     jti=secrets.token_urlsafe(24)
     exp=now+TOKEN_TTL
