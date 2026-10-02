@@ -19,7 +19,8 @@ services:
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
       BSA_DEMO_DATA: "0"
-      BSA_AI_ENABLED: "0"
+      BSA_AI_ENABLED: "1"
+      BSA_OLLAMA_URL: http://ollama:11434
     volumes:
       - bsa_data:/data
     expose:
@@ -54,8 +55,7 @@ services:
       BSA_STORE_DB: /data/bsa_store.db
       BSA_JOBS_DB: /data/bsa_jobs.db
       BSA_DEMO_DATA: "0"
-      BSA_AI_ENABLED: "1"
-      BSA_OLLAMA_URL: http://ollama:11434
+      BSA_AI_ENABLED: "0"
     volumes:
       - bsa_data:/data
     read_only: true
