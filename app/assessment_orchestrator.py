@@ -263,6 +263,60 @@ def _capability_telemetry_public(telemetry: dict[str, dict]) -> list[dict]:
     ]
 
 
+def _assessment_effectiveness(
+    findings: list[dict],
+    capability_metrics: list[dict],
+    requested_capabilities: int,
+) -> dict:
+    """Product-safe, auditable indicators of assessment effectiveness."""
+    finding_count = len(findings)
+    evidenced = 0
+    confirmed = 0
+    corroborated = 0
+    high_confidence = 0
+
+    for finding in findings:
+        evidence = finding.get("evidence") or {}
+        if evidence:
+            evidenced += 1
+        validation_state = str(evidence.get("validation_state") or "").lower()
+        if validation_state in {"confirmed", "confirmed_evidence"}:
+            confirmed += 1
+        if bool(evidence.get("independently_corroborated")):
+            corroborated += 1
+        if int(finding.get("confidence", 0) or 0) >= 80:
+            high_confidence += 1
+
+    total_calls = sum(max(0, int(row.get("calls", 0) or 0)) for row in capability_metrics)
+    total_errors = sum(max(0, int(row.get("errors", 0) or 0)) for row in capability_metrics)
+    successful_calls = max(0, total_calls - total_errors)
+    exercised_capabilities = sum(
+        1 for row in capability_metrics if int(row.get("calls", 0) or 0) > 0
+    )
+    productive_capabilities = sum(
+        1 for row in capability_metrics if int(row.get("raw_results", 0) or 0) > 0
+    )
+
+    return {
+        "execution_success_percent": round(100 * successful_calls / max(1, total_calls)),
+        "exercised_capability_percent": round(
+            100 * exercised_capabilities / max(1, int(requested_capabilities))
+        ),
+        "productive_capability_percent": round(
+            100 * productive_capabilities / max(1, int(requested_capabilities))
+        ),
+        "evidenced_finding_percent": round(100 * evidenced / max(1, finding_count)),
+        "high_confidence_finding_percent": round(
+            100 * high_confidence / max(1, finding_count)
+        ),
+        "confirmed_evidence_count": confirmed,
+        "independently_corroborated_count": corroborated,
+        "finding_count": finding_count,
+        "successful_calls": successful_calls,
+        "failed_calls": total_errors,
+    }
+
+
 def _cloud_intelligence(findings: list[dict]) -> list[dict]:
     values = []
     for row in findings:
@@ -640,6 +694,11 @@ def run_assessment(
     capability_metrics = _capability_telemetry_public(
         internal["capability_telemetry"]
     )
+    effectiveness = _assessment_effectiveness(
+        public.get("findings", []),
+        capability_metrics,
+        requested_capabilities,
+    )
     record_capability_execution(capability_metrics)
     record_provider_execution(internal["provider_telemetry"])
 
@@ -672,6 +731,7 @@ def run_assessment(
                     "protected_capabilities": sorted(protected_capabilities),
                     "coverage_preserved": bool(internal["adaptive_deferred"] or recovery_probes),
                 },
+                "effectiveness": effectiveness,
                 "capability_metrics": capability_metrics,
             },
         }
