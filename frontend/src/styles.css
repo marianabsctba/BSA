@@ -1342,3 +1342,18 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
  .first-run-actions button{width:100%;justify-content:center}
  .first-run-step{grid-template-columns:auto auto minmax(0,1fr)}
 }
+
+
+/* SIDEBAR INFORMATION ARCHITECTURE */
+.nav-group-label{
+ margin:14px 10px 6px;
+ color:#596576;
+ font:700 6px "DM Mono";
+ letter-spacing:.16em;
+ text-transform:uppercase;
+}
+.sidebar nav>.nav-group-label:first-child{margin-top:2px}
+.sidebar.collapsed .nav-group-label{display:none}
+@media(max-width:1050px){
+ .nav-group-label{margin-left:12px}
+}
