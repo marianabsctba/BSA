@@ -14,6 +14,7 @@ from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
 from .exposure_signals import cloud_signals, summarize_signals
 from .vulnerability_evidence import vulnerability_identity_key
+from .security import validate_external_target
 
 
 PROFILES = {
@@ -235,8 +236,16 @@ def run_assessment(
 ) -> dict:
     if profile not in PROFILES:
         raise ValueError("unknown assessment profile")
+    validate_external_target(target)
     if authorize is not None and not authorize(target):
         raise PermissionError("target outside authorized scope")
+
+    def external_target_allowed(value: str) -> bool:
+        try:
+            validate_external_target(str(value))
+            return True
+        except (TypeError, ValueError):
+            return False
 
     budget = _runtime_budget()
     started = time.monotonic()
@@ -256,6 +265,7 @@ def run_assessment(
         "followup_targets": [],
         "vulnerability_followup_targets": [],
         "scope_filtered": 0,
+        "external_target_filtered": 0,
     }
     discovered_subjects: list[str] = []
     validated_web_subjects: list[str] = []
@@ -299,6 +309,9 @@ def run_assessment(
                     or target
                 )
                 subject = str(subject)
+                if not external_target_allowed(subject):
+                    internal["external_target_filtered"] += 1
+                    continue
                 if authorize is not None and not authorize(subject):
                     internal["scope_filtered"] += 1
                     continue
@@ -355,6 +368,12 @@ def run_assessment(
                             or evidence.get("matched_at")
                             or child
                         )
+                        if not external_target_allowed(subject):
+                            internal["external_target_filtered"] += 1
+                            continue
+                        if not external_target_allowed(subject):
+                            internal["external_target_filtered"] += 1
+                            continue
                         if authorize is not None and not authorize(subject):
                             internal["scope_filtered"] += 1
                             continue
@@ -385,6 +404,9 @@ def run_assessment(
                 if not budget_available():
                     break
                 try:
+                    if not external_target_allowed(child):
+                        internal["external_target_filtered"] += 1
+                        continue
                     if authorize is not None and not authorize(child):
                         internal["scope_filtered"] += 1
                         continue
@@ -465,6 +487,7 @@ def run_assessment(
                 "followup_targets": len(internal["followup_targets"]),
                 "vulnerability_followup_targets": len(internal["vulnerability_followup_targets"]),
                 "scope_filtered": internal["scope_filtered"],
+                "external_target_filtered": internal["external_target_filtered"],
                 "budget_exhausted": internal["budget_exhausted"],
                 "execution_ms": internal["execution_ms"],
                 "provider_calls": internal["provider_calls"],
