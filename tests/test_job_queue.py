@@ -420,3 +420,42 @@ def test_queue_health_is_tenant_scoped(tmp_path, monkeypatch):
 
     assert a["total_jobs"]==1
     assert b["total_jobs"]==1
+
+
+def test_worker_restart_reclaims_expired_job_and_preserves_retry_budget(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    job=job_queue.enqueue_assessment(principal,"restart.example.org","rapid","AUTH-R")
+
+    first=job_queue.claim_next_job(lease_seconds=1)
+    assert first["job_id"]==job["job_id"]
+    first_token=first["run_token"]
+
+    conn=job_queue._db()
+    conn.execute(
+        "UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=?",
+        (1,job["job_id"]),
+    )
+    conn.commit(); conn.close()
+
+    recovered=job_queue.recover_stale_jobs(now=2)
+    assert recovered=={"requeued":1,"failed":0}
+
+    second=job_queue.claim_next_job()
+    assert second["job_id"]==job["job_id"]
+    assert second["run_token"] != first_token
+    assert second["attempts"]==2
+
+    assert job_queue.complete_job(
+        job["job_id"],{"finding_count":1,"findings":[]},run_token=first_token
+    ) is False
+    assert job_queue.complete_job(
+        job["job_id"],{"finding_count":0,"findings":[]},run_token=second["run_token"]
+    ) is True
+
+    final=job_queue.get_job(job["job_id"],"tenant-a")
+    assert final["status"]=="succeeded"
+    assert final["attempts"]==2
+    assert final["result"]["finding_count"]==0
