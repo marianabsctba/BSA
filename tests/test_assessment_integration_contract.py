@@ -397,3 +397,44 @@ def test_assessment_budget_limits_followups_and_marks_partial(monkeypatch):
     assert result["public"]["coverage"]["followup_targets"] == 1
     assert result["public"]["coverage"]["provider_calls"] >= 1
     assert result["public"]["coverage"]["execution_ms"] >= 0
+
+
+
+def test_balanced_core_coverage_ignores_optional_external_enrichment(monkeypatch):
+    from app.assessment_orchestrator import run_assessment
+
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILES",
+        {"balanced": ("httpx",)},
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILE_CAPABILITIES",
+        {"balanced": ("fingerprint", "credential_exposure", "intelligence")},
+    )
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.PROFILE_OPTIONAL_CAPABILITIES",
+        {"balanced": ("credential_exposure", "intelligence")},
+    )
+    monkeypatch.setattr("app.assessment_orchestrator.registry.available", lambda name, target=None: True)
+    monkeypatch.setattr("app.assessment_orchestrator.registry.execute", lambda name, *, target: [])
+    monkeypatch.setattr(
+        "app.assessment_orchestrator.registry.capability_health",
+        lambda target=None, capabilities=None: [
+            {"name": "fingerprint", "operational": True, "status": "ready"},
+            {"name": "credential_exposure", "operational": False, "status": "unavailable"},
+            {"name": "intelligence", "operational": False, "status": "unavailable"},
+        ],
+    )
+
+    result = run_assessment("example.org", profile="balanced")
+
+    assert result["public"]["partial_coverage"] is False
+    assert result["public"]["coverage"]["requested_capabilities"] == 1
+    assert result["public"]["coverage"]["operational_capabilities"] == 1
+    assert result["public"]["coverage"]["capability_coverage_percent"] == 100
+    assert result["public"]["coverage"]["optional_capabilities"] == 2
+    assert result["public"]["coverage"]["optional_operational_capabilities"] == 0
+    assert result["public"]["optional_capabilities"] == [
+        "credential_exposure",
+        "intelligence",
+    ]
