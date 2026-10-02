@@ -16,16 +16,16 @@ RUN set -eux; \
     retry env CGO_ENABLED=0 GOBIN=/out GOPROXY="$GOPROXY" GODEBUG="$GODEBUG" go install github.com/owasp-amass/amass/v5/cmd/amass@main; \
     retry go install github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0; \
     retry go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.16.0; \
-    retry go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest; \
-    retry go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest; \
-    retry go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest; \
-    retry go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest; \
-    retry go install github.com/projectdiscovery/katana/cmd/katana@latest; \
-    retry go install github.com/lc/gau/v2/cmd/gau@latest; \
-    retry go install github.com/trufflesecurity/trufflehog/v3@latest; \
+    retry go install github.com/projectdiscovery/dnsx/cmd/dnsx@v1.3.1; \
+    retry go install github.com/projectdiscovery/naabu/v2/cmd/naabu@v2.6.1; \
+    retry go install github.com/projectdiscovery/tlsx/cmd/tlsx@v1.4.0; \
+    retry go install github.com/projectdiscovery/asnmap/cmd/asnmap@v1.1.1; \
+    retry go install github.com/projectdiscovery/katana/cmd/katana@v1.7.0; \
+    retry go install github.com/lc/gau/v2/cmd/gau@v2.2.4; \
+    retry go install github.com/trufflesecurity/trufflehog/v3@v3.97.9; \
     retry go install github.com/tomnomnom/assetfinder@latest; \
-    retry go install github.com/projectdiscovery/alterx/cmd/alterx@latest; \
-    retry go install github.com/d3mondev/puredns/v2@latest
+    retry go install github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0; \
+    retry go install github.com/d3mondev/puredns/v2@v2.1.1
 
 FROM debian:bookworm-slim AS nuclei_templates
 RUN apt-get update \
