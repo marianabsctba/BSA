@@ -2,11 +2,12 @@ import os
 import time
 import threading
 
-from .auth import current_principal_for_user, can
+from .auth import current_principal_for_user, can, audit
 from .assessment_orchestrator import run_public_assessment
 from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbeat_job
 from .scope import active_scan_in_scope
 from .scan_authorization import authorization_grant_valid
+from .ctem_retest import reconcile_ctem_retest_job
 
 
 def _heartbeat(job_id:str,run_token:str,stop:threading.Event):
@@ -54,7 +55,18 @@ def run_once()->bool:
                 )
             ),
         )
-        complete_job(job["job_id"],result,run_token=run_token)
+        completed=complete_job(job["job_id"],result,run_token=run_token)
+        if completed:
+            try:
+                reconcile_ctem_retest_job(principal,job,result,audit)
+            except Exception as exc:
+                audit(
+                    principal,
+                    "ctem_retest_reconcile_error",
+                    "ctem",
+                    job["job_id"],
+                    {"error":exc.__class__.__name__},
+                )
     except Exception as exc:
         retry_or_fail_job(job["job_id"],str(exc),run_token=run_token)
     finally:
