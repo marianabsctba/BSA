@@ -83,10 +83,12 @@ def _db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS tenants(
         id TEXT PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
-        locale TEXT NOT NULL DEFAULT 'pt-BR')""")
+        locale TEXT NOT NULL DEFAULT 'pt-BR', mfa_required INTEGER NOT NULL DEFAULT 0)""")
     tenant_cols={r["name"] for r in conn.execute("PRAGMA table_info(tenants)").fetchall()}
     if "locale" not in tenant_cols:
         conn.execute("ALTER TABLE tenants ADD COLUMN locale TEXT NOT NULL DEFAULT 'pt-BR'")
+    if "mfa_required" not in tenant_cols:
+        conn.execute("ALTER TABLE tenants ADD COLUMN mfa_required INTEGER NOT NULL DEFAULT 0")
     conn.execute("""CREATE TABLE IF NOT EXISTS users(
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
@@ -112,6 +114,13 @@ def _db():
     mfa_cols={r["name"] for r in conn.execute("PRAGMA table_info(users_mfa)").fetchall()}
     if "last_counter" not in mfa_cols:
         conn.execute("ALTER TABLE users_mfa ADD COLUMN last_counter INTEGER")
+    conn.execute("""CREATE TABLE IF NOT EXISTS mfa_recovery_codes(
+        user_id TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        used_at INTEGER,
+        PRIMARY KEY(user_id,code_hash)
+    )""")
     conn.execute("""CREATE TABLE IF NOT EXISTS sessions(
         jti TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -272,7 +281,7 @@ def mfa_secret_for_user(user_id: str) -> str | None:
     if not row:
         return None
     secret=_decrypt_mfa_secret(row["secret"])
-    if not str(row["secret"]).startswith("fernet:"):
+    if not str(row["secret"]).startswith("fernet-v2:"):
         conn=_db()
         conn.execute("UPDATE users_mfa SET secret=? WHERE user_id=?",(_encrypt_mfa_secret(secret),user_id))
         conn.commit(); conn.close()
@@ -412,6 +421,64 @@ def set_tenant_mfa_policy(principal: Principal, roles: list[str]) -> dict:
 
 def _tenant_role_requires_mfa(tenant_id: str, role: str) -> bool:
     return role in set(tenant_mfa_policy(tenant_id)["mfa_required_roles"])
+
+
+def mfa_disable(principal: Principal, current_password: str, verification_code: str) -> bool:
+    conn=_db()
+    user=conn.execute(
+        "SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND active=1",
+        (principal.user_id,principal.tenant_id),
+    ).fetchone()
+    enabled=conn.execute(
+        "SELECT enabled FROM users_mfa WHERE user_id=?",
+        (principal.user_id,),
+    ).fetchone()
+    conn.close()
+    if not user:
+        raise ValueError("user not found")
+    if not _verify(current_password,user["password_hash"]):
+        raise PermissionError("current password verification failed")
+    if not enabled or not enabled["enabled"]:
+        return True
+    verified=verify_user_mfa_once(principal.user_id,verification_code)
+    if not verified:
+        verified=_consume_recovery_code(principal.user_id,verification_code)
+    if not verified:
+        raise PermissionError("current MFA verification failed")
+    conn=_db()
+    conn.execute("UPDATE users_mfa SET enabled=0,last_counter=NULL WHERE user_id=?",(principal.user_id,))
+    conn.execute("DELETE FROM mfa_recovery_codes WHERE user_id=?",(principal.user_id,))
+    conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND tenant_id=? AND revoked_at IS NULL",
+                 (int(time.time()),principal.user_id,principal.tenant_id))
+    conn.commit(); conn.close()
+    return True
+
+def tenant_mfa_required(tenant_id: str) -> bool:
+    conn=_db()
+    row=conn.execute("SELECT mfa_required FROM tenants WHERE id=?",(tenant_id,)).fetchone()
+    conn.close()
+    return bool(row and row["mfa_required"])
+
+def set_tenant_mfa_required(principal: Principal, required: bool) -> dict:
+    if principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin required")
+    conn=_db()
+    conn.execute("UPDATE tenants SET mfa_required=? WHERE id=?",(1 if required else 0,principal.tenant_id))
+    conn.commit(); conn.close()
+    return {"tenant_id":principal.tenant_id,"mfa_required":bool(required)}
+
+def mfa_required_for(principal: Principal, permission: str | None = None) -> bool:
+    if not tenant_mfa_required(principal.tenant_id):
+        return False
+    if permission is None:
+        return True
+    return permission=="discovery:run" and can(principal,"discovery:run")
+
+def mfa_enabled_for_user(user_id: str) -> bool:
+    conn=_db()
+    row=conn.execute("SELECT enabled FROM users_mfa WHERE user_id=?",(user_id,)).fetchone()
+    conn.close()
+    return bool(row and row["enabled"])
 
 def rate_limit_action(bucket: str, identity: str, limit: int = 5, window_seconds: int = 300) -> bool:
     now=int(time.time())
