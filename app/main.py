@@ -68,6 +68,7 @@ from .api.routers.integrations import router as integrations_router
 from .api.routers.admin import router as admin_router
 from .api.routers.auth import router as auth_router
 from .api.routers.operations import router as operations_router
+from .api.routers.scopes import router as scopes_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -92,6 +93,7 @@ app.include_router(integrations_router)
 app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(operations_router)
+app.include_router(scopes_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -541,25 +543,6 @@ def graph(request: Request):
 
 
 
-class ScopeCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    pattern: str = Field(min_length=1, max_length=253)
-    ownership_ref: str | None = Field(default=None, max_length=200)
-
-class ScopeAssignRequest(BaseModel):
-    user_id: str
-    scope_id: str
-
-class DomainOwnershipProofRequest(BaseModel):
-    domain: str = Field(min_length=3, max_length=253)
-    method: str = Field(default="dns_txt", pattern="^(dns_txt|well_known)$")
-
-class IPOwnershipApprovalRequest(BaseModel):
-    ip: str = Field(min_length=3, max_length=64)
-    authorization_ref: str = Field(min_length=3, max_length=200)
-    evidence_type: str = Field(default="contract", pattern="^(contract|rdap|whois|asn|ptr)$")
-    ttl_seconds: int = Field(default=86400, ge=300, le=2592000)
-
 class GroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     pattern: str = Field(min_length=1, max_length=253)
@@ -597,13 +580,6 @@ class TenantLocaleRequest(BaseModel):
     locale: str = Field(pattern=r"^(pt-BR|en|es)$")
 
 
-class ScanGrantCreateRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=128)
-    authorization_ref: str = Field(min_length=1, max_length=200)
-    pattern: str = Field(min_length=1, max_length=253)
-    ttl_seconds: int = Field(default=3600, ge=60, le=2592000)
-
-
 class RetentionPolicyRequest(BaseModel):
     retention_days: int = Field(ge=30, le=3650)
 
@@ -614,145 +590,6 @@ class RetentionApplyRequest(BaseModel):
 
 
 
-
-
-@app.get("/api/v1/scopes")
-def scopes(request: Request):
-    p=require(request,"users:read")
-    return list_scopes(p)
-
-@app.post("/api/v1/scopes")
-def scopes_create(request: Request, payload: ScopeCreateRequest):
-    p=current_principal(request)
-    try:
-        result=create_scope(p,payload.name,payload.pattern)
-        audit(p,"create","scope",result["id"],{"pattern":payload.pattern})
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-@app.post("/api/v1/scopes/assign")
-def scopes_assign(request: Request, payload: ScopeAssignRequest):
-    p=current_principal(request)
-    try:
-        assign_scope(p,payload.user_id,payload.scope_id)
-        audit(p,"assign","scope",payload.scope_id,{"user_id":payload.user_id})
-        return {"ok":True}
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-
-@app.get("/api/v1/scan-scopes")
-def scan_scopes(request: Request):
-    p=require(request,"users:read")
-    return list_scan_scopes(p)
-
-@app.post("/api/v1/domain-ownership/proofs")
-def domain_ownership_proof_create(request: Request, payload: DomainOwnershipProofRequest):
-    p=current_principal(request)
-    try:
-        result=create_domain_ownership_proof(p,payload.domain,payload.method)
-        audit(p,"create","domain_ownership_proof",result["proof_id"],{
-            "domain":result["domain"],"method":result["method"],"expires_at":result["expires_at"],
-        })
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-@app.post("/api/v1/domain-ownership/proofs/{proof_id}/verify")
-def domain_ownership_proof_verify(proof_id: str, request: Request):
-    p=current_principal(request)
-    try:
-        result=verify_domain_ownership_proof(p,proof_id)
-        audit(p,"verify","domain_ownership_proof",proof_id,{
-            "domain":result["domain"],"method":result["method"],"verified":result["verified"],
-        })
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-@app.post("/api/v1/ip-ownership/approvals")
-def ip_ownership_approval_create(request: Request, payload: IPOwnershipApprovalRequest):
-    p=current_principal(request)
-    try:
-        result=create_ip_ownership_approval(
-            p,payload.ip,payload.authorization_ref,payload.evidence_type,payload.ttl_seconds
-        )
-        audit(p,"approve","ip_ownership",result["approval_id"],{
-            "ip":result["ip"],
-            "authorization_ref":result["authorization_ref"],
-            "evidence_type":result["evidence_type"],
-            "expires_at":result["expires_at"],
-        })
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-
-@app.post("/api/v1/scan-scopes")
-def scan_scopes_create(request: Request, payload: ScopeCreateRequest):
-    p=current_principal(request)
-    try:
-        result=create_scan_scope(p,payload.name,payload.pattern,payload.ownership_ref)
-        audit(p,"create","scan_scope",result["id"],{"pattern":payload.pattern,"ownership_ref":payload.ownership_ref})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-@app.post("/api/v1/scan-scopes/assign")
-def scan_scopes_assign(request: Request, payload: ScopeAssignRequest):
-    p=current_principal(request)
-    try:
-        assign_scan_scope(p,payload.user_id,payload.scope_id)
-        audit(p,"assign","scan_scope",payload.scope_id,{"user_id":payload.user_id})
-        return {"ok":True}
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-@app.get("/api/v1/scan-authorizations")
-def scan_authorizations(request: Request):
-    p=require(request,"users:read")
-    try:
-        return list_authorization_grants(p)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-
-@app.post("/api/v1/scan-authorizations")
-def scan_authorizations_create(request: Request, payload: ScanGrantCreateRequest):
-    p=current_principal(request)
-    try:
-        result=create_authorization_grant(
-            p,payload.user_id,payload.authorization_ref,payload.pattern,payload.ttl_seconds
-        )
-        audit(p,"create","scan_authorization",result["grant_id"],{
-            "user_id":payload.user_id,"pattern":payload.pattern,"expires_at":result["expires_at"],
-        })
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-
-@app.post("/api/v1/scan-authorizations/{grant_id}/revoke")
-def scan_authorizations_revoke(grant_id: str, request: Request):
-    p=current_principal(request)
-    try:
-        result=revoke_authorization_grant(p,grant_id)
-        audit(p,"revoke","scan_authorization",grant_id,{})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=404,detail=str(exc)) from exc
 
 
 @app.get("/api/v1/groups")
