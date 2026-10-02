@@ -43,6 +43,16 @@ def _history_db():
         action TEXT NOT NULL, from_state TEXT NOT NULL, to_state TEXT NOT NULL,
         actor_id TEXT, request_id TEXT, transitioned_at TEXT NOT NULL)""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_transition_tenant_item ON ctem_transitions(tenant_id,item_id,transitioned_at,id)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS capability_execution_health(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        capability TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        calls INTEGER NOT NULL,
+        errors INTEGER NOT NULL,
+        execution_ms INTEGER NOT NULL,
+        raw_results INTEGER NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_capability_execution_health_cap_time ON capability_execution_health(capability,observed_at)")
+
     conn.execute("""CREATE TABLE IF NOT EXISTS ctem_retests(
         job_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
         profile TEXT NOT NULL, authorization_ref TEXT NOT NULL,
@@ -1093,3 +1103,80 @@ def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: l
                 "verification_evidence_refs":evidence_refs,"verified_at":now if result=="passed" else None})
     conn.close()
     return out
+
+
+
+def record_capability_execution(metrics: list[dict]) -> None:
+    """Persist provider-safe capability execution telemetry for runtime readiness."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _history_db()
+    try:
+        for row in metrics:
+            capability = str(row.get("name") or "").strip()
+            if not capability:
+                continue
+            calls = max(0, int(row.get("calls", 0) or 0))
+            errors = max(0, min(calls, int(row.get("errors", 0) or 0)))
+            conn.execute(
+                """INSERT INTO capability_execution_health(
+                    capability,observed_at,calls,errors,execution_ms,raw_results
+                ) VALUES(?,?,?,?,?,?)""",
+                (
+                    capability,
+                    now,
+                    calls,
+                    errors,
+                    max(0, int(row.get("execution_ms", 0) or 0)),
+                    max(0, int(row.get("raw_results", 0) or 0)),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def recent_capability_execution_health(
+    capabilities: tuple[str, ...] | list[str],
+    *,
+    max_age_minutes: int = 1440,
+) -> list[dict]:
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=max(1, int(max_age_minutes)))
+    conn = _history_db()
+    try:
+        out = []
+        for capability in capabilities:
+            rows = conn.execute(
+                """SELECT observed_at,calls,errors
+                   FROM capability_execution_health
+                   WHERE capability=? AND observed_at>=?
+                   ORDER BY observed_at DESC""",
+                (capability, cutoff.isoformat()),
+            ).fetchall()
+            calls = sum(int(row["calls"]) for row in rows)
+            errors = sum(int(row["errors"]) for row in rows)
+            successful_calls = max(0, calls - errors)
+            latest = rows[0]["observed_at"] if rows else None
+            age_seconds = None
+            if latest:
+                try:
+                    observed = datetime.fromisoformat(str(latest).replace("Z", "+00:00"))
+                    if observed.tzinfo is None:
+                        observed = observed.replace(tzinfo=timezone.utc)
+                    age_seconds = max(0, int((now - observed).total_seconds()))
+                except (TypeError, ValueError):
+                    age_seconds = None
+            status = "unverified" if not rows else ("verified" if successful_calls > 0 else "failing")
+            out.append({
+                "name": capability,
+                "execution_status": status,
+                "recent_calls": calls,
+                "recent_successful_calls": successful_calls,
+                "recent_errors": errors,
+                "last_execution_age_seconds": age_seconds,
+            })
+        return out
+    finally:
+        conn.close()
