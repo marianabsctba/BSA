@@ -552,7 +552,11 @@ class SecretExposureProvider(JsonLinesProvider):
         return target.startswith(("https://github.com/", "https://gitlab.com/", "http://github.com/", "http://gitlab.com/"))
 
     def available(self) -> bool:
-        return bool(shutil.which(self.binary))
+        return bool(self.readiness()["ready"])
+
+    def readiness(self) -> dict:
+        installed = bool(shutil.which(self.binary))
+        return {"installed": installed, "configured": True, "ready": installed}
 
     def _command(self, target: str) -> list[str]:
         if not (
@@ -641,7 +645,11 @@ class TestSslProvider(CommandProvider):
     timeout = 120
 
     def available(self) -> bool:
-        return bool(shutil.which(self.binary) or shutil.which("testssl"))
+        return bool(self.readiness()["ready"])
+
+    def readiness(self) -> dict:
+        installed = bool(shutil.which(self.binary) or shutil.which("testssl"))
+        return {"installed": installed, "configured": True, "ready": installed}
 
     def _command(self, target: str) -> list[str]:
         binary = shutil.which(self.binary) or shutil.which("testssl") or self.binary
@@ -1016,12 +1024,51 @@ class OpenVASProvider:
         scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
         configured = bool(socket_path and config_id and scanner_id)
         socket_ready = bool(socket_path and os.path.exists(socket_path))
+        probe_enabled = os.getenv("BSA_GVM_READINESS_PROBE", "0").strip().lower() in {"1", "true", "yes", "on"}
+        live = None
+        if binary and configured and socket_ready and probe_enabled:
+            live = self._probe()
+        ready = binary and configured and socket_ready and (live is not False)
         return {
             "installed": binary,
             "configured": configured,
             "socket_ready": socket_ready,
-            "ready": binary and configured and socket_ready,
+            "live_probe_enabled": probe_enabled,
+            "live": live,
+            "ready": ready,
         }
+
+    def _probe(self) -> bool:
+        binary = shutil.which("gvm-cli")
+        if not binary:
+            return False
+        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
+        command = [binary, "socket", "--socketpath", socket_path]
+        username = os.getenv("BSA_GVM_USERNAME", "").strip()
+        password = os.getenv("BSA_GVM_PASSWORD", "").strip()
+        if username:
+            command += ["--gmp-username", username]
+        if password:
+            command += ["--gmp-password", password]
+        command += ["--xml", "<get_version/>"]
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=min(10, self.timeout),
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return False
+        try:
+            root = ET.fromstring(proc.stdout)
+        except ET.ParseError:
+            return False
+        status = str(root.attrib.get("status", "200"))
+        return status.startswith("2")
 
     def available(self) -> bool:
         return bool(self.readiness()["ready"])
@@ -1143,7 +1190,11 @@ class ZAPProvider:
     timeout = 180
 
     def available(self) -> bool:
-        return bool(shutil.which("zap-baseline.py") or shutil.which("zap-baseline"))
+        return bool(self.readiness()["ready"])
+
+    def readiness(self) -> dict:
+        installed = bool(shutil.which("zap-baseline.py") or shutil.which("zap-baseline"))
+        return {"installed": installed, "configured": True, "ready": installed}
 
     def supports(self, target: str) -> bool:
         parsed = urlparse(target if "://" in target else f"https://{target}")
