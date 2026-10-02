@@ -319,7 +319,8 @@ def _clear_rate_limit(bucket: str, identity: str) -> None:
 def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str | None = None) -> str | None:
     key=email.strip().lower()
     ipkey=client_ip.strip() or "unknown"
-    if _rate_limit_blocked("login-email",key) or _rate_limit_blocked("login-ip",ipkey):
+    account_client=f"{key}:{ipkey}"
+    if _rate_limit_blocked("login-account-client",account_client) or _rate_limit_blocked("login-ip",ipkey):
         return None
 
     conn=_db()
@@ -329,14 +330,14 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
     encoded=row["password_hash"] if row else _DUMMY_PASSWORD_HASH
     password_ok=_verify(password,encoded)
     if not row or not password_ok:
-        rate_limit_action("login-email",key,limit=5,window_seconds=300)
+        rate_limit_action("login-account-client",account_client,limit=5,window_seconds=300)
         rate_limit_action("login-ip",ipkey,limit=20,window_seconds=900)
         return None
 
     # Password is valid: clear primary credential throttles before entering
     # the independent MFA challenge so MFA failures cannot poison the
     # password/IP bucket or prevent the MFA limiter from taking effect.
-    _clear_rate_limit("login-email",key)
+    _clear_rate_limit("login-account-client",account_client)
     _clear_rate_limit("login-ip",ipkey)
 
     mfa_secret=mfa_secret_for_user(row["id"])
