@@ -73,6 +73,7 @@ from .api.routers.governance import router as governance_router
 from .api.routers.digital_risk import router as digital_risk_router
 from .api.routers.mssp import router as mssp_router
 from .api.routers.reporting import router as reporting_router
+from .api.routers.assets import router as assets_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -102,6 +103,7 @@ app.include_router(governance_router)
 app.include_router(digital_risk_router)
 app.include_router(mssp_router)
 app.include_router(reporting_router)
+app.include_router(assets_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -219,37 +221,6 @@ def queue_active_operation(http_request: Request, principal, target: str, operat
 def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
-
-
-@app.get("/api/v1/assets")
-def list_assets(request: Request):
-    principal = require(request, "assets:read")
-    ASSETS, FINDINGS = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    result = []
-    for asset in ASSETS:
-        item = asset.model_dump()
-        ownership = ownership_confidence(asset)
-        item["ownership"] = {
-            "score": ownership.score,
-            "state": ownership.state,
-            "reasons": ownership.reasons,
-        }
-        item["blast_radius"] = blast_radius(asset)
-        result.append(item)
-    return result
-
-
-
-
-@app.get("/api/v1/assets/{asset_id}")
-def asset_detail_view(asset_id: str, request: Request):
-    principal = require(request, "assets:read")
-    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset = next((a for a in assets if a.id == asset_id), None)
-    if not asset:
-        raise HTTPException(status_code=404, detail="asset not found")
-    audit(principal, "read", "asset", asset.id)
-    return asset_detail(asset, findings, assets, principal.tenant_id)
 
 
 @app.post("/api/v1/discovery/adaptive/{target}")
@@ -840,56 +811,6 @@ def exposure_assessment_job(job_id: str, request: Request):
 
 
 
-
-
-
-@app.get("/api/v1/assets/{asset_id}/dna")
-def asset_dna(asset_id: str, request: Request):
-    principal = require(request, "assets:read")
-    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset = next((a for a in assets if a.id == asset_id), None)
-    if not asset:
-        raise HTTPException(status_code=404, detail="asset not found")
-    dna = build_exposure_dna(asset, findings)
-    return asdict(dna)
-
-
-@app.get("/api/v1/radar")
-def exposure_radar(request: Request):
-    principal = require(request, "assets:read")
-    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    rows = []
-    for asset in assets:
-        dna = build_exposure_dna(asset, findings)
-        rows.append({
-            "asset_id": asset.id,
-            "value": asset.value,
-            "type": asset.type.value,
-            "owner": asset.owner,
-            "environment": asset.environment,
-            "confidence": asset.confidence,
-            "criticality": asset.criticality,
-            "dna": dna.fingerprint,
-            "change_type": dna.change_type,
-            "signals": dna.signals,
-        })
-    return {"assets": sorted(rows, key=lambda x: (x["change_type"] != "material-change", -x["criticality"], -x["confidence"]))}
-
-
-@app.get("/api/v1/assets/{asset_id}/timeline")
-def asset_timeline(asset_id: str, request: Request):
-    principal = require(request, "assets:read")
-    assets, findings = tenant_scope(principal, STORE_ASSETS, STORE_FINDINGS)
-    asset = next((a for a in assets if a.id == asset_id), None)
-    if not asset:
-        raise HTTPException(status_code=404, detail="asset not found")
-    return {
-        "asset_id": asset.id,
-        "first_seen": asset.first_seen,
-        "last_seen": asset.last_seen,
-        "change_summary": change_summary(asset.fingerprint, principal.tenant_id),
-        "history": [h.__dict__ for h in history_for(asset.fingerprint,principal.tenant_id)],
-    }
 
 
 
