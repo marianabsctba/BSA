@@ -12,10 +12,10 @@ RUN set -eux; \
         sleep $((n*3)); \
       done; \
     }; \
-    retry go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest; \
+    retry go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1; \
     retry env CGO_ENABLED=0 GOBIN=/out GOPROXY="$GOPROXY" GODEBUG="$GODEBUG" go install github.com/owasp-amass/amass/v5/cmd/amass@main; \
-    retry go install github.com/projectdiscovery/httpx/cmd/httpx@latest; \
-    retry go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest; \
+    retry go install github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0; \
+    retry go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.16.0; \
     retry go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest; \
     retry go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest; \
     retry go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest; \
