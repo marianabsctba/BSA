@@ -24,7 +24,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 | BSA-10 | /auth/permissions 500 em custom role | P2 | Concluído e validado no CI | tenant_id no role_permissions + erro tratado + teste |
 | BSA-11 | Sessão/rate-limit: persistência, idle timeout, password change | P2 | Quase concluído: persistência, idle timeout e password change validados no CI | idle timeout + cookie usa TOKEN_TTL + troca de senha com reauth + testes |
 | BSA-12 | Prompt injection / Ollama sem autenticação | P2 | Concluído e validado no CI | untrusted data delimitado, schema de saída, limite de grafo, sugestão explícita, proxy/token para Ollama |
-| BSA-13 | Auditoria adulterável / posse DRP | P3 | Parcial | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
+| BSA-13 | Auditoria adulterável / posse DRP | P3 | Concluído e validado no CI | hash chain real + export SIEM/WORM + tenant ownership de event_id + chave de conflito tenant-scoped |
 | BSA-14 | HSTS/proxy/supply-chain | P3 | Parcial | HSTS na borda + forwarded proto fixo + Actions por SHA + imagens por digest + SAST + Trivy + SBOM |
 
 ### Condições adicionais do parecer de pentest
@@ -95,7 +95,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Procedimento de prova de posse.
 - [ ] Artefatos LGPD para dados DRP/leaks/perfis.
 - [ ] Política de retenção documentada por categoria de dado.
-- [ ] Trilha de auditoria inviolável e exportável.
+- [x] Trilha de auditoria tamper-evident, verificável e exportável.
 
 ### Produto / capacidades anunciadas
 - [ ] Change Intelligence baseado em histórico real em todos os fluxos.
