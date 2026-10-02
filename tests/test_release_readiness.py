@@ -10,6 +10,16 @@ def _engine_state(rapid_ready=True, balanced_ready=True):
     }
 
 
+def _governance_ready(monkeypatch):
+    monkeypatch.setenv("BSA_HISTORY_DB", "/data/bsa_history.db")
+    monkeypatch.setenv("BSA_DEMO_DATA", "0")
+    monkeypatch.setattr("app.release_readiness.ensure_authorization_schema", lambda: None)
+    monkeypatch.setattr(
+        "app.release_readiness.get_retention_policy",
+        lambda tenant_id: {"retention_days": 180},
+    )
+
+
 def test_release_readiness_blocks_without_persistent_security(monkeypatch):
     monkeypatch.setenv("BSA_ENV", "production")
     monkeypatch.setenv("BSA_JWT_SECRET", "short")
@@ -27,6 +37,7 @@ def test_release_readiness_blocks_without_persistent_security(monkeypatch):
 
 
 def test_release_readiness_allows_degraded_pilot_with_partial_engines(monkeypatch):
+    _governance_ready(monkeypatch)
     monkeypatch.setenv("BSA_ENV", "production")
     monkeypatch.setenv("BSA_JWT_SECRET", "x" * 40)
     monkeypatch.setenv("BSA_AUTH_DB", "/data/bsa_auth.db")
@@ -44,6 +55,7 @@ def test_release_readiness_allows_degraded_pilot_with_partial_engines(monkeypatc
 
 
 def test_release_readiness_ready_when_required_controls_and_coverage_pass(monkeypatch):
+    _governance_ready(monkeypatch)
     monkeypatch.setenv("BSA_ENV", "production")
     monkeypatch.setenv("BSA_JWT_SECRET", "x" * 40)
     monkeypatch.setenv("BSA_AUTH_DB", "/data/bsa_auth.db")
