@@ -570,6 +570,56 @@ def ctem_action_idempotency_key(item_id: str, action: str, request_id: str | Non
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def reopen_ctem_item(
+    item_id: str,
+    tenant_id: str,
+    evidence_refs: list[str],
+    notes: str = "verified exposure reappeared",
+) -> dict:
+    """Reopen a verified CTEM item when fresh assessment evidence proves regression."""
+    import uuid
+    refs=[str(x) for x in evidence_refs if x]
+    if not refs:
+        raise ValueError("regression evidence is required")
+    conn=_history_db()
+    row=conn.execute(
+        "SELECT * FROM ctem_items WHERE item_id=? AND tenant_id=?",
+        (item_id,tenant_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise KeyError("CTEM item not found")
+    if row["state"] != "verified":
+        out=dict(row)
+        out["reopened"]=False
+        conn.close()
+        return out
+
+    now=datetime.now(timezone.utc).isoformat()
+    verification_id=str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO ctem_verifications(verification_id,tenant_id,item_id,result,evidence_refs_json,notes,verified_at) VALUES(?,?,?,?,?,?,?)",
+        (verification_id,tenant_id,item_id,"failed",json.dumps(refs,ensure_ascii=False),notes,now),
+    )
+    conn.execute(
+        "UPDATE ctem_items SET state='in_progress',updated_at=?,resolved_at=NULL,verified_at=NULL WHERE item_id=? AND tenant_id=?",
+        (now,item_id,tenant_id),
+    )
+    conn.commit()
+    out=dict(row)
+    out.update({
+        "state":"in_progress",
+        "reopened":True,
+        "regression_verification_id":verification_id,
+        "regression_evidence_refs":refs,
+        "updated_at":now,
+        "resolved_at":None,
+        "verified_at":None,
+    })
+    conn.close()
+    return out
+
+
 def ctem_action_transition(item: dict, action: str) -> str:
     """Validate an operational action against the canonical CTEM state machine."""
     transitions={
