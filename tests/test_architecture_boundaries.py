@@ -274,3 +274,21 @@ def test_main_is_composition_root_only():
     assert "def require(" not in source
     assert "def queue_active_operation(" not in source
     assert source.count("app.include_router(") >= 18
+
+
+def test_asset_finding_repository_implements_application_port():
+    from app.application.ports.asset_finding_repository import AssetFindingRepositoryPort
+    from app.repositories.assets_findings import AssetFindingRepository
+
+    assert isinstance(AssetFindingRepository([], []), AssetFindingRepositoryPort)
+
+
+def test_api_routers_do_not_import_store_directly_except_legacy_none():
+    from pathlib import Path
+
+    offenders=[]
+    for path in Path("app/api/routers").glob("*.py"):
+        source=path.read_text(encoding="utf-8")
+        if "from ...store import" in source or "from app.store import" in source:
+            offenders.append(str(path))
+    assert offenders==[], f"routers import store directly: {offenders}"
