@@ -26,7 +26,7 @@ services:
       - no-new-privileges:true
     cap_drop: [ALL]
     depends_on:
-      - ai-proxy
+      - ollama
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/health', timeout=3).read()"]
       interval: 30s
@@ -63,7 +63,7 @@ services:
       - no-new-privileges:true
     cap_drop: [ALL]
     depends_on:
-      - ollama
+      - ai-proxy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
       interval: 30s
