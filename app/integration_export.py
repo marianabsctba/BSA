@@ -100,7 +100,6 @@ def drp_siem_events(tenant_id: str, events: list[dict], *, since: str | None=Non
             "status":event.get("status"),
             "source_name":event.get("source"),
             "evidence_count":event.get("evidence_count",len(safe_evidence)),
-            "takedown_candidate":bool(event.get("takedown_candidate")),
             "source":"be-safe-asm",
         })
     out.sort(key=lambda x:(x["observed_at"],x["event_id"]))
