@@ -76,7 +76,7 @@ def test_vulnerability_summary_counts_actual_finding_severity(monkeypatch):
     asset=_asset()
     finding=_finding()
     monkeypatch.setattr(vulnerabilities_router, "require", lambda request, permission: _principal())
-    monkeypatch.setattr(vulnerabilities_router, "tenant_scope", lambda principal, assets, findings: ([asset], [finding]))
+    monkeypatch.setattr(vulnerabilities_router, "tenant_scope", lambda principal: ([asset], [finding]))
 
     result=vulnerabilities_router.vulnerability_intelligence_api(None)
 
