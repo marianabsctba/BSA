@@ -118,3 +118,59 @@ def test_auth_permissions_support_custom_role_tenant_scope(tmp_path, monkeypatch
     assert response.status_code==200
     assert response.json()["role"]=="custom:auditor"
     assert response.json()["permissions"]==["assets:read","findings:read"]
+
+
+def test_session_idle_timeout_revokes_session(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","j"*48)
+    monkeypatch.setattr(auth,"MFA_KEY","m"*48)
+    monkeypatch.setattr(auth,"SESSION_IDLE_TIMEOUT",30)
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-idle","Idle"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("idle-user","tenant-idle","idle@example.org","Idle",auth._hash("CorrectHorseBattery1!"),"analyst",1),
+    )
+    conn.commit(); conn.close()
+
+    now=int(auth.time.time())
+    token=auth.authenticate("idle@example.org","CorrectHorseBattery1!","198.51.100.60")
+    assert token
+    monkeypatch.setattr(auth.time,"time",lambda: now+31)
+    try:
+        auth.principal_from_token(token)
+    except ValueError as exc:
+        assert "idle timeout" in str(exc)
+    else:
+        raise AssertionError("idle session remained valid")
+
+
+def test_change_own_password_revokes_existing_sessions(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","j"*48)
+    monkeypatch.setattr(auth,"MFA_KEY","m"*48)
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-pw","PW"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("pw-user","tenant-pw","pw@example.org","PW",auth._hash("CorrectHorseBattery1!"),"analyst",1),
+    )
+    conn.commit(); conn.close()
+
+    token=auth.authenticate("pw@example.org","CorrectHorseBattery1!","198.51.100.61")
+    principal=auth.principal_from_token(token)
+    result=auth.change_own_password(principal,"CorrectHorseBattery1!","NewCorrectHorseBattery2!")
+    assert result["sessions_revoked"] is True
+
+    try:
+        auth.principal_from_token(token)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("old session remained valid after password change")
+
+    assert auth.authenticate("pw@example.org","NewCorrectHorseBattery2!","198.51.100.61")
