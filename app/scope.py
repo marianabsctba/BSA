@@ -275,7 +275,7 @@ def create_domain_ownership_proof(principal: Principal, domain: str, method: str
     conn.commit(); conn.close()
     result={
         "proof_id":proof_id,
-        "tenant_id":principal.tenant_id,
+        "tenant_id":target_tenant,
         "domain":registrable,
         "method":method,
         "challenge":challenge,
@@ -430,9 +430,17 @@ def create_ip_ownership_approval(
     authorization_ref: str,
     evidence_type: str="contract",
     ttl_seconds: int=86400,
+    tenant_id: str | None=None,
 ) -> dict:
     if principal.role!="superadmin":
         raise PermissionError("superadmin required for public IP ownership approval")
+    target_tenant=str(tenant_id or principal.tenant_id).strip()
+    ensure_scope_schema()
+    conn=_db()
+    tenant=conn.execute("SELECT id FROM tenants WHERE id=?",(target_tenant,)).fetchone()
+    conn.close()
+    if not tenant:
+        raise ValueError("target tenant not found")
     normalized=validate_active_scope_pattern(ip_value)
     try:
         ip=ipaddress.ip_address(normalized)
@@ -447,7 +455,6 @@ def create_ip_ownership_approval(
     if evidence not in {"contract","rdap","whois","asn","ptr"}:
         raise ValueError("unsupported IP ownership evidence type")
     ttl=max(300,min(int(ttl_seconds),30*24*3600))
-    ensure_scope_schema()
     approval_id=secrets.token_hex(12)
     now=int(time.time())
     conn=_db()
@@ -455,7 +462,7 @@ def create_ip_ownership_approval(
         """INSERT INTO ip_ownership_approvals(
            approval_id,tenant_id,ip,authorization_ref,evidence_type,created_at,expires_at,approved_by
            ) VALUES(?,?,?,?,?,?,?,?)""",
-        (approval_id,principal.tenant_id,str(ip),ref,evidence,now,now+ttl,principal.user_id),
+        (approval_id,target_tenant,str(ip),ref,evidence,now,now+ttl,principal.user_id),
     )
     conn.commit(); conn.close()
     return {
