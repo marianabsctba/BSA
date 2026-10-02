@@ -4,7 +4,7 @@ import threading
 
 from .auth import current_principal_for_user, can, audit
 from .assessment_orchestrator import run_public_assessment
-from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbeat_job
+from .job_queue import claim_next_job, complete_job, retry_or_fail_job, heartbeat_job, touch_worker
 from .scope import active_scan_in_scope
 from .scan_authorization import authorization_grant_valid
 from .ctem_retest import reconcile_ctem_retest_job
@@ -12,11 +12,13 @@ from .ctem_retest import reconcile_ctem_retest_job
 
 def _heartbeat(job_id:str,run_token:str,stop:threading.Event):
     while not stop.wait(30):
+        touch_worker()
         if not heartbeat_job(job_id,run_token=run_token):
             return
 
 
 def run_once()->bool:
+    touch_worker()
     job=claim_next_job()
     if not job:
         return False
