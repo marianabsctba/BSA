@@ -46,7 +46,7 @@ from .assessment_orchestrator import run_public_assessment
 from .engine_health import public_engine_health
 from .release_readiness import release_readiness
 from .assessment_registry import registry
-from .job_queue import enqueue_assessment, get_job, mark_materialized
+from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization
 from .auth import Principal
 
 bootstrap()
@@ -1247,6 +1247,18 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
     return result
 
 
+@app.post("/api/v1/exposure/assessment/jobs/{job_id}/cancel")
+def exposure_assessment_job_cancel(job_id: str, request: Request):
+    principal=require(request,"discovery:run")
+    job=cancel_job(job_id,principal.tenant_id)
+    if not job:
+        raise HTTPException(status_code=404,detail="assessment job not found")
+    if job["status"]!="cancelled":
+        raise HTTPException(status_code=409,detail="assessment job can no longer be cancelled")
+    audit(principal,"cancel","exposure_assessment",job["target"],{"job_id":job_id})
+    return {"job_id":job_id,"status":"cancelled"}
+
+
 @app.get("/api/v1/exposure/assessment/jobs/{job_id}")
 def exposure_assessment_job(job_id: str, request: Request):
     principal=require(request,"discovery:run")
@@ -1255,26 +1267,33 @@ def exposure_assessment_job(job_id: str, request: Request):
         raise HTTPException(status_code=404,detail="assessment job not found")
     result=job.get("result")
     if job["status"]=="succeeded" and result is not None and not job.get("materialized"):
-        job_principal=Principal(
-            user_id=job["user_id"],
-            tenant_id=job["tenant_id"],
-            email=job["email"],
-            role=job["role"],
-            name=job["name"],
-        )
-        result["materialization"]=_materialize_assessment_result(job_principal,result)
-        mark_materialized(job_id,principal.tenant_id)
-        audit(
-            job_principal,"complete","exposure_assessment",job["target"],
-            {
-                "profile":job["profile"],
-                "authorization_ref":job["authorization_ref"],
-                "job_id":job_id,
-                "finding_count":result.get("finding_count",0),
-                "partial_coverage":result.get("partial_coverage",False),
-            },
-        )
-        job["materialized"]=True
+        if claim_materialization(job_id,principal.tenant_id):
+            job_principal=Principal(
+                user_id=job["user_id"],
+                tenant_id=job["tenant_id"],
+                email=job["email"],
+                role=job["role"],
+                name=job["name"],
+            )
+            try:
+                result["materialization"]=_materialize_assessment_result(job_principal,result)
+                finish_materialization(job_id,principal.tenant_id,True)
+                audit(
+                    job_principal,"complete","exposure_assessment",job["target"],
+                    {
+                        "profile":job["profile"],
+                        "authorization_ref":job["authorization_ref"],
+                        "job_id":job_id,
+                        "finding_count":result.get("finding_count",0),
+                        "partial_coverage":result.get("partial_coverage",False),
+                    },
+                )
+                job["materialized"]=True
+            except Exception:
+                finish_materialization(job_id,principal.tenant_id,False)
+                raise
+        else:
+            job=get_job(job_id,principal.tenant_id) or job
     return {
         "job_id":job["job_id"],
         "status":job["status"],
