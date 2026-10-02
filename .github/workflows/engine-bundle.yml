@@ -81,6 +81,9 @@ jobs:
               smoke "$bin"
             done
           '
+      - name: Verify engine version manifest
+        run: |
+          docker run --rm --entrypoint sh bsa-engines-ci -lc 'test -s /opt/bsa/engine-versions.txt && cat /opt/bsa/engine-versions.txt'
       - name: Import assessment stack
         run: |
           docker run --rm --entrypoint python bsa-engines-ci -c "from app.assessment_registry import registry; from app.assessment_orchestrator import PROFILES; print(len(registry.providers), sorted(PROFILES))"
