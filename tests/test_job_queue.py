@@ -279,3 +279,43 @@ def test_tenant_fair_scheduler_does_not_starve_other_tenants(tmp_path, monkeypat
     second=job_queue.claim_next_job()
     assert second["job_id"]==b1["job_id"]
     assert second["tenant_id"]=="tenant-b"
+
+
+
+def test_queue_metrics_are_tenant_scoped_and_report_retries(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    tenant_a=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    tenant_b=SimpleNamespace(
+        tenant_id="tenant-b",user_id="user-b",email="b@example.org",role="admin",name="Admin B",
+    )
+
+    a1=job_queue.enqueue_assessment(tenant_a,"a1.example.org","rapid","AUTH-A1")
+    job_queue.enqueue_assessment(tenant_b,"b1.example.org","rapid","AUTH-B1")
+
+    claimed=job_queue.claim_next_job()
+    if claimed["job_id"] != a1["job_id"]:
+        job_queue.complete_job(claimed["job_id"],{"finding_count":0,"findings":[]},run_token=claimed["run_token"])
+        claimed=job_queue.claim_next_job()
+    assert claimed["job_id"] == a1["job_id"]
+
+    assert job_queue.retry_or_fail_job(a1["job_id"],"transient",run_token=claimed["run_token"])=="queued"
+    second=job_queue.claim_next_job()
+    if second["job_id"] != a1["job_id"]:
+        job_queue.complete_job(second["job_id"],{"finding_count":0,"findings":[]},run_token=second["run_token"])
+        second=job_queue.claim_next_job()
+    assert second["job_id"] == a1["job_id"]
+    assert job_queue.complete_job(
+        a1["job_id"],{"finding_count":1,"findings":[]},run_token=second["run_token"]
+    ) is True
+
+    metrics=job_queue.queue_metrics("tenant-a")
+    assert metrics["total_jobs"] == 1
+    assert metrics["succeeded"] == 1
+    assert metrics["retries"] == 1
+    assert metrics["failed"] == 0
+    assert metrics["success_rate_percent"] == 100
+
+    other=job_queue.queue_metrics("tenant-b")
+    assert other["total_jobs"] == 1
