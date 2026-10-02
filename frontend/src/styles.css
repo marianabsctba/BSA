@@ -1291,3 +1291,14 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .report-ops-status span{display:block;color:#7b8796;font:8px "DM Mono";letter-spacing:.08em}
 .report-ops-status b{display:block;margin-top:5px;color:#ff6aa8;font:800 13px "DM Mono"}
 @media(max-width:850px){.report-ops-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+.ct-audit-btn{display:inline-flex;align-items:center;gap:5px;margin-top:10px;border:1px solid #314052;background:#0d141d;color:#9fb2c8;border-radius:8px;padding:6px 8px;font:800 7px "DM Mono";letter-spacing:.08em}
+.ct-audit-btn:hover{border-color:#ff2d8450;color:#fff}
+.ctem-audit-loading{padding:24px;color:#7f8a99;font:9px "DM Mono"}
+.ctem-audit-timeline{display:grid;gap:8px}
+.ctem-audit-timeline>div{padding:10px 11px;border:1px solid #ffffff09;border-radius:10px;background:#ffffff025}
+.ctem-audit-timeline b,.ctem-audit-timeline span,.ctem-audit-timeline small{display:block}
+.ctem-audit-timeline b{font-size:10px;color:#fff}
+.ctem-audit-timeline span{margin-top:3px;color:#8994a3;font:8px "DM Mono"}
+.ctem-audit-timeline small{margin-top:4px;color:#687384;font:7px "DM Mono"}
