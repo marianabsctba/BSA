@@ -14,6 +14,7 @@ def _principal():
 def _seed_user(tmp_path, monkeypatch, password="CorrectHorseBattery1!"):
     monkeypatch.setattr(auth, "DB_PATH", str(tmp_path / "auth.db"))
     monkeypatch.setattr(auth, "JWT_SECRET", "x" * 48)
+    monkeypatch.setattr(auth, "MFA_KEY", "m" * 48)
     principal=_principal()
     conn=auth._db()
     conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)",("tenant-demo","Demo"))
@@ -98,3 +99,82 @@ def test_mfa_login_attempts_are_persistently_throttled(tmp_path, monkeypatch):
     conn.close()
     assert row is not None
     assert int(row["blocked_until"])>0
+
+
+def test_mfa_reenrollment_requires_current_totp_when_enabled(tmp_path, monkeypatch):
+    principal,password=_seed_user(tmp_path,monkeypatch)
+    enrolled=auth.mfa_enroll(principal,password)
+    secret=enrolled["secret"]
+    code=auth._totp(secret,int(auth.time.time())//30)
+    assert auth.mfa_enable(principal,code) is True
+
+    try:
+        auth.mfa_enroll(principal,password)
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("MFA reenrollment did not require current factor")
+
+
+def test_mfa_recovery_code_is_single_use(tmp_path, monkeypatch):
+    principal,password=_seed_user(tmp_path,monkeypatch)
+    enrolled=auth.mfa_enroll(principal,password)
+    secret=enrolled["secret"]
+    code=auth._totp(secret,int(auth.time.time())//30)
+    assert auth.mfa_enable(principal,code) is True
+
+    recovery=auth.issue_mfa_recovery_codes(principal)[0]
+    assert auth.verify_mfa_recovery_code(principal.user_id,recovery) is True
+    assert auth.verify_mfa_recovery_code(principal.user_id,recovery) is False
+
+
+def test_mfa_disable_requires_password_and_current_factor(tmp_path, monkeypatch):
+    principal,password=_seed_user(tmp_path,monkeypatch)
+    enrolled=auth.mfa_enroll(principal,password)
+    secret=enrolled["secret"]
+    first=auth._totp(secret,int(auth.time.time())//30)
+    assert auth.mfa_enable(principal,first) is True
+
+    # Move to the next TOTP counter so replay protection is not the reason for rejection.
+    now=int(auth.time.time())
+    monkeypatch.setattr(auth.time,"time",lambda: now+31)
+    second=auth._totp(secret,(now+31)//30)
+
+    try:
+        auth.mfa_disable(principal,"WrongPassword123!",second)
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("MFA disable accepted wrong password")
+
+    assert auth.mfa_disable(principal,password,second) is True
+    assert auth.mfa_status(principal)["enabled"] is False
+
+
+def test_tenant_mfa_policy_requires_users_to_be_enrolled_first(tmp_path, monkeypatch):
+    principal,password=_seed_user(tmp_path,monkeypatch)
+
+    try:
+        auth.set_tenant_mfa_policy(principal,["admin"])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("tenant MFA policy accepted unenrolled required user")
+
+    enrolled=auth.mfa_enroll(principal,password)
+    code=auth._totp(enrolled["secret"],int(auth.time.time())//30)
+    assert auth.mfa_enable(principal,code) is True
+    policy=auth.set_tenant_mfa_policy(principal,["admin"])
+    assert policy["mfa_required_roles"]==["admin"]
+
+
+def test_production_mfa_requires_independent_key(monkeypatch):
+    monkeypatch.setattr(auth,"ENVIRONMENT","production")
+    monkeypatch.setattr(auth,"JWT_SECRET","j"*48)
+    monkeypatch.setattr(auth,"MFA_KEY","")
+    try:
+        auth._require_security_config()
+    except RuntimeError as exc:
+        assert "BSA_MFA_KEY" in str(exc)
+        return
+    raise AssertionError("production accepted missing MFA encryption key")
