@@ -176,6 +176,33 @@ def _evidence_signature(evidence: list[dict]) -> str:
     ], key=lambda x:(x["kind"],x["subject"],x["value"]))
     return sha256(json.dumps(stable,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()[:20]
 
+def _persistent_lifecycle_history(fingerprint: str, tenant_id: str) -> list[LifecycleSnapshot]:
+    conn=_history_db()
+    rows=conn.execute(
+        "SELECT * FROM lifecycle_snapshots WHERE tenant_id=? AND fingerprint=? ORDER BY observed_at",
+        (tenant_id,fingerprint),
+    ).fetchall()
+    conn.close()
+    history=[]
+    for r in rows:
+        current=LifecycleSnapshot(
+            r["fingerprint"],r["value"],r["asset_type"],r["observed_at"],
+            r["confidence"],r["evidence_count"],r["evidence_signature"],
+            tuple(json.loads(r["sources_json"] or "[]")),
+            tuple(json.loads(r["tags_json"] or "[]")),
+            tuple(json.loads(r["evidence_refs_json"] or "[]")),
+        )
+        if not history or (
+            history[-1].evidence_signature != current.evidence_signature
+            or history[-1].confidence != current.confidence
+            or history[-1].sources != current.sources
+            or history[-1].tags != current.tags
+            or history[-1].evidence_refs != current.evidence_refs
+        ):
+            history.append(current)
+    return history
+
+
 def record_lifecycle(assets, evidence: list[dict], tenant_id: str) -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
     signature = _evidence_signature(evidence)
@@ -183,20 +210,31 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str) -> list[dict]
     for asset in assets:
         key=asset.fingerprint
         value=getattr(asset,"value",key)
-        asset_type=getattr(asset,"asset_type","unknown")
+        asset_type=getattr(asset,"asset_type",getattr(asset,"type","unknown"))
         sources=tuple(getattr(asset,"sources",()))
         tags=tuple(getattr(asset,"tags",()))
         evidence_refs=tuple(getattr(asset,"evidence_refs",()))
         evidence_count=int(getattr(asset,"evidence_count",0) or 0)
-        current=LifecycleSnapshot(key,value,asset_type,now,asset.confidence,evidence_count,signature,sources,tags,evidence_refs)
-        conn=_history_db()
-        conn.execute("INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(tenant_id,key,value,str(asset_type),now,asset.confidence,evidence_count,signature,json.dumps(sources),json.dumps(tags),json.dumps(evidence_refs)))
-        conn.commit()
-        conn.close()
-        history=_LIFECYCLE.setdefault(f"{tenant_id}:{key}",[])
+        current=LifecycleSnapshot(key,value,str(asset_type),now,asset.confidence,evidence_count,signature,sources,tags,evidence_refs)
+        history=_persistent_lifecycle_history(key,tenant_id)
         previous=history[-1] if history else None
-        if previous is None or previous.evidence_signature != current.evidence_signature or previous.confidence != current.confidence:
+        meaningful_change = previous is None or (
+            previous.evidence_signature != current.evidence_signature
+            or previous.confidence != current.confidence
+            or previous.sources != current.sources
+            or previous.tags != current.tags
+            or previous.evidence_refs != current.evidence_refs
+        )
+        if meaningful_change:
+            conn=_history_db()
+            conn.execute(
+                "INSERT OR IGNORE INTO lifecycle_snapshots(tenant_id,fingerprint,value,asset_type,observed_at,confidence,evidence_count,evidence_signature,sources_json,tags_json,evidence_refs_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (tenant_id,key,value,str(asset_type),now,asset.confidence,evidence_count,signature,json.dumps(sources),json.dumps(tags),json.dumps(evidence_refs)),
+            )
+            conn.commit()
+            conn.close()
             history.append(current)
+        _LIFECYCLE[f"{tenant_id}:{key}"]=history
         changes=[]
         if previous:
             if previous.evidence_signature != current.evidence_signature:
@@ -211,14 +249,16 @@ def record_lifecycle(assets, evidence: list[dict], tenant_id: str) -> list[dict]
             "fingerprint":key,"value":value,"type":asset_type,
             "state":"new" if previous is None else ("changed" if changes else "stable"),
             "first_seen":history[0].observed_at if history else now,
-            "last_seen":now,"observations":len(history),
+            "last_seen":history[-1].observed_at if history else now,"observations":len(history),
             "confidence":asset.confidence,"evidence_count":evidence_count,
             "changes":changes,"sources":list(sources),"tags":list(tags),"evidence_refs":list(evidence_refs),
         })
     return out
 
+
 def lifecycle_for(fingerprint: str, tenant_id: str) -> dict:
-    history=_LIFECYCLE.get(f"{tenant_id}:{fingerprint}",[])
+    history=_persistent_lifecycle_history(fingerprint,tenant_id)
+    _LIFECYCLE[f"{tenant_id}:{fingerprint}"]=history
     if not history:
         return {"state":"unknown","observations":0,"timeline":[]}
     return {
@@ -232,6 +272,7 @@ def lifecycle_for(fingerprint: str, tenant_id: str) -> dict:
             "sources":list(x.sources),"tags":list(x.tags),"evidence_refs":list(x.evidence_refs)
         } for x in history]
     }
+
 
 def record_discovery_run(assets, evidence: list[dict], tenant_id: str, run_id: str) -> dict:
     """Persist a complete observed surface and return an evidence-backed diff."""
