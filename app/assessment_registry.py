@@ -173,13 +173,25 @@ class AssessmentRegistry:
                 except Exception:
                     states.append(False)
             available = sum(1 for state in states if state)
+            backend_count = len(states)
             operational = available > 0
+            backend_coverage_percent = round(
+                100 * available / max(1, backend_count)
+            )
             rows.append({
                 "name": capability,
-                "status": "ready" if providers and available == len(states) else "partial" if operational else "unavailable",
+                "status": (
+                    "ready"
+                    if providers and available == backend_count
+                    else "degraded"
+                    if operational
+                    else "unavailable"
+                ),
                 "operational": operational,
                 "available_backends": available,
-                "backend_count": len(states),
+                "backend_count": backend_count,
+                "backend_coverage_percent": backend_coverage_percent,
+                "redundant_backends": max(0, available - 1),
             })
         return rows
 
