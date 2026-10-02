@@ -114,7 +114,23 @@ def claim_next_job(lease_seconds:int=600)->dict|None:
     conn=_db()
     try:
         conn.execute("BEGIN IMMEDIATE")
-        row=conn.execute("SELECT * FROM assessment_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+        row=conn.execute(
+            """SELECT q.*
+            FROM assessment_jobs q
+            LEFT JOIN (
+                SELECT tenant_id, MAX(COALESCE(started_at,created_at)) AS last_started
+                FROM assessment_jobs
+                WHERE status='running'
+                GROUP BY tenant_id
+            ) r ON r.tenant_id=q.tenant_id
+            WHERE q.status='queued'
+            ORDER BY
+                CASE WHEN r.last_started IS NULL THEN 0 ELSE 1 END,
+                COALESCE(r.last_started,0),
+                q.created_at,
+                q.job_id
+            LIMIT 1"""
+        ).fetchone()
         if not row:
             conn.commit()
             return None
