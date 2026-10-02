@@ -251,3 +251,25 @@ def test_many_workers_claim_each_job_at_most_once(tmp_path, monkeypatch):
     assert len(ids)==len(jobs)
     assert len(set(ids))==len(jobs)
     assert all(token for _,token in claimed)
+
+
+
+def test_tenant_fair_scheduler_does_not_starve_other_tenants(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    tenant_a=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    tenant_b=SimpleNamespace(
+        tenant_id="tenant-b",user_id="user-b",email="b@example.org",role="admin",name="Admin B",
+    )
+
+    a1=job_queue.enqueue_assessment(tenant_a,"a1.example.org","surface","AUTH-A1")
+    job_queue.enqueue_assessment(tenant_a,"a2.example.org","surface","AUTH-A2")
+    b1=job_queue.enqueue_assessment(tenant_b,"b1.example.org","surface","AUTH-B1")
+
+    first=job_queue.claim_next_job()
+    assert first["job_id"]==a1["job_id"]
+
+    second=job_queue.claim_next_job()
+    assert second["job_id"]==b1["job_id"]
+    assert second["tenant_id"]=="tenant-b"
