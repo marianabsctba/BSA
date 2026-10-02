@@ -209,8 +209,13 @@ def test_infrastructure_correlation_endpoint():
 def test_discovery_infrastructure_contract():
     h=auth()
     r=client.post("/api/v1/discovery/example.com/infrastructure",headers=h)
-    assert r.status_code in (200,403)
-    if r.status_code==200:
+    assert r.status_code in (200,202,403)
+    if r.status_code==202:
+        data=r.json()
+        assert data["status"]=="queued"
+        assert data["job_id"]
+        assert data["operation"]=="discovery.infrastructure"
+    elif r.status_code==200:
         data=r.json()
         assert "discovery" in data and "links" in data and "cluster_strength" in data
 
@@ -218,8 +223,13 @@ def test_discovery_infrastructure_contract():
 def test_infrastructure_graph_contract():
     h=auth()
     r=client.post("/api/v1/discovery/example.com/infrastructure/graph",headers=h)
-    assert r.status_code in (200,403)
-    if r.status_code==200:
+    assert r.status_code in (200,202,403)
+    if r.status_code==202:
+        data=r.json()
+        assert data["status"]=="queued"
+        assert data["job_id"]
+        assert data["operation"]=="discovery.infrastructure_graph"
+    elif r.status_code==200:
         data=r.json()
         assert "nodes" in data and "edges" in data and "summary" in data
         for e in data["edges"]:
@@ -239,8 +249,13 @@ def test_easm_overview_contract():
 def test_bounded_easm_discovery_contract():
     h=auth()
     r=client.post("/api/v1/easm/discover/example.com?max_depth=0&max_assets=5",headers=h)
-    assert r.status_code in (200,403)
-    if r.status_code==200:
+    assert r.status_code in (200,202,403)
+    if r.status_code==202:
+        data=r.json()
+        assert data["status"]=="queued"
+        assert data["job_id"]
+        assert data["operation"]=="easm.discover"
+    elif r.status_code==200:
         data=r.json()
         assert data["summary"]["discovered_targets"]<=5
         assert data["summary"]["max_depth_reached"]<=0
@@ -255,8 +270,13 @@ def test_easm_discovery_rejects_unbounded_parameters():
 def test_easm_lifecycle_contract():
     h=auth()
     r=client.post("/api/v1/easm/lifecycle/example.com",headers=h)
-    assert r.status_code in (200,403)
-    if r.status_code==200:
+    assert r.status_code in (200,202,403)
+    if r.status_code==202:
+        data=r.json()
+        assert data["status"]=="queued"
+        assert data["job_id"]
+        assert data["operation"]=="easm.lifecycle"
+    elif r.status_code==200:
         data=r.json()
         assert "summary" in data and "assets" in data
         assert data["summary"]["new"] + data["summary"]["changed"] + data["summary"]["stable"] == data["summary"]["assets"]
