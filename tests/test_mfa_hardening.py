@@ -17,8 +17,16 @@ def test_mfa_secret_is_encrypted_at_rest(tmp_path, monkeypatch):
     monkeypatch.setattr(auth, "DB_PATH", str(tmp_path / "auth.db"))
     monkeypatch.setattr(auth, "JWT_SECRET", "x" * 48)
     principal=_principal()
+    password="CorrectHorseBattery1!"
+    conn=auth._db()
+    conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)",(principal.tenant_id,"Demo"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        (principal.user_id,principal.tenant_id,principal.email,principal.name,auth._hash(password),principal.role,1),
+    )
+    conn.commit(); conn.close()
 
-    enrolled=auth.mfa_enroll(principal)
+    enrolled=auth.mfa_enroll(principal,password)
     assert enrolled["secret"]
 
     conn=auth._db()
@@ -52,8 +60,6 @@ def test_legacy_plaintext_mfa_secret_is_migrated_on_read(tmp_path, monkeypatch):
 def test_mfa_login_attempts_are_throttled_after_valid_password(tmp_path, monkeypatch):
     monkeypatch.setattr(auth, "DB_PATH", str(tmp_path / "auth.db"))
     monkeypatch.setattr(auth, "JWT_SECRET", "z" * 48)
-    auth._LOGIN_ATTEMPTS.clear()
-    auth._IP_LOGIN_ATTEMPTS.clear()
 
     conn=auth._db()
     conn.execute("INSERT OR IGNORE INTO tenants(id,name) VALUES(?,?)",("tenant-demo","Demo"))
@@ -71,5 +77,11 @@ def test_mfa_login_attempts_are_throttled_after_valid_password(tmp_path, monkeyp
     for _ in range(6):
         assert auth.authenticate("user@example.org","CorrectHorseBattery1!","203.0.113.50","000000") is None
 
-    key="mfa-login:user-1:203.0.113.50"
-    assert auth._LOGIN_ATTEMPTS[key]["until"] > 0
+    conn=auth._db()
+    row=conn.execute(
+        "SELECT blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("mfa-login","user-1:203.0.113.50"),
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert int(row["blocked_until"]) > 0
