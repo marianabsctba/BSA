@@ -20,7 +20,7 @@ PROFILES = {
     "surface": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "tlsx", "gau"),
     "rapid": ("httpx", "tlsx", "nuclei"),
     "network": ("dnsx", "httpx", "naabu", "nmap"),
-    "balanced": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "openvas", "naabu", "nmap", "cti", "threatfox", "hibp", "hudsonrock", "leak", "trufflehog"),
+    "balanced": ("subfinder", "amass", "assetfinder", "alterx", "puredns", "dnsx", "asnmap", "httpx", "whatweb", "tlsx", "testssl", "gau", "katana", "safeweb", "zap", "cloud", "nuclei", "naabu", "nmap", "cti", "threatfox", "hibp", "hudsonrock", "leak", "trufflehog"),
 }
 
 DISCOVERY_PROVIDERS = {"subfinder", "amass", "assetfinder", "alterx"}
