@@ -508,12 +508,20 @@ def ctem_remediation_coverage(items: list[dict]) -> dict:
     }
 
 
-def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -> dict:
+def ctem_operational_summary(
+    items: list[dict],
+    as_of: datetime | None = None,
+    sla_policy=None,
+) -> dict:
     """Return deterministic CTEM aging/SLA indicators for active work."""
+    from .tenant_sla_policy import TenantSLAPolicy, sla_threshold_hours
+
     now=as_of or datetime.now(timezone.utc)
     active=[x for x in items if x.get("state") not in {"verified"}]
     overdue=0
     oldest_age_hours=0
+    evaluated=0
+    policy=sla_policy or TenantSLAPolicy(tenant_id="default")
     for item in active:
         try:
             created=datetime.fromisoformat(str(item["created_at"]).replace("Z","+00:00"))
@@ -522,12 +530,19 @@ def ctem_operational_summary(items: list[dict], as_of: datetime | None = None) -
             age=0
         oldest_age_hours=max(oldest_age_hours,int(age))
         p=int(item.get("priority",0) or 0)
-        threshold=24 if p>=85 else 48 if p>=70 else 168 if p>=45 else None
-        if threshold is not None and age>threshold:
+        threshold=sla_threshold_hours(p,policy)
+        evaluated+=1
+        if age>threshold:
             overdue+=1
-    return {**ctem_leverage_summary(items),
-            "overdue_items":overdue,
-            "oldest_active_age_hours":oldest_age_hours}
+    compliance=round(100*(evaluated-overdue)/evaluated) if evaluated else 100
+    return {
+        **ctem_leverage_summary(items),
+        "overdue_items":overdue,
+        "oldest_active_age_hours":oldest_age_hours,
+        "sla_compliance":compliance,
+        "sla_breaches":overdue,
+        "sla_policy_version":int(getattr(policy,"version",1)),
+    }
 
 
 def ctem_operation_result(tenant_id: str, operation_key: str) -> dict | None:
