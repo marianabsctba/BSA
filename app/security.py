@@ -1,5 +1,8 @@
 import ipaddress, os, socket
+import tldextract
 from urllib.parse import urlparse
+
+_TLD_EXTRACT=tldextract.TLDExtract(suffix_list_urls=None)
 
 def _public_ip(ip):
     obj=ipaddress.ip_address(ip)
@@ -29,12 +32,17 @@ def validate_external_target(target: str) -> tuple[str,str]:
     parsed=urlparse(candidate)
     if parsed.scheme not in {"http","https"} or not parsed.hostname:
         raise ValueError("target inválido")
-    host=parsed.hostname
+    host=parsed.hostname.rstrip(".").lower()
     try:
         ipaddress.ip_address(host)
-        if not _public_ip(host): raise ValueError("private or reserved target blocked")
+        if not _public_ip(host):
+            raise ValueError("private or reserved target blocked")
     except ValueError as exc:
-        if "blocked" in str(exc): raise
+        if "blocked" in str(exc):
+            raise
+        extracted=_TLD_EXTRACT(host)
+        if not extracted.domain or not extracted.suffix:
+            raise ValueError("target must use a registrable public domain")
         resolve_public(host)
     return host, f"{parsed.scheme}://{host}"
 
