@@ -8,10 +8,10 @@ WRONG_PASSWORD = "WrongPassword123!"
 EMAIL = "rate-limit@example.org"
 
 
-def _seed_user(auth, db_path):
-    auth.DB_PATH = str(db_path)
-    auth.JWT_SECRET = "j" * 48
-    auth.MFA_KEY = "m" * 48
+def _seed_user(auth, monkeypatch, db_path):
+    monkeypatch.setattr(auth, "DB_PATH", str(db_path))
+    monkeypatch.setattr(auth, "JWT_SECRET", "j" * 48)
+    monkeypatch.setattr(auth, "MFA_KEY", "m" * 48)
     conn = auth._db()
     conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)", ("tenant-rate", "Rate Limit"))
     conn.execute(
@@ -33,7 +33,7 @@ def _seed_user(auth, db_path):
 def test_login_blocks_correct_password_after_account_threshold(tmp_path, monkeypatch):
     from app import auth
 
-    _seed_user(auth, tmp_path / "auth.db")
+    _seed_user(auth, monkeypatch, tmp_path / "auth.db")
     client = TestClient(app)
 
     for _ in range(8):
@@ -62,7 +62,7 @@ def test_distributed_ips_cannot_bypass_account_throttle(tmp_path, monkeypatch):
     from app import auth
     from app.api.routers import auth as auth_router
 
-    _seed_user(auth, tmp_path / "auth-distributed.db")
+    _seed_user(auth, monkeypatch, tmp_path / "auth-distributed.db")
     monkeypatch.setattr(
         auth_router,
         "_client_ip",
