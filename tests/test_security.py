@@ -138,3 +138,40 @@ def test_distributed_failures_do_not_globally_lock_account(tmp_path, monkeypatch
         "target@example.org","CorrectHorseBattery1!","203.0.113.200"
     )
     assert token is not None
+
+
+def test_shared_nat_failures_do_not_block_valid_password(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","n"*48)
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-nat","Tenant NAT"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("good-user","tenant-nat","good@example.org","Good",auth._hash("CorrectHorseBattery1!"),"analyst",1),
+    )
+    conn.commit(); conn.close()
+
+    ip="198.51.100.200"
+    for i in range(21):
+        assert auth.authenticate(
+            f"missing-{i}@example.invalid",
+            "WrongPassword123!",
+            ip,
+        ) is None
+
+    conn=auth._db()
+    row=conn.execute(
+        "SELECT blocked_until FROM auth_rate_limits WHERE bucket=? AND identity=?",
+        ("login-ip",ip),
+    ).fetchone()
+    conn.close()
+    assert row is not None and int(row["blocked_until"])>0
+
+    token=auth.authenticate(
+        "good@example.org",
+        "CorrectHorseBattery1!",
+        ip,
+    )
+    assert token is not None
