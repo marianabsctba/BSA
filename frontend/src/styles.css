@@ -1308,3 +1308,37 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .ctem-lifecycle-actions input{width:100%;background:#080b10;border:1px solid var(--line);border-radius:9px;color:#fff;padding:10px 11px;font-size:10px;outline:0}
 .ctem-lifecycle-actions input:focus{border-color:#ff2d8450}
 .ctem-lifecycle-actions .primary{justify-content:center}
+
+
+/* FIRST-RUN ONBOARDING */
+.first-run{
+ display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px;
+ margin:0 0 18px;padding:20px;border:1px solid #ff2d8434;border-radius:18px;
+ background:
+  radial-gradient(circle at 12% 18%,#ff2d8415,transparent 34%),
+  linear-gradient(145deg,#111720,#0a0f15);
+ box-shadow:inset 0 1px #ffffff08,0 18px 50px #0003
+}
+.first-run-copy{display:flex;flex-direction:column;justify-content:center}
+.first-run-copy h2{margin:7px 0 9px;max-width:640px;color:#f5f7fa;font-size:26px;line-height:1.08}
+.first-run-copy>p{max-width:650px;margin:0;color:#909baa;font-size:11px;line-height:1.6}
+.first-run-copy>small{display:block;margin-top:13px;color:#6f7a89;font:7px "DM Mono";line-height:1.6}
+.first-run-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px}
+.first-run-actions button{display:flex;align-items:center;gap:7px}
+.first-run-steps{display:grid;gap:9px}
+.first-run-step{
+ display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:11px;align-items:start;
+ padding:13px;border:1px solid #273140;border-radius:13px;background:#0b1118
+}
+.first-run-step>span{padding-top:2px;color:#ff6aa8;font:800 8px "DM Mono";letter-spacing:.1em}
+.first-run-step>svg{color:#aab6c4}
+.first-run-step b{display:block;color:#edf1f5;font-size:10px}
+.first-run-step p{margin:5px 0 0;color:#758193;font-size:9px;line-height:1.48}
+@media(max-width:900px){.first-run{grid-template-columns:1fr}}
+@media(max-width:560px){
+ .first-run{padding:15px}
+ .first-run-copy h2{font-size:22px}
+ .first-run-actions{flex-direction:column}
+ .first-run-actions button{width:100%;justify-content:center}
+ .first-run-step{grid-template-columns:auto auto minmax(0,1fr)}
+}
