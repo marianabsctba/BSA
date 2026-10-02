@@ -17,7 +17,7 @@ from .exposure import exposure_breakdown, exposure_band
 from .discovery import collect_target, discover_surface, adaptive_discovery
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
+from .store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_state
 from .correlation import correlate_evidence
 from .history import record_observations, list_ctem_items, update_ctem_state, upsert_ctem_item, verify_ctem_item, ctem_leverage_summary, ctem_operational_summary, ctem_remediation_coverage, ctem_verification_history, ctem_audit_timeline, ctem_audit_integrity, ctem_audit_diff, ctem_audit_outcome, ctem_queue_view, ctem_queue_filter, ctem_queue_page, ctem_next_action, ctem_action_transition, ctem_action_idempotency_key, ctem_claim_operation, ctem_operation_result, ctem_store_operation_result, change_summary, record_lifecycle, lifecycle_for
 from .prioritization import prioritize_finding
@@ -1087,6 +1087,7 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
             }, principal.tenant_id)
             created_ctem += 1
 
+    persist_state(STORE_ASSETS, STORE_FINDINGS)
     return {
         "assets_created": created_assets,
         "findings_created": created_findings,
