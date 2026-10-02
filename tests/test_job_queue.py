@@ -264,8 +264,14 @@ def test_tenant_fair_scheduler_does_not_starve_other_tenants(tmp_path, monkeypat
     )
 
     a1=job_queue.enqueue_assessment(tenant_a,"a1.example.org","surface","AUTH-A1")
-    job_queue.enqueue_assessment(tenant_a,"a2.example.org","surface","AUTH-A2")
+    a2=job_queue.enqueue_assessment(tenant_a,"a2.example.org","surface","AUTH-A2")
     b1=job_queue.enqueue_assessment(tenant_b,"b1.example.org","surface","AUTH-B1")
+
+    conn=job_queue._db()
+    conn.execute("UPDATE assessment_jobs SET created_at=? WHERE job_id=?",(1,a1["job_id"]))
+    conn.execute("UPDATE assessment_jobs SET created_at=? WHERE job_id=?",(2,a2["job_id"]))
+    conn.execute("UPDATE assessment_jobs SET created_at=? WHERE job_id=?",(3,b1["job_id"]))
+    conn.commit(); conn.close()
 
     first=job_queue.claim_next_job()
     assert first["job_id"]==a1["job_id"]
