@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.api.routers import digital_risk as digital_risk_router
 from app import auth
 from app import digital_risk
 from app.models import Asset, AssetType
