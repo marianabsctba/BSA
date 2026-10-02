@@ -482,6 +482,8 @@ def run_assessment(
                 internal["external_target_filtered"] += 1
                 continue
             for provider_name in FOLLOWUP_PROVIDERS:
+                if provider_name in adaptive_suppressed:
+                    continue
                 if not budget_available():
                     break
                 try:
@@ -499,6 +501,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=round((time.monotonic() - call_started) * 1000),
                         result_count=len(results),
+                        provider_telemetry=internal["provider_telemetry"],
                     )
                     for result in results:
                         payload = asdict(result)
@@ -527,6 +530,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=0,
                         error=True,
+                        provider_telemetry=internal["provider_telemetry"],
                     )
                     internal["errors"].append(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "followup"}
@@ -538,6 +542,8 @@ def run_assessment(
                 break
             internal["vulnerability_followup_targets"].append(child)
             for provider_name in VULN_FOLLOWUP_PROVIDERS:
+                if provider_name in adaptive_suppressed:
+                    continue
                 if not budget_available():
                     break
                 try:
@@ -561,6 +567,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=round((time.monotonic() - call_started) * 1000),
                         result_count=len(results),
+                        provider_telemetry=internal["provider_telemetry"],
                     )
                     for result in results:
                         payload = asdict(result)
@@ -581,6 +588,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=0,
                         error=True,
+                        provider_telemetry=internal["provider_telemetry"],
                     )
                     internal["errors"].append(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "vulnerability-followup"}
