@@ -60,8 +60,8 @@ def test_pilot_smoke_queue_worker_materialization_and_ctem(tmp_path, monkeypatch
     assert completed["result"]["finding_count"] == 1
     assert completed["materialized"] is False
 
-    monkeypatch.setattr(main, "STORE_ASSETS", [])
-    monkeypatch.setattr(main, "STORE_FINDINGS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_ASSETS", [])
+    monkeypatch.setattr(graph_assessment_router, "STORE_FINDINGS", [])
     monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
     monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
 
