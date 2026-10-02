@@ -64,3 +64,15 @@ def test_vulnerability_routes_live_outside_main():
     assert '@app.get("/api/v1/findings")' not in main_source
     assert '@router.get("/api/v1/vulnerabilities/intelligence")' in router_source
     assert '@router.get("/api/v1/findings")' in router_source
+
+
+def test_ctem_read_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/ctem.py").read_text(encoding="utf-8")
+    assert "app.include_router(ctem_router)" in main_source
+    assert '@app.get("/api/v1/ctem/operations")' not in main_source
+    assert '@app.get("/api/v1/ctem/queue")' not in main_source
+    assert '@router.get("/api/v1/ctem/operations")' in router_source
+    assert '@router.get("/api/v1/ctem/queue")' in router_source
