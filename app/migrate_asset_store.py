@@ -73,6 +73,8 @@ def migrate_state(
     dry_run: bool=False,
 ) -> dict:
     source_summary=state_summary(assets,findings)
+    source_assets=_payload_index(assets)
+    source_findings=_payload_index(findings)
     tenant_ids=sorted({
         *(asset.tenant_id for asset in assets),
         *(finding.tenant_id for finding in findings),
@@ -111,8 +113,6 @@ def migrate_state(
         migrated_assets.extend(tenant_assets)
         migrated_findings.extend(destination.list_findings(tenant_id))
 
-    source_assets=_payload_index(assets)
-    source_findings=_payload_index(findings)
     target_assets=_payload_index(migrated_assets)
     target_findings=_payload_index(migrated_findings)
 
