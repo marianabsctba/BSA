@@ -392,3 +392,106 @@ def test_production_profile_blocks_historically_unreliable_capability(monkeypatc
     assert rapid["ready"] is False
     assert rapid["readiness_blockers"]==["historical_reliability"]
     assert rapid["historical_reliability"]["unreliable_capabilities"]==["vulnerability"]
+
+
+
+def test_adaptive_backend_plan_defers_only_when_redundancy_preserves_coverage(monkeypatch):
+    from app import assessment_orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "PROFILES", {"rapid": ("backend-a", "backend-b")})
+    monkeypatch.setattr(orchestrator, "PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint": ("backend-a", "backend-b")},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "provider_reliability",
+        lambda providers, window_hours=168, min_calls=3: {
+            "backend-a": {"status": "unreliable"},
+            "backend-b": {"status": "stable"},
+        },
+    )
+    monkeypatch.setattr(orchestrator.registry, "available", lambda name, target=None: True)
+
+    suppressed, protected = orchestrator._adaptive_suppressed_providers(
+        "rapid",
+        "example.com",
+    )
+
+    assert suppressed == {"backend-a"}
+    assert protected == {"fingerprint"}
+
+
+def test_adaptive_backend_plan_never_drops_unique_capability_path(monkeypatch):
+    from app import assessment_orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "PROFILES", {"rapid": ("backend-a",)})
+    monkeypatch.setattr(orchestrator, "PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint": ("backend-a",)},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "provider_reliability",
+        lambda providers, window_hours=168, min_calls=3: {
+            "backend-a": {"status": "unreliable"},
+        },
+    )
+
+    suppressed, protected = orchestrator._adaptive_suppressed_providers(
+        "rapid",
+        "example.com",
+    )
+
+    assert suppressed == set()
+    assert protected == set()
+
+
+def test_public_adaptive_degradation_hides_backend_identity(monkeypatch):
+    from app import assessment_orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "PROFILES", {"rapid": ("backend-a", "backend-b")})
+    monkeypatch.setattr(orchestrator, "PROFILE_CAPABILITIES", {"rapid": ("fingerprint",)})
+    monkeypatch.setattr(orchestrator, "PROFILE_OPTIONAL_CAPABILITIES", {"rapid": ()})
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "CAPABILITY_PROVIDERS",
+        {"fingerprint": ("backend-a", "backend-b")},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_adaptive_suppressed_providers",
+        lambda profile, target: ({"backend-a"}, {"fingerprint"}),
+    )
+    monkeypatch.setattr(orchestrator.registry, "available", lambda name, target=None: True)
+    monkeypatch.setattr(orchestrator.registry, "execute", lambda name, target: [])
+    monkeypatch.setattr(
+        orchestrator.registry,
+        "capability_health",
+        lambda target=None, capabilities=None: [{
+            "name": "fingerprint",
+            "status": "ready",
+            "operational": True,
+            "available_backends": 2,
+            "backend_count": 2,
+            "backend_coverage_percent": 100,
+            "redundant_backends": 1,
+        }],
+    )
+    monkeypatch.setattr(orchestrator, "record_capability_execution", lambda metrics: None)
+    monkeypatch.setattr(orchestrator, "record_provider_execution", lambda metrics: None)
+
+    result = orchestrator.run_public_assessment("example.com", profile="rapid")
+    adaptive = result["coverage"]["adaptive_degradation"]
+
+    assert adaptive == {
+        "deferred_backend_count": 1,
+        "protected_capabilities": ["fingerprint"],
+        "coverage_preserved": True,
+    }
+    assert "backend-a" not in str(result)
+    assert "backend-b" not in str(result)
