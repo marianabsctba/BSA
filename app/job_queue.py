@@ -57,8 +57,52 @@ def _db():
     if "materialization_started_at" not in cols:
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN materialization_started_at INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_jobs_tenant_status ON assessment_jobs(tenant_id,status,created_at)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS worker_heartbeats(
+        worker_id TEXT PRIMARY KEY,
+        last_seen_at INTEGER NOT NULL
+    )""")
     conn.commit()
     return conn
+
+
+def touch_worker(worker_id:str="default", now:int|None=None)->dict:
+    now=int(now or time.time())
+    conn=_db()
+    conn.execute(
+        """INSERT INTO worker_heartbeats(worker_id,last_seen_at) VALUES(?,?)
+           ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at""",
+        (worker_id,now),
+    )
+    conn.commit(); conn.close()
+    return {"worker_id":worker_id,"last_seen_at":now}
+
+
+def worker_health(now:int|None=None, stale_seconds:int=120)->dict:
+    """Return observable worker liveness without mutating queue state."""
+    now=int(now or time.time())
+    path=_db_path()
+    if not Path(path).exists():
+        return {"status":"unknown","workers":0,"active_workers":0,"stale_workers":0,"last_seen_age_seconds":None}
+    try:
+        conn=sqlite3.connect(path,timeout=5)
+        conn.row_factory=sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+        rows=conn.execute("SELECT worker_id,last_seen_at FROM worker_heartbeats").fetchall()
+        conn.close()
+    except sqlite3.Error:
+        return {"status":"unknown","workers":0,"active_workers":0,"stale_workers":0,"last_seen_age_seconds":None}
+    if not rows:
+        return {"status":"unknown","workers":0,"active_workers":0,"stale_workers":0,"last_seen_age_seconds":None}
+    ages=[max(0,now-int(r["last_seen_at"])) for r in rows]
+    active=sum(1 for age in ages if age<=max(30,int(stale_seconds)))
+    stale=len(rows)-active
+    return {
+        "status":"healthy" if active else "degraded",
+        "workers":len(rows),
+        "active_workers":active,
+        "stale_workers":stale,
+        "last_seen_age_seconds":min(ages),
+    }
 
 
 def enqueue_assessment(principal,target:str,profile:str,authorization_ref:str)->dict:
