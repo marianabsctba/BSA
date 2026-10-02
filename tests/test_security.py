@@ -93,3 +93,48 @@ def test_totp_helpers_validate_codes():
     code=_totp(secret,int(time.time())//30)
     assert verify_totp(secret,code)
     assert not verify_totp(secret,"000000" if code!="000000" else "999999")
+
+
+def test_client_ip_trusts_forwarded_header_only_from_internal_proxy(monkeypatch):
+    from starlette.requests import Request
+    from app import main
+
+    monkeypatch.setenv("BSA_TRUST_PROXY_HEADERS","1")
+
+    internal=Request({
+        "type":"http","method":"POST","path":"/api/v1/auth/login",
+        "headers":[(b"x-real-ip",b"198.51.100.44")],
+        "client":("172.18.0.5",12345),"server":("test",80),"scheme":"http","query_string":b"",
+    })
+    assert main._client_ip(internal)=="198.51.100.44"
+
+    direct=Request({
+        "type":"http","method":"POST","path":"/api/v1/auth/login",
+        "headers":[(b"x-real-ip",b"203.0.113.99")],
+        "client":("8.8.8.8",12345),"server":("test",80),"scheme":"http","query_string":b"",
+    })
+    assert main._client_ip(direct)=="8.8.8.8"
+
+
+def test_distributed_failures_do_not_globally_lock_account(tmp_path, monkeypatch):
+    from app import auth
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    monkeypatch.setattr(auth,"JWT_SECRET","x"*48)
+    conn=auth._db()
+    conn.execute("INSERT INTO tenants(id,name) VALUES(?,?)",("tenant-a","Tenant A"))
+    conn.execute(
+        "INSERT INTO users(id,tenant_id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("user-a","tenant-a","target@example.org","Target",auth._hash("CorrectHorseBattery1!"),"analyst",1),
+    )
+    conn.commit(); conn.close()
+
+    for i in range(8):
+        assert auth.authenticate(
+            "target@example.org","WrongPassword123!",f"198.51.100.{i+1}"
+        ) is None
+
+    token=auth.authenticate(
+        "target@example.org","CorrectHorseBattery1!","203.0.113.200"
+    )
+    assert token is not None
