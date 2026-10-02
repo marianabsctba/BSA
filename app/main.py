@@ -50,6 +50,7 @@ from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materializ
 from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
+from .retention import get_retention_policy, set_retention_policy, retention_preview, apply_retention
 
 bootstrap()
 bootstrap_scope()
@@ -767,6 +768,14 @@ class ScanGrantCreateRequest(BaseModel):
     ttl_seconds: int = Field(default=3600, ge=60, le=2592000)
 
 
+class RetentionPolicyRequest(BaseModel):
+    retention_days: int = Field(ge=30, le=3650)
+
+
+class RetentionApplyRequest(BaseModel):
+    execute: bool = False
+
+
 
 
 
@@ -883,6 +892,41 @@ def audit_events(request: Request, limit: int = 100):
         return list_audit(p, limit)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/tenant/retention")
+def tenant_retention_get(request: Request):
+    p=current_principal(request)
+    return get_retention_policy(p.tenant_id)
+
+
+@app.patch("/api/v1/tenant/retention")
+def tenant_retention_update(request: Request, payload: RetentionPolicyRequest):
+    p=current_principal(request)
+    try:
+        result=set_retention_policy(p,payload.retention_days)
+        audit(p,"update","tenant_retention",p.tenant_id,{"retention_days":payload.retention_days})
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tenant/retention/apply")
+def tenant_retention_apply(request: Request, payload: RetentionApplyRequest):
+    p=current_principal(request)
+    try:
+        if not payload.execute:
+            return {"dry_run":True,**retention_preview(p.tenant_id)}
+        result=apply_retention(p)
+        audit(p,"apply","tenant_retention",p.tenant_id,{
+            "retention_days":result["retention_days"],
+            "deleted_total":result["deleted_total"],
+        })
+        return {"dry_run":False,**result}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
 
 
 @app.get("/api/v1/tenant/settings")
