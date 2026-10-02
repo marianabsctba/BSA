@@ -467,7 +467,7 @@ def create_ip_ownership_approval(
     conn.commit(); conn.close()
     return {
         "approval_id":approval_id,
-        "tenant_id":principal.tenant_id,
+        "tenant_id":target_tenant,
         "ip":str(ip),
         "authorization_ref":ref,
         "evidence_type":evidence,
