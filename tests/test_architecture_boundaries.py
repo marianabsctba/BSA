@@ -87,3 +87,12 @@ def test_ctem_mutation_routes_live_outside_main():
     assert '@app.post("/api/v1/ctem/{item_id}/state")' not in main_source
     assert '@router.post("/api/v1/ctem/{item_id}/verify")' in router_source
     assert '@router.post("/api/v1/ctem/{item_id}/state")' in router_source
+
+
+def test_ctem_retest_route_lives_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/ctem.py").read_text(encoding="utf-8")
+    assert '@app.post("/api/v1/ctem/{item_id}/retest")' not in main_source
+    assert '@router.post("/api/v1/ctem/{item_id}/retest")' in router_source
