@@ -14,7 +14,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 |---|---|---:|---|---|
 | BSA-01 | Escalonamento vertical via papel customizado com users:write | P0 | Implementado; regressão criada | CI verde + reteste impedindo promoção/criação de admin por papel delegado |
 | BSA-02 | SSRF / varredura de rede interna no assessment e motores | P0 | Implementado; worker isolado da rede AI | CI verde + reteste de loopback/RFC1918/link-local/CGNAT/nome interno + validação de follow-ups |
-| BSA-03 | Grant autodeclarado / wildcard / escopo amplo | P0 | Implementado parcialmente | CI verde + segregação + limites de escopo + prova de posse + política para sobreposição entre tenants |
+| BSA-03 | Grant autodeclarado / wildcard / escopo amplo | P0 | Concluído e validado no CI | CI verde + segregação + limites de escopo + prova de posse + política para sobreposição entre tenants |
 | BSA-04 | Caminho padrão de execução inseguro | P0 | Implementado | CI verde + README seguro + compose sem segredo/senha default + bind localhost |
 | BSA-05 | DoS de login por IP do proxy / conta-alvo | P1 | Concluído e validado no CI | IP real confiável no proxy + throttle persistente sem lockout global abusável + regressões |
 | BSA-06 | Enumeração de usuário por timing | P1 | Concluído e validado no CI | Hash fictício PBKDF2 para usuário ausente + regressão |
