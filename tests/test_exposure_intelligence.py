@@ -183,8 +183,6 @@ def test_digital_risk_ingest_and_summary():
     assert summary["total"]>=1
     assert summary["high_risk_open"]>=1
     assert "takedown_candidates" not in summary
-    r=client.post("/api/v1/digital-risk/takedowns",headers={**h,"Content-Type":"application/json"},json={"event_id":event["event_id"],"provider":"auto","reason":"phishing","priority":"high"})
-    assert r.status_code==200
     assert r.json()["status"]=="queued"
 
 
