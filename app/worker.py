@@ -9,9 +9,9 @@ from .scope import active_scan_in_scope
 from .scan_authorization import authorization_grant_valid
 
 
-def _heartbeat(job_id:str,stop:threading.Event):
+def _heartbeat(job_id:str,run_token:str,stop:threading.Event):
     while not stop.wait(30):
-        if not heartbeat_job(job_id):
+        if not heartbeat_job(job_id,run_token=run_token):
             return
 
 
@@ -38,8 +38,9 @@ def run_once()->bool:
             from .job_queue import fail_job
             fail_job(job["job_id"],"active scan authorization grant expired or revoked")
             return True
+    run_token=job.get("run_token")
     stop=threading.Event()
-    heartbeat=threading.Thread(target=_heartbeat,args=(job["job_id"],stop),daemon=True)
+    heartbeat=threading.Thread(target=_heartbeat,args=(job["job_id"],run_token,stop),daemon=True)
     heartbeat.start()
     try:
         result=run_public_assessment(
@@ -53,9 +54,9 @@ def run_once()->bool:
                 )
             ),
         )
-        complete_job(job["job_id"],result)
+        complete_job(job["job_id"],result,run_token=run_token)
     except Exception as exc:
-        retry_or_fail_job(job["job_id"],str(exc))
+        retry_or_fail_job(job["job_id"],str(exc),run_token=run_token)
     finally:
         stop.set()
         heartbeat.join(timeout=1)
