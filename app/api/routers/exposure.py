@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from ...auth import audit
 from ...ctem_store import get_plan, list_plans, upsert_plan
+from ...engine_health import public_engine_health
 from ...exposure import exposure_band, exposure_breakdown
 from ...exposure_dna import build_exposure_dna
 from ...graph import build_risk_graph
@@ -27,6 +28,12 @@ from ..dependencies import require
 
 
 router=APIRouter()
+
+
+@router.get("/api/v1/exposure/engines/health")
+def exposure_engines_health(request: Request):
+    require(request,"assets:read")
+    return public_engine_health()
 
 
 def tenant_scope(principal):
