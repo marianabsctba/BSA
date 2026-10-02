@@ -14,8 +14,8 @@ def resolve_public(hostname: str) -> list[str]:
     host=hostname.strip().rstrip(".")
     try:
         infos=socket.getaddrinfo(host,None,type=socket.SOCK_STREAM)
-    except socket.gaierror:
-        return []
+    except OSError as exc:
+        raise ValueError("target could not be resolved") from exc
     ips=sorted({item[4][0] for item in infos})
     if not ips:
         raise ValueError("target could not be resolved")
