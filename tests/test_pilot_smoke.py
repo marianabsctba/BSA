@@ -64,6 +64,15 @@ def test_pilot_smoke_queue_worker_materialization_and_ctem(tmp_path, monkeypatch
 
     ctem = []
     monkeypatch.setattr(main, "upsert_ctem_item", lambda item, tenant_id: ctem.append((tenant_id, item)))
+    monkeypatch.setattr(
+        main,
+        "assess_ctem_priority",
+        lambda finding, asset: {
+            "priority": 80,
+            "action": "expedite",
+            "drivers": ["pilot smoke deterministic risk"],
+        },
+    )
 
     materialized = main._materialize_assessment_result(principal, completed["result"])
 
