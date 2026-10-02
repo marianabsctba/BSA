@@ -52,6 +52,14 @@ def _runtime_budget() -> dict:
     }
 
 
+PROFILE_OPTIONAL_CAPABILITIES = {
+    "surface": (),
+    "rapid": (),
+    "network": (),
+    "balanced": ("credential_exposure", "intelligence"),
+}
+
+
 PROFILE_CAPABILITIES = {
     "surface": ("discovery", "dns_intelligence", "network_intelligence", "fingerprint", "certificate_intelligence", "historical_surface", "cloud_intelligence"),
     "rapid": ("fingerprint", "certificate_intelligence", "vulnerability"),
@@ -353,21 +361,28 @@ def run_assessment(
         public["findings"].extend(cloud)
         public["finding_count"] = len(public["findings"])
     capability_health = registry.capability_health(target, PROFILE_CAPABILITIES[profile])
-    operational_capabilities = sum(1 for row in capability_health if row.get("operational"))
-    requested_capabilities = len(PROFILE_CAPABILITIES[profile])
+    optional_capabilities = set(PROFILE_OPTIONAL_CAPABILITIES.get(profile, ()))
+    core_health = [row for row in capability_health if row.get("name") not in optional_capabilities]
+    optional_health = [row for row in capability_health if row.get("name") in optional_capabilities]
+    operational_capabilities = sum(1 for row in core_health if row.get("operational"))
+    requested_capabilities = len(core_health)
     capability_coverage_percent = round(
         100 * operational_capabilities / max(1, requested_capabilities)
     )
+    optional_operational = sum(1 for row in optional_health if row.get("operational"))
 
     public.update(
         {
             "profile": profile,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
+            "optional_capabilities": sorted(optional_capabilities),
             "partial_coverage": bool(internal["errors"]) or internal["budget_exhausted"] or operational_capabilities < requested_capabilities,
             "coverage": {
                 "requested_capabilities": requested_capabilities,
                 "operational_capabilities": operational_capabilities,
                 "capability_coverage_percent": capability_coverage_percent,
+                "optional_capabilities": len(optional_health),
+                "optional_operational_capabilities": optional_operational,
                 "capability_status": capability_health,
                 "evidence_count": public["finding_count"],
                 "raw_evidence_count": raw_finding_count,
