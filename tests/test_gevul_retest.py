@@ -28,6 +28,7 @@ def test_ctem_retest_queues_authorized_assessment(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(main, "STORE_ASSETS", [asset])
     monkeypatch.setattr(main, "STORE_FINDINGS", [])
+    monkeypatch.setattr(main, "tenant_scope", lambda principal, assets, findings: ([asset], []))
     monkeypatch.setattr(main, "require", lambda request, permission: principal)
     monkeypatch.setattr(main, "govern_active_scan", lambda request, principal, target, authorization_ref=None: "AUTH-RETEST")
     monkeypatch.setattr(main, "audit", lambda *args, **kwargs: None)
