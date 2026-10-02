@@ -49,6 +49,7 @@ from .assessment_registry import registry
 from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization
 from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
+from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
 
 bootstrap()
 bootstrap_scope()
@@ -114,6 +115,8 @@ def govern_active_scan(http_request: Request, principal, target: str, authorizat
     ref=(authorization_ref or http_request.headers.get("X-Authorization-Ref","")).strip()
     if IS_PRODUCTION and not ref:
         raise HTTPException(status_code=400,detail="authorization_ref is required for active scans")
+    if IS_PRODUCTION and not authorization_grant_valid(principal,ref,target):
+        raise HTTPException(status_code=403,detail="authorization_ref is expired, revoked, or not valid for target")
     if not active_scan_in_scope(principal,target):
         raise HTTPException(status_code=403,detail="target not authorized for active scanning")
     rate_key=f"{principal.tenant_id}:{principal.user_id}"
@@ -757,6 +760,13 @@ class TenantPurgeRequest(BaseModel):
     preserve_audit: bool = True
 
 
+class ScanGrantCreateRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    authorization_ref: str = Field(min_length=1, max_length=200)
+    pattern: str = Field(min_length=1, max_length=253)
+    ttl_seconds: int = Field(default=3600, ge=60, le=2592000)
+
+
 
 
 
@@ -812,6 +822,45 @@ def scan_scopes_assign(request: Request, payload: ScopeAssignRequest):
         raise HTTPException(status_code=403,detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+@app.get("/api/v1/scan-authorizations")
+def scan_authorizations(request: Request):
+    p=require(request,"users:read")
+    try:
+        return list_authorization_grants(p)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+
+
+@app.post("/api/v1/scan-authorizations")
+def scan_authorizations_create(request: Request, payload: ScanGrantCreateRequest):
+    p=current_principal(request)
+    try:
+        result=create_authorization_grant(
+            p,payload.user_id,payload.authorization_ref,payload.pattern,payload.ttl_seconds
+        )
+        audit(p,"create","scan_authorization",result["grant_id"],{
+            "user_id":payload.user_id,"pattern":payload.pattern,"expires_at":result["expires_at"],
+        })
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.post("/api/v1/scan-authorizations/{grant_id}/revoke")
+def scan_authorizations_revoke(grant_id: str, request: Request):
+    p=current_principal(request)
+    try:
+        result=revoke_authorization_grant(p,grant_id)
+        audit(p,"revoke","scan_authorization",grant_id,{})
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404,detail=str(exc)) from exc
+
 
 @app.get("/api/v1/groups")
 def groups(request: Request):
@@ -1281,6 +1330,8 @@ def exposure_assessment(payload: AssessmentRequest, request: Request):
         raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
 
     if IS_PRODUCTION:
+        if not authorization_grant_valid(principal,payload.authorization_ref,payload.target):
+            raise HTTPException(status_code=403,detail="authorization_ref is expired, revoked, or not valid for target")
         job=enqueue_assessment(principal,payload.target,payload.profile,payload.authorization_ref)
         audit(
             principal,"queue","exposure_assessment",payload.target,
