@@ -66,6 +66,7 @@ from .api.routers.vulnerabilities import router as vulnerabilities_router
 from .api.routers.ctem import router as ctem_router
 from .api.routers.integrations import router as integrations_router
 from .api.routers.admin import router as admin_router
+from .api.routers.auth import router as auth_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -88,6 +89,7 @@ app.include_router(vulnerabilities_router)
 app.include_router(ctem_router)
 app.include_router(integrations_router)
 app.include_router(admin_router)
+app.include_router(auth_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -220,20 +222,6 @@ def active_operation_job(job_id: str, request: Request):
         "result":job.get("result"),
     }
 
-
-@app.post("/api/v1/auth/logout")
-def auth_logout(request: Request):
-    principal=current_principal(request)
-    auth=request.headers.get("Authorization","")
-    token=auth.split(" ",1)[1] if auth.lower().startswith("bearer ") else request.cookies.get("bsa_session","")
-    try:
-        claims=__import__("app.auth",fromlist=["_decode"])._decode(token)
-        revoke_session(principal,claims.get("jti"))
-    except Exception:
-        revoke_session(principal)
-    response=JSONResponse({"ok":True})
-    response.delete_cookie("bsa_session",path="/")
-    return response
 
 @app.get("/health")
 def health():
@@ -631,11 +619,6 @@ def graph(request: Request):
 
 
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str = Field(min_length=8, max_length=256)
-    mfa_code: str | None = Field(default=None, min_length=6, max_length=64)
-
 class ScopeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     pattern: str = Field(min_length=1, max_length=253)
@@ -686,140 +669,6 @@ def require(request: Request, permission: str):
     if not can(principal, permission):
         raise HTTPException(status_code=403, detail="permission denied")
     return principal
-
-
-@app.get("/api/v1/auth/mfa")
-def auth_mfa_status(request: Request):
-    p=current_principal(request)
-    return mfa_status(p)
-
-class MFAEnrollRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=256)
-    current_mfa_code: str | None = Field(default=None, min_length=6, max_length=64)
-
-@app.post("/api/v1/auth/mfa/enroll")
-def auth_mfa_enroll(request: Request, payload: MFAEnrollRequest):
-    p=current_principal(request)
-    if not rate_limit_action("mfa-enroll", p.user_id, limit=5, window_seconds=300):
-        raise HTTPException(status_code=429, detail="too many MFA enrollment attempts")
-    try:
-        result=mfa_enroll(p,payload.current_password,payload.current_mfa_code)
-        audit(p,"enroll","mfa")
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-    
-class MFAEnableRequest(BaseModel):
-    code: str = Field(min_length=6,max_length=6)
-
-@app.post("/api/v1/auth/mfa/enable")
-def auth_mfa_enable(request: Request, payload: MFAEnableRequest):
-    p=current_principal(request)
-    if not rate_limit_action("mfa-enable", p.user_id, limit=5, window_seconds=300):
-        raise HTTPException(status_code=429, detail="too many MFA attempts")
-    try:
-        if not mfa_enable(p,payload.code): raise HTTPException(status_code=400,detail="invalid MFA code")
-        recovery_codes=issue_mfa_recovery_codes(p)
-        audit(p,"enable","mfa")
-        return {"enabled":True,"recovery_codes":recovery_codes}
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc))
-    
-class MFAReauthRequest(BaseModel):
-    current_password: str = Field(min_length=1,max_length=256)
-    current_mfa_code: str = Field(min_length=6,max_length=64)
-
-class MFAPolicyRequest(BaseModel):
-    required_roles: list[str] = Field(default_factory=list)
-
-@app.post("/api/v1/auth/mfa/recovery-codes")
-def auth_mfa_recovery_codes(request: Request, payload: MFAReauthRequest):
-    p=current_principal(request)
-    if not rate_limit_action("mfa-recovery", p.user_id, limit=3, window_seconds=300):
-        raise HTTPException(status_code=429,detail="too many MFA recovery attempts")
-    try:
-        codes=generate_mfa_recovery_codes(p,payload.current_password,payload.current_mfa_code)
-        audit(p,"rotate_recovery_codes","mfa")
-        return {"recovery_codes":codes}
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-
-@app.post("/api/v1/auth/mfa/disable")
-def auth_mfa_disable(request: Request, payload: MFAReauthRequest):
-    p=current_principal(request)
-    if not rate_limit_action("mfa-disable", p.user_id, limit=3, window_seconds=300):
-        raise HTTPException(status_code=429,detail="too many MFA disable attempts")
-    try:
-        mfa_disable(p,payload.current_password,payload.current_mfa_code)
-        audit(p,"disable","mfa")
-        return {"enabled":False}
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-
-@app.get("/api/v1/tenant/security/mfa")
-def tenant_mfa_policy_get(request: Request):
-    p=current_principal(request)
-    if p.role not in {"admin","superadmin"} and not can(p,"tenant:manage"):
-        raise HTTPException(status_code=403,detail="admin required")
-    return tenant_mfa_policy(p.tenant_id)
-
-@app.put("/api/v1/tenant/security/mfa")
-def tenant_mfa_policy_update(request: Request, payload: MFAPolicyRequest):
-    p=current_principal(request)
-    try:
-        result=set_tenant_mfa_policy(p,payload.required_roles)
-        audit(p,"update","tenant_mfa_policy",p.tenant_id,{"required_roles":result["mfa_required_roles"]})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-
-@app.post("/api/v1/auth/login")
-def login(payload: LoginRequest, request: Request):
-    token = authenticate(payload.email, payload.password, _client_ip(request), payload.mfa_code)
-    if not token:
-        raise HTTPException(status_code=401, detail="invalid credentials")
-    principal = principal_from_token(token)
-    audit(principal, "login", "session")
-    response = JSONResponse({"token_type": "bearer", "expires_in": TOKEN_TTL,
-                             "user": {"id": principal.user_id, "email": principal.email, "name": principal.name, "role": principal.role, "tenant_id": principal.tenant_id}})
-    response.set_cookie("bsa_session", token, httponly=True, secure=os.getenv("BSA_ENV","development").lower() in {"production","prod"}, samesite="strict", max_age=TOKEN_TTL, path="/")
-    return response
-
-
-class ChangeOwnPasswordRequest(BaseModel):
-    current_password: str = Field(min_length=1,max_length=256)
-    new_password: str = Field(min_length=12,max_length=256)
-
-@app.post("/api/v1/auth/change-password")
-def auth_change_password(request: Request, payload: ChangeOwnPasswordRequest):
-    p=current_principal(request)
-    if not rate_limit_action("change-password",p.user_id,limit=5,window_seconds=300):
-        raise HTTPException(status_code=429,detail="too many password change attempts")
-    try:
-        result=change_own_password(p,payload.current_password,payload.new_password)
-        audit(p,"change_password","user",p.user_id)
-        response=JSONResponse(result)
-        response.delete_cookie("bsa_session",path="/")
-        return response
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc))
-
-@app.get("/api/v1/auth/me")
-def me(request: Request):
-    p = current_principal(request)
-    tenant=tenant_settings(p)
-    return {"id": p.user_id, "email": p.email, "name": p.name, "role": p.role, "tenant_id": p.tenant_id, "tenant_name":tenant["name"], "locale":tenant["locale"]}
-
-
 
 
 class TenantLocaleRequest(BaseModel):
@@ -1107,14 +956,6 @@ def tenant_settings_update(request: Request, payload: TenantLocaleRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400,detail=str(exc)) from exc
 
-
-@app.get("/api/v1/auth/permissions")
-def auth_permissions(request: Request):
-    p=current_principal(request)
-    try:
-        return {"role":p.role,"permissions":role_permissions(p.role,p.tenant_id)}
-    except ValueError as exc:
-        raise HTTPException(status_code=403,detail="invalid role permissions") from exc
 
 class DiscoveryRequest(BaseModel):
     target: str = Field(min_length=1, max_length=253)
