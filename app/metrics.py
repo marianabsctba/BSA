@@ -1,16 +1,17 @@
 import math
 import threading
 from collections import defaultdict
+from typing import DefaultDict
 
 from .job_queue import queue_health, queue_metrics, worker_health
 
 _LOCK=threading.Lock()
-_HTTP_REQUESTS=defaultdict(int)
-_HTTP_ERRORS=defaultdict(int)
-_HTTP_DURATION_COUNT=defaultdict(int)
-_HTTP_DURATION_SUM=defaultdict(float)
+_HTTP_REQUESTS: DefaultDict[tuple[str,str,str],int]=defaultdict(int)
+_HTTP_ERRORS: DefaultDict[tuple[str,str],int]=defaultdict(int)
+_HTTP_DURATION_COUNT: DefaultDict[tuple[str,str],int]=defaultdict(int)
+_HTTP_DURATION_SUM: DefaultDict[tuple[str,str],float]=defaultdict(float)
 _HTTP_DURATION_BUCKETS=(10,25,50,100,250,500,1000,2500,5000,10000)
-_HTTP_BUCKET_COUNTS=defaultdict(lambda:[0 for _ in _HTTP_DURATION_BUCKETS])
+_HTTP_BUCKET_COUNTS: DefaultDict[tuple[str,str],list[int]]=defaultdict(lambda:[0 for _ in _HTTP_DURATION_BUCKETS])
 
 
 def record_http_metric(method: str, route: str, status_code: int, duration_ms: float) -> None:
