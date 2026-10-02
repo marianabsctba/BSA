@@ -1250,6 +1250,8 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 cvss=cvss,
                 detected_at=now,
                 source_refs=vuln_ctx["references"],
+                independent_source_count=vuln_ctx["independent_source_count"],
+                independently_corroborated=vuln_ctx["independently_corroborated"],
                 false_positive_confidence=vuln_ctx["false_positive_confidence"],
                 validation_state=vuln_ctx["validation_state"],
                 evidence_quality=vuln_ctx["evidence_quality"],
@@ -1292,6 +1294,15 @@ def _materialize_assessment_result(principal, result: dict) -> dict:
                 finding.evidence_quality = vuln_ctx["evidence_quality"]
             if vuln_ctx["references"]:
                 finding.source_refs = sorted(set(finding.source_refs + vuln_ctx["references"]))[:20]
+            finding.independent_source_count = max(
+                finding.independent_source_count,
+                vuln_ctx["independent_source_count"],
+            )
+            finding.independently_corroborated = (
+                finding.independently_corroborated
+                or vuln_ctx["independently_corroborated"]
+                or finding.independent_source_count >= 2
+            )
             if vuln_ctx["affected_component"]:
                 finding.affected_component = vuln_ctx["affected_component"]
                 if vuln_ctx["affected_component"] not in finding.affected_components:
