@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -81,6 +82,7 @@ def test_leak_analysis_never_returns_raw_secret():
 def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
     monkeypatch.setattr(digital_risk,"DB_PATH",str(tmp_path/"drp.db"))
     tenant_a=_principal("tenant-a")
+    now=datetime.now(timezone.utc).isoformat()
     asset_a=Asset(
         tenant_id="tenant-a",
         id="asset-a",
@@ -89,6 +91,8 @@ def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
         confidence=95,
         criticality=4,
         source="test",
+        first_seen=now,
+        last_seen=now,
     )
     asset_b=Asset(
         tenant_id="tenant-b",
@@ -98,6 +102,8 @@ def test_leak_api_links_only_same_tenant_assets(tmp_path, monkeypatch):
         confidence=95,
         criticality=4,
         source="test",
+        first_seen=now,
+        last_seen=now,
     )
 
     monkeypatch.setattr(main,"STORE_ASSETS",[asset_a,asset_b])
