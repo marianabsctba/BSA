@@ -27,7 +27,7 @@ from .auth import authenticate, rate_limit_action, bootstrap, can, role_permissi
 from .ctem_store import list_plans, get_plan, upsert_plan, history
 from .ctem_retest import reconcile_ctem_retest_job
 from .discovery_orchestrator import plan_candidate_collection
-from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user, create_domain_ownership_proof, verify_domain_ownership_proof
+from .scope import bootstrap_scope, asset_in_scope, active_scan_in_scope, create_scope, list_scopes, assign_scope, create_scan_scope, list_scan_scopes, assign_scan_scope, create_group, list_groups, list_user_scopes, list_user_scan_scopes, assign_scope_to_user, assign_scan_scope_to_user, create_domain_ownership_proof, verify_domain_ownership_proof, create_ip_ownership_approval
 from .asset_view import asset_detail
 from .asset_identity import normalize_asset_value
 from .exposure_dna import build_exposure_dna
@@ -804,6 +804,7 @@ class LoginRequest(BaseModel):
 class ScopeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     pattern: str = Field(min_length=1, max_length=253)
+    ownership_ref: str | None = Field(default=None, max_length=200)
 
 class ScopeAssignRequest(BaseModel):
     user_id: str
@@ -812,6 +813,12 @@ class ScopeAssignRequest(BaseModel):
 class DomainOwnershipProofRequest(BaseModel):
     domain: str = Field(min_length=3, max_length=253)
     method: str = Field(default="dns_txt", pattern="^(dns_txt|well_known)$")
+
+class IPOwnershipApprovalRequest(BaseModel):
+    ip: str = Field(min_length=3, max_length=64)
+    authorization_ref: str = Field(min_length=3, max_length=200)
+    evidence_type: str = Field(default="contract", pattern="^(contract|rdap|whois|asn|ptr)$")
+    ttl_seconds: int = Field(default=86400, ge=300, le=2592000)
 
 class GroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -1074,12 +1081,32 @@ def domain_ownership_proof_verify(proof_id: str, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400,detail=str(exc)) from exc
 
+@app.post("/api/v1/ip-ownership/approvals")
+def ip_ownership_approval_create(request: Request, payload: IPOwnershipApprovalRequest):
+    p=current_principal(request)
+    try:
+        result=create_ip_ownership_approval(
+            p,payload.ip,payload.authorization_ref,payload.evidence_type,payload.ttl_seconds
+        )
+        audit(p,"approve","ip_ownership",result["approval_id"],{
+            "ip":result["ip"],
+            "authorization_ref":result["authorization_ref"],
+            "evidence_type":result["evidence_type"],
+            "expires_at":result["expires_at"],
+        })
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
 @app.post("/api/v1/scan-scopes")
 def scan_scopes_create(request: Request, payload: ScopeCreateRequest):
     p=current_principal(request)
     try:
-        result=create_scan_scope(p,payload.name,payload.pattern)
-        audit(p,"create","scan_scope",result["id"],{"pattern":payload.pattern})
+        result=create_scan_scope(p,payload.name,payload.pattern,payload.ownership_ref)
+        audit(p,"create","scan_scope",result["id"],{"pattern":payload.pattern,"ownership_ref":payload.ownership_ref})
         return result
     except PermissionError as exc:
         raise HTTPException(status_code=403,detail=str(exc)) from exc
