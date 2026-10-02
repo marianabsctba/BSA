@@ -18,7 +18,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall app
       - name: Backend tests with coverage baseline
-        run: pytest -q --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+        run: pytest -q --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=70
 
       - name: Ruff critical lint
         run: ruff check app tests --select E9,F63,F7,F82
