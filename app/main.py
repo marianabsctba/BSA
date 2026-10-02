@@ -69,6 +69,7 @@ from .api.routers.admin import router as admin_router
 from .api.routers.auth import router as auth_router
 from .api.routers.operations import router as operations_router
 from .api.routers.scopes import router as scopes_router
+from .api.routers.governance import router as governance_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -94,6 +95,7 @@ app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(operations_router)
 app.include_router(scopes_router)
+app.include_router(governance_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -543,12 +545,6 @@ def graph(request: Request):
 
 
 
-class GroupCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    pattern: str = Field(min_length=1, max_length=253)
-
-
-
 def tenant_scope(principal, assets, findings):
     scoped_assets = [a for a in assets if getattr(a, "tenant_id", "tenant-demo") == principal.tenant_id and asset_in_scope(principal, a.value)]
     scoped_ids = {a.id for a in scoped_assets}
@@ -574,146 +570,6 @@ def require(request: Request, permission: str):
     if not can(principal, permission):
         raise HTTPException(status_code=403, detail="permission denied")
     return principal
-
-
-class TenantLocaleRequest(BaseModel):
-    locale: str = Field(pattern=r"^(pt-BR|en|es)$")
-
-
-class RetentionPolicyRequest(BaseModel):
-    retention_days: int = Field(ge=30, le=3650)
-
-
-class RetentionApplyRequest(BaseModel):
-    execute: bool = False
-
-
-
-
-
-
-@app.get("/api/v1/groups")
-def groups(request: Request):
-    p=require(request,"users:read")
-    return list_groups(p)
-
-@app.post("/api/v1/groups")
-def groups_create(request: Request, payload: GroupCreateRequest):
-    p=current_principal(request)
-    try:
-        result=create_group(p,payload.name,payload.pattern)
-        audit(p,"create","asset_group",result["id"],{"pattern":payload.pattern})
-        return result
-    except PermissionError as exc: raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-@app.get("/api/v1/audit")
-def audit_events(request: Request, limit: int = 100):
-    p = current_principal(request)
-    try:
-        return list_audit(p, limit)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-@app.get("/api/v1/audit/integrity")
-def audit_integrity(request: Request):
-    p=current_principal(request)
-    try:
-        return verify_audit_chain(p)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-
-@app.get("/api/v1/audit/export")
-def audit_export(request: Request, limit: int=500):
-    p=current_principal(request)
-    try:
-        rows=list_audit(p,limit)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    integrity=verify_audit_chain(p)
-    return {
-        "schema_version":"1.0",
-        "count":len(rows),
-        "integrity":integrity,
-        "events":audit_siem_events(rows,limit=limit),
-    }
-
-
-@app.post("/api/v1/audit/syslog/push")
-def audit_syslog_push(request: Request, limit: int=500):
-    p=current_principal(request)
-    if p.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403,detail="manager role required")
-    cfg=config_from_env()
-    if cfg is None:
-        raise HTTPException(status_code=400,detail="syslog not configured")
-    rows=list_audit(p,limit)
-    integrity=verify_audit_chain(p)
-    if not integrity.get("valid"):
-        raise HTTPException(status_code=409,detail="audit integrity check failed")
-    events=audit_siem_events(rows,limit=limit)
-    result=send_events(events,cfg,limit=limit)
-    audit(p,"push","audit.syslog",None,{
-        "requested":len(events),
-        "delivered":result.get("delivered",0),
-        "failed":result.get("failed",0),
-        "transport":cfg.transport,
-    })
-    return {"stream_count":len(events),"integrity":integrity,**result}
-
-
-@app.get("/api/v1/tenant/retention")
-def tenant_retention_get(request: Request):
-    p=current_principal(request)
-    return get_retention_policy(p.tenant_id)
-
-
-@app.patch("/api/v1/tenant/retention")
-def tenant_retention_update(request: Request, payload: RetentionPolicyRequest):
-    p=current_principal(request)
-    try:
-        result=set_retention_policy(p,payload.retention_days)
-        audit(p,"update","tenant_retention",p.tenant_id,{"retention_days":payload.retention_days})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
-
-
-@app.post("/api/v1/tenant/retention/apply")
-def tenant_retention_apply(request: Request, payload: RetentionApplyRequest):
-    p=current_principal(request)
-    try:
-        if not payload.execute:
-            return {"dry_run":True,**retention_preview(p.tenant_id)}
-        result=apply_retention(p)
-        audit(p,"apply","tenant_retention",p.tenant_id,{
-            "retention_days":result["retention_days"],
-            "deleted_total":result["deleted_total"],
-        })
-        return {"dry_run":False,**result}
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-
-
-@app.get("/api/v1/tenant/settings")
-def tenant_settings_get(request: Request):
-    p=current_principal(request)
-    return tenant_settings(p)
-
-@app.patch("/api/v1/tenant/settings")
-def tenant_settings_update(request: Request, payload: TenantLocaleRequest):
-    p=current_principal(request)
-    try:
-        result=update_tenant_locale(p,payload.locale)
-        audit(p,"update","tenant_settings",p.tenant_id,{"locale":payload.locale})
-        return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403,detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
 
 
 class DiscoveryRequest(BaseModel):
