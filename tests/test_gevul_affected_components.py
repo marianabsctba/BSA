@@ -1,12 +1,19 @@
 from app.auth import Principal
 from app.api.routers import graph_assessment as graph_assessment_router
+from app.repositories.assets_findings import AssetFindingRepository
 
 
 def test_same_cve_retains_multiple_observed_locations(monkeypatch):
-    monkeypatch.setattr(graph_assessment_router, "STORE_ASSETS", [])
-    monkeypatch.setattr(graph_assessment_router, "STORE_FINDINGS", [])
+    assets=[]
+    findings=[]
+    repository=AssetFindingRepository(assets,findings)
+    monkeypatch.setattr(
+        graph_assessment_router,
+        "asset_finding_repository",
+        lambda: repository,
+    )
     monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
-    monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
+    monkeypatch.setattr(repository, "persist", lambda: None)
     monkeypatch.setattr(graph_assessment_router, "enrich_finding", lambda finding: finding)
     monkeypatch.setattr(
         graph_assessment_router,
@@ -47,9 +54,9 @@ def test_same_cve_retains_multiple_observed_locations(monkeypatch):
 
     assert first["findings_created"] == 1
     assert second["findings_created"] == 0
-    assert len(graph_assessment_router.STORE_FINDINGS) == 1
+    assert len(findings) == 1
 
-    finding = graph_assessment_router.STORE_FINDINGS[0]
+    finding = findings[0]
     assert set(finding.affected_components) == {
         "https://api.example.org/login",
         "https://api.example.org/admin",
