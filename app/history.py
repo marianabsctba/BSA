@@ -38,6 +38,11 @@ def _history_db():
         result TEXT NOT NULL, evidence_refs_json TEXT NOT NULL, notes TEXT NOT NULL,
         verified_at TEXT NOT NULL)""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_verification_tenant_item ON ctem_verifications(tenant_id,item_id,verified_at)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS ctem_transitions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL,
+        action TEXT NOT NULL, from_state TEXT NOT NULL, to_state TEXT NOT NULL,
+        actor_id TEXT, request_id TEXT, transitioned_at TEXT NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctem_transition_tenant_item ON ctem_transitions(tenant_id,item_id,transitioned_at,id)")
     conn.execute("CREATE TABLE IF NOT EXISTS lifecycle_snapshots(tenant_id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,asset_type TEXT NOT NULL,observed_at TEXT NOT NULL,confidence INTEGER NOT NULL,evidence_count INTEGER NOT NULL,evidence_signature TEXT NOT NULL,sources_json TEXT NOT NULL,tags_json TEXT NOT NULL,PRIMARY KEY(tenant_id,fingerprint,observed_at))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lifecycle_tenant_fp ON lifecycle_snapshots(tenant_id,fingerprint,observed_at)")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(asset_observations)").fetchall()}
@@ -754,10 +759,10 @@ def ctem_audit_diff(before: dict, after: dict) -> dict:
     }
 
 
-def ctem_audit_integrity(item: dict, verifications: list[dict]) -> dict:
+def ctem_audit_integrity(item: dict, verifications: list[dict], transitions: list[dict] | None = None) -> dict:
     """Return stable integrity metadata for an audit timeline."""
     import hashlib, json
-    timeline=ctem_audit_timeline(item,verifications)
+    timeline=ctem_audit_timeline(item,verifications,transitions)
     canonical=json.dumps(timeline,ensure_ascii=False,sort_keys=True,separators=(",",":"))
     return {
         "algorithm":"sha256",
@@ -767,6 +772,56 @@ def ctem_audit_integrity(item: dict, verifications: list[dict]) -> dict:
     }
 
 
+def record_ctem_transition(item_id: str, tenant_id: str, action: str, from_state: str,
+                           to_state: str, actor_id: str | None = None,
+                           request_id: str | None = None) -> dict:
+    """Persist a tenant-scoped CTEM lifecycle action for auditability."""
+    now=datetime.now(timezone.utc).isoformat()
+    conn=_history_db()
+    conn.execute(
+        """INSERT INTO ctem_transitions(
+            tenant_id,item_id,action,from_state,to_state,actor_id,request_id,transitioned_at
+        ) VALUES(?,?,?,?,?,?,?,?)""",
+        (tenant_id,item_id,action,from_state,to_state,actor_id,request_id,now),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "event":"lifecycle",
+        "action":action,
+        "from_state":from_state,
+        "to_state":to_state,
+        "actor_id":actor_id,
+        "request_id":request_id,
+        "timestamp":now,
+        "evidence_refs":[],
+    }
+
+
+def ctem_transition_history(item_id: str, tenant_id: str) -> list[dict]:
+    """Return only lifecycle actions belonging to the requested tenant and CTEM item."""
+    conn=_history_db()
+    rows=conn.execute(
+        """SELECT action,from_state,to_state,actor_id,request_id,transitioned_at
+           FROM ctem_transitions
+           WHERE tenant_id=? AND item_id=?
+           ORDER BY transitioned_at,id""",
+        (tenant_id,item_id),
+    ).fetchall()
+    conn.close()
+    return [{
+        "event":"lifecycle",
+        "action":r["action"],
+        "from_state":r["from_state"],
+        "to_state":r["to_state"],
+        "actor_id":r["actor_id"],
+        "request_id":r["request_id"],
+        "timestamp":r["transitioned_at"],
+        "state":r["to_state"],
+        "evidence_refs":[],
+    } for r in rows]
+
+
 def ctem_verification_history(item_id: str, tenant_id: str) -> list[dict]:
     conn=_history_db()
     rows=conn.execute(
@@ -774,20 +829,22 @@ def ctem_verification_history(item_id: str, tenant_id: str) -> list[dict]:
         (tenant_id,item_id),
     ).fetchall()
     conn.close()
-    return [{"result":r["result"],"evidence_refs":json.loads(r["evidence_refs_json"] or "[]"),
+    return [{"result":r["result"],"state":"verified" if r["result"]=="passed" else "in_progress",
+             "evidence_refs":json.loads(r["evidence_refs_json"] or "[]"),
              "notes":r["notes"],"verified_at":r["verified_at"]} for r in rows]
 
 
-def ctem_audit_timeline(item: dict, verifications: list[dict]) -> list[dict]:
+def ctem_audit_timeline(item: dict, verifications: list[dict], transitions: list[dict] | None = None) -> list[dict]:
     """Return a chronological, evidence-linked CTEM audit timeline."""
     timeline=[{
         "event":"created",
         "timestamp":item.get("created_at"),
-        "state":item.get("state"),
+        "state":"new",
         "priority":int(item.get("priority",0) or 0),
         "evidence_refs":list(item.get("evidence_refs",[]) or []),
     }]
-    for verification in sorted(verifications,key=lambda x:str(x.get("verified_at",""))):
+    timeline.extend(list(transitions or []))
+    for verification in verifications:
         timeline.append({
             "event":"verification",
             "timestamp":verification.get("verified_at"),
@@ -796,7 +853,7 @@ def ctem_audit_timeline(item: dict, verifications: list[dict]) -> list[dict]:
             "evidence_refs":list(verification.get("evidence_refs",[]) or []),
             "notes":verification.get("notes",""),
         })
-    return timeline
+    return sorted(timeline,key=lambda x:(str(x.get("timestamp","")),0 if x.get("event")=="created" else 1))
 
 
 def verify_ctem_item(item_id: str, tenant_id: str, result: str, evidence_refs: list[str], notes: str = "") -> dict:
