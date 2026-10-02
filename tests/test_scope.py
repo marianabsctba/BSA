@@ -41,6 +41,10 @@ def test_active_scan_scope_is_separate_from_visibility_scope(tmp_path, monkeypat
     conn.commit(); conn.close()
 
     p=auth.Principal("u1","tenant-x","u1@example.org","admin","U1")
+    monkeypatch.setattr(scope,"_verify_dns_txt",lambda domain,challenge: True)
+    proof=scope.create_domain_ownership_proof(p,"example.org","dns_txt")
+    assert scope.verify_domain_ownership_proof(p,proof["proof_id"])["verified"] is True
+
     visible=scope.create_scope(p,"Visible","*.example.org")
     scope.assign_scope(p,"u1",visible["id"])
     assert scope.asset_in_scope(p,"api.example.org") is True
