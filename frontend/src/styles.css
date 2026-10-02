@@ -1283,3 +1283,11 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .explorer-body .radar-canvas{min-height:470px}
 .explorer-body .graph-node{max-width:150px}
 .chart-panel .chart{margin-top:6px;height:249px}
+
+
+.report-ops-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+.report-ops-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.report-ops-status>div{padding:14px;border:1px solid #273140;border-radius:12px;background:#0c1118}
+.report-ops-status span{display:block;color:#7b8796;font:8px "DM Mono";letter-spacing:.08em}
+.report-ops-status b{display:block;margin-top:5px;color:#ff6aa8;font:800 13px "DM Mono"}
+@media(max-width:850px){.report-ops-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
