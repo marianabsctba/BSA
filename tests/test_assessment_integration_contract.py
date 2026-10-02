@@ -291,7 +291,7 @@ def test_first_pass_out_of_scope_evidence_is_never_registered(monkeypatch):
                 "Outside evidence",
                 "info",
                 90,
-                {"asset": "outside.example.net", "status_code": 200},
+                {"asset": "1.1.1.1", "status_code": 200},
             )
         ],
     )
@@ -392,8 +392,7 @@ def test_assessment_budget_limits_followups_and_marks_partial(monkeypatch):
         calls.append((name, target))
         if name == "subfinder":
             return [
-                ProviderResult("child", "info", 80, {"asset": "a.example.org"}),
-                ProviderResult("child", "info", 80, {"asset": "b.example.org"}),
+                ProviderResult("child", "info", 80, {"asset": "www.example.org"}),
             ]
         return []
 
