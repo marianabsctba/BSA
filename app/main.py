@@ -91,8 +91,8 @@ app.add_middleware(
 async def request_observability(request: Request, call_next):
     request_id=request_id_from_header(request.headers.get("X-Request-ID"))
     request.state.request_id=request_id
+    request.state.authenticated_principal=None
     started=monotonic_ms()
-    tenant_id,user_id=identity_from_request(request)
     status_code=500
     try:
         response=await call_next(request)
@@ -102,14 +102,15 @@ async def request_observability(request: Request, call_next):
         duration_ms=max(0,monotonic_ms()-started)
         route_obj=request.scope.get("route")
         route_path=getattr(route_obj,"path",None) or request.url.path
+        principal=getattr(request.state,"authenticated_principal",None)
         log_http_event(
             request_id=request_id,
             method=request.method,
             path=route_path,
             status_code=status_code,
             duration_ms=duration_ms,
-            tenant_id=tenant_id,
-            user_id=user_id,
+            tenant_id=getattr(principal,"tenant_id",None),
+            user_id=getattr(principal,"user_id",None),
         )
         record_http_metric(request.method,route_path,status_code,duration_ms)
         if "response" in locals():
@@ -242,13 +243,22 @@ def auth_logout(request: Request):
 
 @app.get("/health")
 def health():
+    return {"status":"ok"}
+
+
+@app.get("/ready")
+def ready():
     data=runtime_health()
-    return {
-        **data,
-        "product":"BSA",
-        "version":"0.3.0",
-        "powered_by":"Mariana BS",
-    }
+    status_code=200 if data.get("status")=="healthy" else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            **data,
+            "product":"BSA",
+            "version":"0.3.0",
+            "powered_by":"Mariana BS",
+        },
+    )
 
 
 @app.get("/metrics")
@@ -844,7 +854,9 @@ def current_principal(request: Request):
     if not token:
         raise HTTPException(status_code=401, detail="authentication required")
     try:
-        return principal_from_token(token)
+        principal=principal_from_token(token)
+        request.state.authenticated_principal=principal
+        return principal
     except Exception as exc:
         raise HTTPException(status_code=401, detail="invalid or expired token") from exc
 
