@@ -611,7 +611,7 @@ def principal_from_token(token: str) -> Principal:
     if not session or session["revoked_at"] is not None or int(session["expires_at"]) < now:
         raise ValueError("session revoked or expired")
     last_seen=int(session["last_seen_at"] or session["created_at"] or 0)
-    if SESSION_IDLE_TIMEOUT > 0 and now-last_seen > SESSION_IDLE_TIMEOUT:
+    if SESSION_IDLE_TIMEOUT > 0 and now-last_seen >= SESSION_IDLE_TIMEOUT:
         conn=_db()
         conn.execute("UPDATE sessions SET revoked_at=? WHERE jti=?",(now,p["jti"]))
         conn.commit(); conn.close()
