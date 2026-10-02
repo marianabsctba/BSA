@@ -48,6 +48,7 @@ from .release_readiness import release_readiness
 from .assessment_registry import registry
 from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization
 from .auth import Principal
+from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 
 bootstrap()
 bootstrap_scope()
@@ -751,6 +752,11 @@ class TenantLocaleRequest(BaseModel):
     locale: str = Field(pattern=r"^(pt-BR|en|es)$")
 
 
+class TenantPurgeRequest(BaseModel):
+    execute: bool = False
+    preserve_audit: bool = True
+
+
 
 
 
@@ -842,6 +848,36 @@ def tenant_settings_update(request: Request, payload: TenantLocaleRequest):
         result=update_tenant_locale(p,payload.locale)
         audit(p,"update","tenant_settings",p.tenant_id,{"locale":payload.locale})
         return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tenants/{tenant_id}/retire")
+def tenant_retire(tenant_id: str, request: Request):
+    principal=current_principal(request)
+    try:
+        result=retire_tenant(principal,tenant_id)
+        audit(principal,"retire","tenant",tenant_id,{})
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tenants/{tenant_id}/purge")
+def tenant_purge(tenant_id: str, request: Request, payload: TenantPurgeRequest):
+    principal=current_principal(request)
+    if principal.role!="superadmin":
+        raise HTTPException(status_code=403,detail="superadmin required")
+    try:
+        if not payload.execute:
+            return {"dry_run":True,**tenant_purge_preview(tenant_id,preserve_audit=payload.preserve_audit)}
+        result=purge_tenant(principal,tenant_id,preserve_audit=payload.preserve_audit)
+        audit(principal,"purge","tenant",tenant_id,{"preserve_audit":payload.preserve_audit})
+        return {"dry_run":False,**result}
     except PermissionError as exc:
         raise HTTPException(status_code=403,detail=str(exc)) from exc
     except ValueError as exc:
