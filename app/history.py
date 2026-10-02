@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 
 def _history_db():
-    path=os.getenv("BSA_HISTORY_DB", str(Path("/tmp") / "bsa_history.db"))
+    path=os.getenv("BSA_HISTORY_DB", "/data/bsa_history.db" if os.getenv("BSA_ENV","development").lower() in {"production","prod"} else str(Path("/tmp") / "bsa_history.db"))
     conn=sqlite3.connect(path, timeout=15)
     conn.row_factory=sqlite3.Row
     conn.execute("PRAGMA busy_timeout=15000")
