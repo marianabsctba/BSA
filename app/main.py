@@ -935,6 +935,26 @@ def login(payload: LoginRequest, request: Request):
     return response
 
 
+class ChangeOwnPasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1,max_length=256)
+    new_password: str = Field(min_length=12,max_length=256)
+
+@app.post("/api/v1/auth/change-password")
+def auth_change_password(request: Request, payload: ChangeOwnPasswordRequest):
+    p=current_principal(request)
+    if not rate_limit_action("change-password",p.user_id,limit=5,window_seconds=300):
+        raise HTTPException(status_code=429,detail="too many password change attempts")
+    try:
+        result=change_own_password(p,payload.current_password,payload.new_password)
+        audit(p,"change_password","user",p.user_id)
+        response=JSONResponse(result)
+        response.delete_cookie("bsa_session",path="/")
+        return response
+    except PermissionError as exc:
+        raise HTTPException(status_code=403,detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
+
 @app.get("/api/v1/auth/me")
 def me(request: Request):
     p = current_principal(request)
