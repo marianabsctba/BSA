@@ -85,6 +85,41 @@ PROFILE_CAPABILITIES = {
 }
 
 
+def _provider_capabilities(provider_name: str) -> tuple[str, ...]:
+    return tuple(
+        capability
+        for capability, providers in registry.CAPABILITY_PROVIDERS.items()
+        if provider_name in providers
+    )
+
+
+def _record_capability_call(
+    telemetry: dict[str, dict],
+    provider_name: str,
+    *,
+    elapsed_ms: int,
+    result_count: int = 0,
+    error: bool = False,
+) -> None:
+    for capability in _provider_capabilities(provider_name):
+        row = telemetry.setdefault(
+            capability,
+            {"calls": 0, "execution_ms": 0, "raw_results": 0, "errors": 0},
+        )
+        row["calls"] += 1
+        row["execution_ms"] += max(0, int(elapsed_ms))
+        row["raw_results"] += max(0, int(result_count))
+        if error:
+            row["errors"] += 1
+
+
+def _capability_telemetry_public(telemetry: dict[str, dict]) -> list[dict]:
+    return [
+        {"name": name, **values}
+        for name, values in sorted(telemetry.items())
+    ]
+
+
 def _cloud_intelligence(findings: list[dict]) -> list[dict]:
     values = []
     for row in findings:
@@ -213,6 +248,7 @@ def run_assessment(
         "budget_exhausted": False,
         "execution_ms": 0,
         "provider_calls": 0,
+        "capability_telemetry": {},
         "attempted": [],
         "available": [],
         "deferred": [],
@@ -245,7 +281,14 @@ def run_assessment(
                 continue
             internal["available"].append(provider_name)
             internal["provider_calls"] += 1
+            call_started = time.monotonic()
             results = registry.execute(provider_name, target=target)
+            _record_capability_call(
+                internal["capability_telemetry"],
+                provider_name,
+                elapsed_ms=round((time.monotonic() - call_started) * 1000),
+                result_count=len(results),
+            )
             for result in results:
                 payload = asdict(result)
                 evidence = payload.get("evidence") or {}
@@ -270,6 +313,12 @@ def run_assessment(
                     if subject not in discovered_subjects and len(discovered_subjects) < budget["max_followup_targets"]:
                         discovered_subjects.append(subject)
         except Exception as exc:
+            _record_capability_call(
+                internal["capability_telemetry"],
+                provider_name,
+                elapsed_ms=0,
+                error=True,
+            )
             internal["errors"].append(
                 {
                     "provider": provider_name,
@@ -289,7 +338,14 @@ def run_assessment(
                     if not registry.available(provider_name, child):
                         continue
                     internal["provider_calls"] += 1
+                    call_started = time.monotonic()
                     results = registry.execute(provider_name, target=child)
+                    _record_capability_call(
+                        internal["capability_telemetry"],
+                        provider_name,
+                        elapsed_ms=round((time.monotonic() - call_started) * 1000),
+                        result_count=len(results),
+                    )
                     for result in results:
                         payload = asdict(result)
                         evidence = payload.get("evidence") or {}
@@ -310,6 +366,12 @@ def run_assessment(
                                 if url not in validated_web_subjects and len(validated_web_subjects) < budget["max_vulnerability_followup_targets"]:
                                     validated_web_subjects.append(str(url))
                 except Exception as exc:
+                    _record_capability_call(
+                        internal["capability_telemetry"],
+                        provider_name,
+                        elapsed_ms=0,
+                        error=True,
+                    )
                     internal["errors"].append(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "followup"}
                     )
@@ -329,7 +391,14 @@ def run_assessment(
                     if not registry.available(provider_name, child):
                         continue
                     internal["provider_calls"] += 1
+                    call_started = time.monotonic()
                     results = registry.execute(provider_name, target=child)
+                    _record_capability_call(
+                        internal["capability_telemetry"],
+                        provider_name,
+                        elapsed_ms=round((time.monotonic() - call_started) * 1000),
+                        result_count=len(results),
+                    )
                     for result in results:
                         payload = asdict(result)
                         evidence = payload.get("evidence") or {}
@@ -344,6 +413,12 @@ def run_assessment(
                             continue
                         engine.add_provider_result(provider_name, subject, payload)
                 except Exception as exc:
+                    _record_capability_call(
+                        internal["capability_telemetry"],
+                        provider_name,
+                        elapsed_ms=0,
+                        error=True,
+                    )
                     internal["errors"].append(
                         {"provider": provider_name, "error": exc.__class__.__name__, "phase": "vulnerability-followup"}
                     )
@@ -393,6 +468,9 @@ def run_assessment(
                 "budget_exhausted": internal["budget_exhausted"],
                 "execution_ms": internal["execution_ms"],
                 "provider_calls": internal["provider_calls"],
+                "capability_metrics": _capability_telemetry_public(
+                    internal["capability_telemetry"]
+                ),
             },
         }
     )
