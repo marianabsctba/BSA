@@ -1,7 +1,7 @@
 """Digital Risk Protection / CTI layer for BSA.
 
 Vendor-neutral primitives inspired by current DRP/EASM market patterns:
-brand abuse, phishing, leaks, VIP exposure, dark web, supply chain and takedown.
+brand abuse, phishing, leaks, VIP exposure, dark web and supply chain.
 """
 import os, sqlite3, json, time, uuid, hashlib
 from pathlib import Path
@@ -25,15 +25,8 @@ class DigitalRiskEvent(BaseModel):
     brand: str|None=None
     actor: str|None=None
 
-class TakedownRequest(BaseModel):
-    event_id: str
-    provider: str|None=None
-    reason: str="brand_abuse"
-    priority: str="high"
-
 
 SEVERITY_WEIGHT={"info":5,"low":20,"medium":45,"high":70,"critical":90}
-TAKEDOWN_CATEGORIES={"phishing","brand_abuse","fake_profile","fake_app","malware"}
 CREDENTIAL_CATEGORIES={"credential_leak","credentials","leak","data_leak"}
 
 def _normalized_event(event: dict) -> dict:
@@ -78,9 +71,8 @@ def event_risk(event: dict) -> dict:
     evidence_count=len(e.get("evidence") or {})
     evidence_component=min(12,evidence_count*3)
     asset_component=8 if e.get("asset_id") else 0
-    takedown_component=8 if e["category"] in TAKEDOWN_CATEGORIES else 0
     credential_component=10 if e["category"] in CREDENTIAL_CATEGORIES else 0
-    score=max(0,min(100,round(base*0.55+confidence_component+evidence_component+asset_component+takedown_component+credential_component)))
+    score=max(0,min(100,round(base*0.55+confidence_component+evidence_component+asset_component+credential_component)))
     if score>=85: band="critical"
     elif score>=70: band="high"
     elif score>=45: band="medium"
@@ -91,14 +83,12 @@ def event_risk(event: dict) -> dict:
     ]
     if evidence_count: reasons.append(f"evidence:{evidence_count}")
     if e.get("asset_id"): reasons.append("linked_asset")
-    if e["category"] in TAKEDOWN_CATEGORIES: reasons.append("takedown_candidate")
     if e["category"] in CREDENTIAL_CATEGORIES: reasons.append("credential_exposure")
     return {
         "score":score,
         "band":band,
         "reasons":reasons,
         "evidence_count":evidence_count,
-        "takedown_candidate":e["category"] in TAKEDOWN_CATEGORIES and e["status"]=="open",
     }
 
 def enrich_event(event: dict) -> dict:
@@ -111,11 +101,9 @@ def enrich_event(event: dict) -> dict:
         "risk_band":risk["band"],
         "risk_reasons":risk["reasons"],
         "evidence_count":risk["evidence_count"],
-        "takedown_candidate":risk["takedown_candidate"],
     }
 
-def summarize_events(events: list[dict], takedowns: list[dict]|None=None) -> dict:
-    takedowns=takedowns or []
+def summarize_events(events: list[dict]) -> dict:
     enriched=[enrich_event(x) for x in events]
     by_category={}
     by_severity={}
@@ -126,8 +114,6 @@ def summarize_events(events: list[dict], takedowns: list[dict]|None=None) -> dic
         by_severity[e["severity"]]=by_severity.get(e["severity"],0)+1
         by_status[e["status"]]=by_status.get(e["status"],0)+1
         by_source[e["source"]]=by_source.get(e["source"],0)+1
-    candidate_ids={e["event_id"] for e in enriched if e.get("takedown_candidate") and e.get("event_id")}
-    covered_ids={x.get("event_id") for x in takedowns if x.get("event_id")}
     high_risk=[e for e in enriched if int(e.get("risk_score",0))>=70 and e.get("status")=="open"]
     return {
         "total":len(enriched),
@@ -138,9 +124,6 @@ def summarize_events(events: list[dict], takedowns: list[dict]|None=None) -> dic
         "average_confidence":round(sum(int(e.get("confidence",0)) for e in enriched)/len(enriched)) if enriched else 0,
         "linked_assets":sum(1 for e in enriched if e.get("asset_id")),
         "credential_exposures":sum(1 for e in enriched if e.get("category") in CREDENTIAL_CATEGORIES and e.get("status")=="open"),
-        "takedown_candidates":len(candidate_ids),
-        "takedown_covered":len(candidate_ids & covered_ids),
-        "takedown_coverage_percent":round(100*len(candidate_ids & covered_ids)/len(candidate_ids)) if candidate_ids else 100,
         "by_category":by_category,
         "by_severity":by_severity,
         "by_status":by_status,
@@ -152,9 +135,6 @@ def _db():
     c.execute("""CREATE TABLE IF NOT EXISTS digital_risk(
       event_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS takedowns(
-      takedown_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, event_id TEXT NOT NULL,
-      payload TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)""")
     c.commit(); return c
 
 def upsert_event(tenant_id,event):
@@ -197,16 +177,6 @@ def list_events(tenant_id,category=None):
     if category: q+=" AND json_extract(payload,'$.category')=?"; args.append(category)
     rows=c.execute(q+" ORDER BY updated_at DESC",args).fetchall(); c.close()
     return [mask_public_data(enrich_event(json.loads(r["payload"]))) for r in rows]
-
-def create_takedown(tenant_id,event_id,provider,reason,priority):
-    tid=str(uuid.uuid4()); now=int(time.time())
-    p={"takedown_id":tid,"event_id":event_id,"provider":provider or "auto-routing","reason":reason,
-       "priority":priority,"status":"queued","attempts":0,"sla_hours":24,"timeline":[{"status":"queued","ts":now}]}
-    c=_db(); c.execute("INSERT INTO takedowns VALUES(?,?,?,?,?,?)",(tid,tenant_id,event_id,json.dumps(p),now,now)); c.commit(); c.close(); return p
-
-def list_takedowns(tenant_id):
-    c=_db(); rows=c.execute("SELECT payload FROM takedowns WHERE tenant_id=? ORDER BY updated_at DESC",(tenant_id,)).fetchall(); c.close()
-    return [json.loads(r["payload"]) for r in rows]
 
 
 class BrandAnalysis(BaseModel):
