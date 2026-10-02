@@ -74,7 +74,7 @@ def test_ctem_audit_does_not_resolve_other_tenant_item(monkeypatch):
     monkeypatch.setattr(main, "list_ctem_items", lambda tenant_id: [])
 
     with pytest.raises(ctem_router.HTTPException) as exc:
-        main.ctem_audit("tenant-b-item",None)
+        ctem_router.ctem_audit("tenant-b-item",None)
 
     assert exc.value.status_code==404
 
