@@ -2,7 +2,7 @@
 import os, sqlite3, time, json
 from pathlib import Path
 
-DB_PATH = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
+DB_PATH = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if os.getenv("BSA_ENV","development").lower() in {"production","prod"} else str(Path("/tmp") / "bsa_auth.db"))
 
 def _db():
     conn=sqlite3.connect(DB_PATH)
