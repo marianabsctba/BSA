@@ -59,6 +59,7 @@ from .syslog_export import config_from_env, send_event, send_events
 from .observability import request_id_from_header, identity_from_request, log_http_event, monotonic_ms
 from .runtime_health import runtime_health
 from .metrics import record_http_metric, prometheus_metrics, operational_alerts
+from .version import __version__
 
 bootstrap()
 bootstrap_scope()
@@ -74,7 +75,7 @@ class TenantSLAPolicyRequest(BaseModel):
 
 app = FastAPI(
     title="BSA — Be Safe ASM API",
-    version="0.3.0",
+    version=__version__,
     description="Attack Surface Management defensivo, rastreável e orientado a evidências.",
     docs_url=None if IS_PRODUCTION else "/docs",
     redoc_url=None if IS_PRODUCTION else "/redoc",
