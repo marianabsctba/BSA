@@ -596,11 +596,10 @@ def authenticate(email: str, password: str, client_ip: str = "", mfa_code: str |
         time.sleep(delay)
         return None
 
-    # Password is valid: clear primary credential throttles before entering
-    # the independent MFA challenge so MFA failures cannot poison the
-    # password/IP bucket or prevent the MFA limiter from taking effect.
+    # Password is valid: clear only the account-specific backoff. Keep the
+    # shared IP bucket intact so a successful login for one account cannot
+    # erase brute-force history accumulated against other accounts.
     _clear_rate_limit("login-account-backoff",account_client)
-    _clear_rate_limit("login-ip",ipkey)
 
     mfa_secret=mfa_secret_for_user(row["id"])
     if _tenant_role_requires_mfa(row["tenant_id"],row["role"]) and not mfa_secret:
