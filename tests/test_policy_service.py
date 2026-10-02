@@ -9,7 +9,9 @@ from app.policy_service import (
 
 def test_policy_service_persists_risk_and_sla(tmp_path, monkeypatch):
     monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
-    auth._db().close()
+    conn=auth._db()
+    auth._run_one_time_migrations(conn)
+    conn.close()
 
     risk=build_and_save_risk_policy(
         "tenant-a",
