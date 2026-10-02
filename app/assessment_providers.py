@@ -11,9 +11,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import time
-import xml.etree.ElementTree as ET
-from xml.sax.saxutils import escape
 from urllib.parse import urlparse, quote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -1013,178 +1010,6 @@ class HudsonRockProvider:
         ]
 
 
-class OpenVASProvider:
-    name = "openvas"
-    timeout = 180
-
-    def readiness(self) -> dict:
-        binary = bool(shutil.which("gvm-cli"))
-        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
-        config_id = os.getenv("BSA_GVM_SCAN_CONFIG_ID", "").strip()
-        scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
-        configured = bool(socket_path and config_id and scanner_id)
-        socket_ready = bool(socket_path and os.path.exists(socket_path))
-        probe_enabled = os.getenv("BSA_GVM_READINESS_PROBE", "0").strip().lower() in {"1", "true", "yes", "on"}
-        live = None
-        if binary and configured and socket_ready and probe_enabled:
-            live = self._probe()
-        ready = binary and configured and socket_ready and (live is not False)
-        return {
-            "installed": binary,
-            "configured": configured,
-            "socket_ready": socket_ready,
-            "live_probe_enabled": probe_enabled,
-            "live": live,
-            "ready": ready,
-        }
-
-    def _probe(self) -> bool:
-        binary = shutil.which("gvm-cli")
-        if not binary:
-            return False
-        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
-        command = [binary, "socket", "--socketpath", socket_path]
-        username = os.getenv("BSA_GVM_USERNAME", "").strip()
-        password = os.getenv("BSA_GVM_PASSWORD", "").strip()
-        if username:
-            command += ["--gmp-username", username]
-        if password:
-            command += ["--gmp-password", password]
-        command += ["--xml", "<get_version/>"]
-        try:
-            proc = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=min(10, self.timeout),
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        if proc.returncode != 0 or not proc.stdout.strip():
-            return False
-        try:
-            root = ET.fromstring(proc.stdout)
-        except ET.ParseError:
-            return False
-        status = str(root.attrib.get("status", "200"))
-        return status.startswith("2")
-
-    def available(self) -> bool:
-        return bool(self.readiness()["ready"])
-
-    def _gmp(self, xml: str) -> ET.Element | None:
-        binary = shutil.which("gvm-cli")
-        if not binary:
-            return None
-        socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
-        command = [binary, "socket", "--socketpath", socket_path]
-        username = os.getenv("BSA_GVM_USERNAME", "").strip()
-        password = os.getenv("BSA_GVM_PASSWORD", "").strip()
-        if username:
-            command += ["--gmp-username", username]
-        if password:
-            command += ["--gmp-password", password]
-        command += ["--xml", xml]
-        proc = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout, check=False)
-        if proc.returncode != 0 or not proc.stdout.strip():
-            return None
-        try:
-            return ET.fromstring(proc.stdout)
-        except ET.ParseError:
-            return None
-
-    def execute(self, target: str) -> list[ProviderResult]:
-        config_id = os.getenv("BSA_GVM_SCAN_CONFIG_ID", "").strip()
-        scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
-        if not config_id or not scanner_id:
-            return []
-        name = "bsa-" + str(abs(hash(target)))[:12]
-        created = self._gmp(
-            f"<create_target><name>{name}</name><hosts>{escape(target)}</hosts></create_target>"
-        )
-        target_id = created.attrib.get("id") if created is not None else None
-        if not target_id:
-            return []
-        task = self._gmp(
-            "<create_task>"
-            f"<name>{name}</name>"
-            f"<config id='{escape(config_id)}'/>"
-            f"<target id='{escape(target_id)}'/>"
-            f"<scanner id='{escape(scanner_id)}'/>"
-            "</create_task>"
-        )
-        task_id = task.attrib.get("id") if task is not None else None
-        if not task_id:
-            return []
-        started = self._gmp(f"<start_task task_id='{escape(task_id)}'/>")
-        report_id = started.findtext(".//report_id") if started is not None else None
-        if not report_id:
-            return []
-
-        deadline = time.time() + int(os.getenv("BSA_GVM_MAX_WAIT", "120"))
-        while time.time() < deadline:
-            status = self._gmp(f"<get_tasks task_id='{escape(task_id)}' details='1'/>")
-            state = (status.findtext(".//task/status") or "").strip().lower() if status is not None else ""
-            if state in {"done", "stopped", "interrupted"}:
-                break
-            time.sleep(3)
-
-        report = self._gmp(
-            f"<get_reports report_id='{escape(report_id)}' details='1' ignore_pagination='1'/>"
-        )
-        if report is None:
-            return []
-
-        out = []
-        for result in report.findall(".//result")[:250]:
-            name = (result.findtext("name") or "Vulnerability assessment finding").strip()
-            host = (result.findtext("host") or target).strip()
-            port = (result.findtext("port") or "").strip()
-            threat = (result.findtext("threat") or "Log").strip().lower()
-            raw_score = result.findtext("severity")
-            severity = {
-                "critical": "critical",
-                "high": "high",
-                "medium": "medium",
-                "low": "low",
-                "log": "info",
-            }.get(threat, "info")
-            cve = None
-            references = []
-            nvt = result.find("nvt")
-            if nvt is not None:
-                for ref in nvt.findall(".//ref"):
-                    ref_type = str(ref.attrib.get("type", "")).lower()
-                    ref_id = ref.attrib.get("id")
-                    if ref_id:
-                        references.append(str(ref_id))
-                    if ref_type == "cve" and not cve:
-                        cve = ref_id
-            try:
-                cvss = float(raw_score) if raw_score else None
-            except ValueError:
-                cvss = None
-            out.append(
-                ProviderResult(
-                    name,
-                    severity,
-                    90,
-                    {
-                        "asset": host,
-                        "port": port,
-                        "vulnerability_id": cve,
-                        "cvss": cvss,
-                        "reference": references[:20],
-                        "matched_at": f"{host}:{port}" if port else host,
-                        "validation_state": "confirmed_evidence" if cve else "observed",
-                        "relationship": "vulnerability-assessment",
-                    },
-                )
-            )
-        return out
-
-
 class ZAPProvider:
     name = "zap"
     timeout = 180
@@ -1269,7 +1094,6 @@ DEFAULT_PROVIDERS = [
     TestSslProvider,
     AsnIntelligenceProvider,
     SecretExposureProvider,
-    OpenVASProvider,
     ZAPProvider,
     ThreatIntelProvider,
     CredentialExposureProvider,
