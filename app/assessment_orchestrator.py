@@ -309,9 +309,6 @@ def run_assessment(
                     or target
                 )
                 subject = str(subject)
-                if not external_target_allowed(subject):
-                    internal["external_target_filtered"] += 1
-                    continue
                 if authorize is not None and not authorize(subject):
                     internal["scope_filtered"] += 1
                     continue
@@ -344,6 +341,9 @@ def run_assessment(
             if not budget_available():
                 break
             internal["followup_targets"].append(child)
+            if not external_target_allowed(child):
+                internal["external_target_filtered"] += 1
+                continue
             for provider_name in FOLLOWUP_PROVIDERS:
                 if not budget_available():
                     break
@@ -368,12 +368,6 @@ def run_assessment(
                             or evidence.get("matched_at")
                             or child
                         )
-                        if not external_target_allowed(subject):
-                            internal["external_target_filtered"] += 1
-                            continue
-                        if not external_target_allowed(subject):
-                            internal["external_target_filtered"] += 1
-                            continue
                         if authorize is not None and not authorize(subject):
                             internal["scope_filtered"] += 1
                             continue
@@ -382,8 +376,10 @@ def run_assessment(
                             status = evidence.get("status_code")
                             url = evidence.get("url") or subject
                             if status is not None and str(url).startswith(("http://", "https://")):
-                                if url not in validated_web_subjects and len(validated_web_subjects) < budget["max_vulnerability_followup_targets"]:
+                                if external_target_allowed(str(url)) and url not in validated_web_subjects and len(validated_web_subjects) < budget["max_vulnerability_followup_targets"]:
                                     validated_web_subjects.append(str(url))
+                                elif not external_target_allowed(str(url)):
+                                    internal["external_target_filtered"] += 1
                 except Exception as exc:
                     _record_capability_call(
                         internal["capability_telemetry"],
