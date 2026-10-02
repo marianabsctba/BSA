@@ -9,10 +9,10 @@ from ...application.services.policy_service import (
 )
 from ...application.services.risk_service import build_risk_overview, build_risk_register
 from ...auth import audit
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ...tenant_risk_policy import serialize_policy
 from ...tenant_sla_policy import serialize_sla_policy
-from ..dependencies import require, tenant_scope
+from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
@@ -72,12 +72,12 @@ def update_tenant_sla_policy(payload: TenantSLAPolicyRequest, request: Request):
 @router.get("/api/v1/risk/register")
 def risk_register(request: Request):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     return build_risk_register(principal.tenant_id,assets,findings)
 
 
 @router.get("/api/v1/risk/overview")
 def risk_overview(request: Request):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     return build_risk_overview(assets,findings)
