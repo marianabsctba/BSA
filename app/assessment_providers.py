@@ -102,6 +102,12 @@ class NucleiProvider(JsonLinesProvider):
         templates = os.getenv("BSA_NUCLEI_TEMPLATES", "/opt/nuclei-templates").strip()
         return bool(templates and os.path.isdir(templates))
 
+    def readiness(self) -> dict:
+        binary = bool(shutil.which(self.binary))
+        templates = os.getenv("BSA_NUCLEI_TEMPLATES", "/opt/nuclei-templates").strip()
+        configured = bool(templates and os.path.isdir(templates))
+        return {"installed": binary, "configured": configured, "ready": binary and configured}
+
     def _command(self, target: str) -> list[str]:
         templates = os.getenv("BSA_NUCLEI_TEMPLATES", "/opt/nuclei-templates").strip()
         return [
@@ -279,15 +285,15 @@ class PureDnsProvider(CommandProvider):
         return resolvers, trusted
 
     def available(self) -> bool:
+        return bool(self.readiness()["ready"])
+
+    def readiness(self) -> dict:
         resolvers, trusted = self._resolver_paths()
-        return bool(
-            shutil.which("puredns")
-            and shutil.which("massdns")
-            and resolvers
-            and trusted
-            and os.path.isfile(resolvers)
-            and os.path.isfile(trusted)
+        installed = bool(shutil.which("puredns") and shutil.which("massdns"))
+        configured = bool(
+            resolvers and trusted and os.path.isfile(resolvers) and os.path.isfile(trusted)
         )
+        return {"installed": installed, "configured": configured, "ready": installed and configured}
 
     def execute(self, target: str) -> list[ProviderResult]:
         if not self.available():
@@ -1003,12 +1009,22 @@ class OpenVASProvider:
     name = "openvas"
     timeout = 180
 
-    def available(self) -> bool:
-        binary = shutil.which("gvm-cli")
+    def readiness(self) -> dict:
+        binary = bool(shutil.which("gvm-cli"))
         socket_path = os.getenv("BSA_GVM_SOCKET", "/run/gvmd/gvmd.sock").strip()
         config_id = os.getenv("BSA_GVM_SCAN_CONFIG_ID", "").strip()
         scanner_id = os.getenv("BSA_GVM_SCANNER_ID", "").strip()
-        return bool(binary and socket_path and os.path.exists(socket_path) and config_id and scanner_id)
+        configured = bool(socket_path and config_id and scanner_id)
+        socket_ready = bool(socket_path and os.path.exists(socket_path))
+        return {
+            "installed": binary,
+            "configured": configured,
+            "socket_ready": socket_ready,
+            "ready": binary and configured and socket_ready,
+        }
+
+    def available(self) -> bool:
+        return bool(self.readiness()["ready"])
 
     def _gmp(self, xml: str) -> ET.Element | None:
         binary = shutil.which("gvm-cli")
