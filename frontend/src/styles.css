@@ -1381,3 +1381,26 @@ tbody tr:hover td:first-child{box-shadow:inset 2px 0 #ff2d8470}
 .drp-top-row>b.low{color:#68e3a2;border-color:#68e3a233;background:#68e3a208}
 @media(max-width:900px){.drp-kpis-extended{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.drp-kpis-extended{grid-template-columns:1fr 1fr}.drp-top-row{align-items:flex-start}}
+
+
+/* SIEM / SYSLOG GOVERNANCE */
+.siem-governance{margin-bottom:18px}
+.siem-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:0 18px 14px}
+.siem-status-grid>div{
+ padding:12px;border:1px solid #273140;border-radius:12px;
+ background:linear-gradient(145deg,#101720,#0a0f15)
+}
+.siem-status-grid span,.siem-status-grid b,.siem-status-grid small{display:block}
+.siem-status-grid span{color:#748091;font:700 7px "DM Mono";letter-spacing:.08em}
+.siem-status-grid b{margin-top:6px;color:#dfe5ec;font:800 10px "DM Mono"}
+.siem-status-grid b.ok,.siem-actions .ok{color:#68e3a2}
+.siem-status-grid b.warn,.siem-actions .warn{color:#f6c86b}
+.siem-status-grid small{margin-top:5px;color:#687486;font:7px "DM Mono";overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.siem-actions{display:flex;align-items:center;gap:10px;padding:0 18px 16px}
+.siem-actions .secondary{display:flex;align-items:center;gap:7px}
+.siem-actions>span{font:8px "DM Mono"}
+@media(max-width:700px){
+ .siem-status-grid{grid-template-columns:1fr}
+ .siem-actions{align-items:stretch;flex-direction:column}
+ .siem-actions .secondary{justify-content:center}
+}
