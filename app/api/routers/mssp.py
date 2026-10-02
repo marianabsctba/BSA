@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from ...auth import _db
 from ...ctem_store import history, list_plans
 from ...exposure import exposure_breakdown
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
+from ...repositories.assets_findings import asset_finding_repository
 from ...tenant_sla_policy import serialize_sla_policy, sla_policy_for, sla_threshold_hours
 from ..dependencies import require
 
@@ -61,16 +61,17 @@ def mssp_command_center(request: Request):
     finally:
         conn.close()
 
+    repository=asset_finding_repository()
     rows=[]
     for tenant in tenants:
-        assets=[
-            asset for asset in STORE_ASSETS
-            if getattr(asset,"tenant_id","tenant-demo")==tenant["id"]
-        ]
+        assets=repository.list_assets(tenant["id"])
         findings=[
-            finding for finding in STORE_FINDINGS
-            if getattr(finding,"tenant_id","tenant-demo")==tenant["id"]
-            and finding.status=="open"
+            finding
+            for finding in repository.list_findings(
+                tenant["id"],
+                {asset.id for asset in assets},
+            )
+            if finding.status=="open"
         ]
         scores=[exposure_breakdown(asset,findings).score for asset in assets]
         plans=list_plans(tenant["id"])
