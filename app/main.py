@@ -2084,6 +2084,63 @@ def ctem_queue(request: Request, state: str | None = None):
     states={state} if state else None
     return {"items":list_ctem_items(principal.tenant_id,states)}
 
+@app.post("/api/v1/ctem/{item_id}/retest")
+def ctem_retest(item_id: str, request: Request, payload: dict):
+    principal=require(request,"remediation:write")
+    item=next(
+        (x for x in list_ctem_items(principal.tenant_id) if x.get("item_id")==item_id),
+        None,
+    )
+    if item is None:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    if item.get("state") not in {"in_progress","resolved"}:
+        raise HTTPException(status_code=400,detail="CTEM item is not ready for retest")
+
+    asset_id=str(item.get("asset_id") or "")
+    assets,_=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    asset=next((x for x in assets if x.id==asset_id),None)
+    if asset is None:
+        raise HTTPException(status_code=404,detail="CTEM asset not found")
+
+    profile=str(payload.get("profile") or "rapid")
+    if profile not in {"rapid","network","balanced"}:
+        raise HTTPException(status_code=400,detail="invalid retest profile")
+    authorization_ref=govern_active_scan(
+        request,
+        principal,
+        asset.value,
+        str(payload.get("authorization_ref") or ""),
+    )
+    job=enqueue_assessment(
+        principal,
+        asset.value,
+        profile,
+        authorization_ref or "development-retest",
+    )
+    audit(
+        principal,
+        "queue",
+        "ctem_retest",
+        item_id,
+        {
+            "job_id":job["job_id"],
+            "asset_id":asset.id,
+            "profile":profile,
+            "authorization_ref":authorization_ref or "development",
+        },
+    )
+    return JSONResponse(
+        status_code=202,
+        content={
+            "item_id":item_id,
+            "job_id":job["job_id"],
+            "status":job["status"],
+            "profile":job["profile"],
+            "verification_required":True,
+        },
+    )
+
+
 @app.post("/api/v1/ctem/{item_id}/verify")
 def ctem_verify(item_id: str, request: Request, payload: dict):
     principal=require(request,"remediation:write")
