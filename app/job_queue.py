@@ -41,7 +41,8 @@ def _db():
         materialized INTEGER NOT NULL DEFAULT 0,
         attempts INTEGER NOT NULL DEFAULT 0,
         max_attempts INTEGER NOT NULL DEFAULT 3,
-        lease_expires_at INTEGER
+        lease_expires_at INTEGER,
+        run_token TEXT
     )""")
     cols={r["name"] for r in conn.execute("PRAGMA table_info(assessment_jobs)").fetchall()}
     if "attempts" not in cols:
@@ -50,6 +51,8 @@ def _db():
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3")
     if "lease_expires_at" not in cols:
         conn.execute("ALTER TABLE assessment_jobs ADD COLUMN lease_expires_at INTEGER")
+    if "run_token" not in cols:
+        conn.execute("ALTER TABLE assessment_jobs ADD COLUMN run_token TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_jobs_tenant_status ON assessment_jobs(tenant_id,status,created_at)")
     conn.commit()
     return conn
@@ -87,14 +90,14 @@ def recover_stale_jobs(now:int|None=None)->dict:
     now=int(now or time.time())
     conn=_db()
     retry=conn.execute(
-        """UPDATE assessment_jobs SET status='queued',started_at=NULL,lease_expires_at=NULL,error='worker lease expired; retry queued'
+        """UPDATE assessment_jobs SET status='queued',started_at=NULL,lease_expires_at=NULL,run_token=NULL,error='worker lease expired; retry queued'
         WHERE status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at<?
           AND attempts<max_attempts""",
         (now,),
     ).rowcount
     failed=conn.execute(
         """UPDATE assessment_jobs SET status='failed',completed_at=?,lease_expires_at=NULL,
-        error='worker lease expired; retry budget exhausted'
+        error='worker lease expired; retry budget exhausted',run_token=NULL
         WHERE status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at<?
           AND attempts>=max_attempts""",
         (now,now),
@@ -113,10 +116,11 @@ def claim_next_job(lease_seconds:int=600)->dict|None:
             conn.commit()
             return None
         now=int(time.time())
+        run_token=uuid.uuid4().hex
         updated=conn.execute(
-            """UPDATE assessment_jobs SET status='running',started_at=?,attempts=attempts+1,lease_expires_at=?
+            """UPDATE assessment_jobs SET status='running',started_at=?,attempts=attempts+1,lease_expires_at=?,run_token=?
             WHERE job_id=? AND status='queued'""",
-            (now,now+lease_seconds,row["job_id"]),
+            (now,now+lease_seconds,run_token,row["job_id"]),
         ).rowcount
         conn.commit()
         if not updated:
@@ -127,19 +131,25 @@ def claim_next_job(lease_seconds:int=600)->dict|None:
         conn.close()
 
 
-def heartbeat_job(job_id:str,lease_seconds:int=600)->bool:
+def heartbeat_job(job_id:str,lease_seconds:int=600,run_token:str|None=None)->bool:
     conn=_db()
-    updated=conn.execute(
-        "UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=? AND status='running'",
-        (int(time.time())+lease_seconds,job_id),
-    ).rowcount
+    if run_token:
+        updated=conn.execute(
+            "UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=? AND status='running' AND run_token=?",
+            (int(time.time())+lease_seconds,job_id,run_token),
+        ).rowcount
+    else:
+        updated=conn.execute(
+            "UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=? AND status='running'",
+            (int(time.time())+lease_seconds,job_id),
+        ).rowcount
     conn.commit(); conn.close()
     return bool(updated)
 
 
-def retry_or_fail_job(job_id:str,error:str)->str:
+def retry_or_fail_job(job_id:str,error:str,run_token:str|None=None)->str:
     conn=_db()
-    row=conn.execute("SELECT status,attempts,max_attempts FROM assessment_jobs WHERE job_id=?",(job_id,)).fetchone()
+    row=conn.execute("SELECT status,attempts,max_attempts,run_token FROM assessment_jobs WHERE job_id=?",(job_id,)).fetchone()
     if not row:
         conn.close()
         return "missing"
@@ -147,17 +157,20 @@ def retry_or_fail_job(job_id:str,error:str)->str:
         state=row["status"]
         conn.close()
         return state
+    if run_token and row["run_token"]!=run_token:
+        conn.close()
+        return "lease_lost"
     now=int(time.time())
     if int(row["attempts"]) < int(row["max_attempts"]):
         conn.execute(
             """UPDATE assessment_jobs SET status='queued',started_at=NULL,completed_at=NULL,
-            lease_expires_at=NULL,error=? WHERE job_id=?""",
+            lease_expires_at=NULL,run_token=NULL,error=? WHERE job_id=?""",
             (str(error)[:4000],job_id),
         )
         state="queued"
     else:
         conn.execute(
-            """UPDATE assessment_jobs SET status='failed',completed_at=?,lease_expires_at=NULL,error=?
+            """UPDATE assessment_jobs SET status='failed',completed_at=?,lease_expires_at=NULL,run_token=NULL,error=?
             WHERE job_id=?""",
             (now,str(error)[:4000],job_id),
         )
@@ -165,13 +178,20 @@ def retry_or_fail_job(job_id:str,error:str)->str:
     conn.commit(); conn.close()
     return state
 
-def complete_job(job_id:str,result:dict)->bool:
+def complete_job(job_id:str,result:dict,run_token:str|None=None)->bool:
     conn=_db()
-    updated=conn.execute(
-        """UPDATE assessment_jobs SET status='succeeded',result_json=?,completed_at=?,error=NULL,lease_expires_at=NULL
-        WHERE job_id=? AND status='running'""",
-        (json.dumps(result,ensure_ascii=False,separators=(",",":")),int(time.time()),job_id),
-    ).rowcount
+    if run_token:
+        updated=conn.execute(
+            """UPDATE assessment_jobs SET status='succeeded',result_json=?,completed_at=?,error=NULL,lease_expires_at=NULL,run_token=NULL
+            WHERE job_id=? AND status='running' AND run_token=?""",
+            (json.dumps(result,ensure_ascii=False,separators=(",",":")),int(time.time()),job_id,run_token),
+        ).rowcount
+    else:
+        updated=conn.execute(
+            """UPDATE assessment_jobs SET status='succeeded',result_json=?,completed_at=?,error=NULL,lease_expires_at=NULL,run_token=NULL
+            WHERE job_id=? AND status='running'""",
+            (json.dumps(result,ensure_ascii=False,separators=(",",":")),int(time.time()),job_id),
+        ).rowcount
     conn.commit(); conn.close()
     return bool(updated)
 
@@ -179,7 +199,7 @@ def complete_job(job_id:str,result:dict)->bool:
 def fail_job(job_id:str,error:str)->bool:
     conn=_db()
     updated=conn.execute(
-        """UPDATE assessment_jobs SET status='failed',completed_at=?,error=?,lease_expires_at=NULL
+        """UPDATE assessment_jobs SET status='failed',completed_at=?,error=?,lease_expires_at=NULL,run_token=NULL
         WHERE job_id=? AND status IN ('queued','running')""",
         (int(time.time()),str(error)[:4000],job_id),
     ).rowcount
@@ -191,7 +211,7 @@ def cancel_job(job_id:str,tenant_id:str)->dict|None:
     conn=_db()
     now=int(time.time())
     updated=conn.execute(
-        """UPDATE assessment_jobs SET status='cancelled',completed_at=?,lease_expires_at=NULL,error='cancelled by user'
+        """UPDATE assessment_jobs SET status='cancelled',completed_at=?,lease_expires_at=NULL,run_token=NULL,error='cancelled by user'
         WHERE job_id=? AND tenant_id=? AND status IN ('queued','running')""",
         (now,job_id,tenant_id),
     ).rowcount
