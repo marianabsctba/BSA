@@ -271,7 +271,7 @@ def run_assessment(
         {
             "profile": profile,
             "capabilities": list(PROFILE_CAPABILITIES[profile]),
-            "partial_coverage": len(internal["available"]) < len(PROFILES[profile]),
+            "partial_coverage": bool(internal["errors"]) or len(internal["available"]) < len(PROFILES[profile]),
             "coverage": {
                 "requested_capabilities": len(PROFILE_CAPABILITIES[profile]),
                 "evidence_count": public["finding_count"],
