@@ -48,7 +48,7 @@ from .assessment_orchestrator import run_public_assessment
 from .engine_health import public_engine_health
 from .release_readiness import release_readiness
 from .assessment_registry import registry
-from .job_queue import enqueue_assessment, get_job, cancel_job, claim_materialization, finish_materialization, queue_metrics, queue_health, worker_health
+from .job_queue import enqueue_assessment, enqueue_operation, get_job, cancel_job, claim_materialization, finish_materialization, queue_metrics, queue_health, worker_health
 from .auth import Principal
 from .tenant_lifecycle import retire_tenant, tenant_purge_preview, purge_tenant
 from .scan_authorization import create_authorization_grant, list_authorization_grants, revoke_authorization_grant, authorization_grant_valid
@@ -153,6 +153,45 @@ def govern_active_scan(http_request: Request, principal, target: str, authorizat
         },
     )
     return ref
+
+
+def queue_active_operation(http_request: Request, principal, target: str, operation: str,
+                           payload: dict | None = None, authorization_ref: str | None = None):
+    ref=govern_active_scan(http_request,principal,target,authorization_ref)
+    job=enqueue_operation(principal,target,operation,ref or "development",payload or {})
+    audit(
+        principal,"queue","active_operation",target,
+        {"job_id":job["job_id"],"operation":operation,"authorization_ref":ref or "development"},
+    )
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id":job["job_id"],
+            "status":job["status"],
+            "target":job["target"],
+            "operation":operation,
+        },
+    )
+
+
+@app.get("/api/v1/operations/jobs/{job_id}")
+def active_operation_job(job_id: str, request: Request):
+    principal=require(request,"discovery:run")
+    job=get_job(job_id,principal.tenant_id)
+    if not job:
+        raise HTTPException(status_code=404,detail="job not found")
+    return {
+        "job_id":job["job_id"],
+        "job_type":job.get("job_type"),
+        "operation":job.get("operation"),
+        "status":job["status"],
+        "target":job["target"],
+        "created_at":job["created_at"],
+        "started_at":job.get("started_at"),
+        "completed_at":job.get("completed_at"),
+        "error":job.get("error"),
+        "result":job.get("result"),
+    }
 
 
 @app.post("/api/v1/auth/logout")
