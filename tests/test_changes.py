@@ -16,7 +16,7 @@ def test_change_engine_emits_tagged_changes():
 def test_changes_endpoint_filters_out_of_scope_history(monkeypatch):
     from types import SimpleNamespace
 
-    import app.main as main
+    from app.api.routers import graph_assessment as graph_assessment_router
 
     principal=SimpleNamespace(tenant_id="tenant-a",user_id="user-a",role="analyst")
     visible=SimpleNamespace(
@@ -25,10 +25,10 @@ def test_changes_endpoint_filters_out_of_scope_history(monkeypatch):
         value="visible.example.org",
         type=SimpleNamespace(value="domain"),
     )
-    monkeypatch.setattr(main,"require",lambda request,permission:principal)
-    monkeypatch.setattr(main,"tenant_scope",lambda p,assets,findings:([visible],[]))
+    monkeypatch.setattr(graph_assessment_router,"require",lambda request,permission:principal)
+    monkeypatch.setattr(graph_assessment_router,"tenant_scope",lambda p,assets,findings:([visible],[]))
     monkeypatch.setattr(
-        main,
+        graph_assessment_router,
         "recent_change_events",
         lambda tenant_id,hours,limit:[
             {"fingerprint":"fp-visible","kind":"service_change"},
@@ -36,7 +36,7 @@ def test_changes_endpoint_filters_out_of_scope_history(monkeypatch):
         ],
     )
 
-    result=main.list_changes(None)
+    result=graph_assessment_router.list_changes(None)
 
     assert result["count"]==1
     assert [item["fingerprint"] for item in result["items"]]==["fp-visible"]
