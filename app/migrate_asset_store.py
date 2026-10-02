@@ -83,12 +83,7 @@ def migrate_state(
     for tenant_id in tenant_ids:
         tenant_assets=list(destination.list_assets(tenant_id))
         existing_assets.extend(tenant_assets)
-        existing_findings.extend(
-            destination.list_findings(
-                tenant_id,
-                {asset.id for asset in tenant_assets},
-            )
-        )
+        existing_findings.extend(destination.list_findings(tenant_id))
     if (existing_assets or existing_findings) and not allow_existing:
         raise RuntimeError(
             "destination PostgreSQL repository is not empty; "
@@ -114,12 +109,7 @@ def migrate_state(
     for tenant_id in tenant_ids:
         tenant_assets=list(destination.list_assets(tenant_id))
         migrated_assets.extend(tenant_assets)
-        migrated_findings.extend(
-            destination.list_findings(
-                tenant_id,
-                {asset.id for asset in tenant_assets},
-            )
-        )
+        migrated_findings.extend(destination.list_findings(tenant_id))
 
     source_assets=_payload_index(assets)
     source_findings=_payload_index(findings)
