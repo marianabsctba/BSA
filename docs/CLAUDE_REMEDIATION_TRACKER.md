@@ -1,6 +1,6 @@
-# Claude Review Remediation Tracker
+# Security & Product Maturity Remediation Tracker
 
-Base: Parecer Técnico — Pentest Gray Box BSA + Parecer de Maturidade de Produto (02/10/2026).
+Base: parecer técnico de pentest gray box + avaliação de maturidade de produto (02/10/2026).
 
 Regra de fechamento: nenhum item é considerado concluído apenas por mudança de código. Cada item precisa de:
 1. correção implementada;
