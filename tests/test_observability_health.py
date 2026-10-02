@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app import observability, runtime_health
 from app.main import app
+from app.api.routers import operations as operations_router
 
 
 def test_request_id_validation_and_generation():
@@ -52,7 +53,7 @@ def test_runtime_health_degrades_when_required_component_fails(monkeypatch):
 
 
 def test_health_response_has_request_id_header(monkeypatch):
-    monkeypatch.setattr("app.main.runtime_health",lambda:{
+    monkeypatch.setattr(operations_router,"runtime_health",lambda:{
         "status":"healthy",
         "components":{
             "auth_db":{"status":"healthy"},
