@@ -26,7 +26,7 @@ def test_changes_endpoint_filters_out_of_scope_history(monkeypatch):
         type=SimpleNamespace(value="domain"),
     )
     monkeypatch.setattr(graph_assessment_router,"require",lambda request,permission:principal)
-    monkeypatch.setattr(graph_assessment_router,"tenant_scope",lambda p,assets,findings:([visible],[]))
+    monkeypatch.setattr(graph_assessment_router,"tenant_scope",lambda p:([visible],[]))
     monkeypatch.setattr(
         graph_assessment_router,
         "recent_change_events",
