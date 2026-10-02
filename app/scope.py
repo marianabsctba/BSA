@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from urllib.parse import urlparse
+import urllib.request
+import urllib.error
 import ipaddress
 import unicodedata
 import tldextract
+import dns.resolver
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,19 @@ def ensure_scope_schema():
         pattern TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS user_scan_scopes(
         user_id TEXT NOT NULL, scope_id TEXT NOT NULL, PRIMARY KEY(user_id,scope_id))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS domain_ownership_proofs(
+        proof_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        method TEXT NOT NULL,
+        challenge TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        verified_at INTEGER,
+        verified_by TEXT
+    )""")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_domain_ownership_lookup
+        ON domain_ownership_proofs(tenant_id,domain,verified_at,expires_at)""")
     conn.commit(); conn.close()
 
 def bootstrap_scope(tenant_id="tenant-demo"):
@@ -202,17 +218,207 @@ def asset_in_scope(principal: Principal,value:str):
     return False
 
 
+
+def _registrable_domain(pattern: str) -> str | None:
+    raw=str(pattern or "").strip().rstrip(".").lower()
+    base=raw[2:] if raw.startswith("*.") else raw
+    try:
+        ipaddress.ip_address(base)
+        return None
+    except ValueError:
+        pass
+    normalized=_normalize_scope_hostname(base)
+    extracted=_TLD_EXTRACT(normalized)
+    if not extracted.domain or not extracted.suffix:
+        raise ValueError("domain must be registrable")
+    return f"{extracted.domain}.{extracted.suffix}"
+
+
+def create_domain_ownership_proof(principal: Principal, domain: str, method: str="dns_txt") -> dict:
+    if principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin required for domain ownership proof")
+    normalized=validate_active_scope_pattern(domain)
+    if normalized.startswith("*."):
+        normalized=normalized[2:]
+    registrable=_registrable_domain(normalized)
+    if not registrable:
+        raise ValueError("domain ownership proof requires a domain")
+    method=str(method or "").strip().lower()
+    if method not in {"dns_txt","well_known"}:
+        raise ValueError("ownership proof method must be dns_txt or well_known")
+    ensure_scope_schema()
+    proof_id=secrets.token_hex(12)
+    token=secrets.token_urlsafe(24)
+    challenge=f"bsa-asm-verification={token}"
+    now=int(time.time())
+    expires_at=now+24*3600
+    conn=_db()
+    conn.execute(
+        """INSERT INTO domain_ownership_proofs(
+           proof_id,tenant_id,domain,method,challenge,created_at,expires_at
+           ) VALUES(?,?,?,?,?,?,?)""",
+        (proof_id,principal.tenant_id,registrable,method,challenge,now,expires_at),
+    )
+    conn.commit(); conn.close()
+    result={
+        "proof_id":proof_id,
+        "tenant_id":principal.tenant_id,
+        "domain":registrable,
+        "method":method,
+        "challenge":challenge,
+        "expires_at":expires_at,
+        "verified":False,
+    }
+    if method=="dns_txt":
+        result["record_name"]=f"_bsa-verify.{registrable}"
+        result["record_type"]="TXT"
+    else:
+        result["url"]=f"https://{registrable}/.well-known/be-safe-asm-verification"
+    return result
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _verify_dns_txt(domain: str, challenge: str) -> bool:
+    resolver=dns.resolver.Resolver()
+    resolver.timeout=3
+    resolver.lifetime=5
+    try:
+        answers=resolver.resolve(f"_bsa-verify.{domain}","TXT")
+    except Exception:
+        return False
+    for answer in answers:
+        parts=getattr(answer,"strings",None)
+        if parts:
+            value="".join(x.decode("utf-8","ignore") if isinstance(x,bytes) else str(x) for x in parts)
+        else:
+            value=str(answer).strip('"')
+        if value.strip()==challenge:
+            return True
+    return False
+
+
+def _verify_well_known(domain: str, challenge: str) -> bool:
+    from .security import validate_external_target
+    validate_external_target(domain)
+    url=f"https://{domain}/.well-known/be-safe-asm-verification"
+    opener=urllib.request.build_opener(_NoRedirect)
+    request=urllib.request.Request(url,headers={"User-Agent":"Be-Safe-ASM-Ownership/1.0"},method="GET")
+    try:
+        with opener.open(request,timeout=5) as response:
+            if int(getattr(response,"status",200))!=200:
+                return False
+            body=response.read(4096).decode("utf-8","ignore").strip()
+    except (urllib.error.URLError,urllib.error.HTTPError,TimeoutError,OSError,ValueError):
+        return False
+    return body==challenge
+
+
+def verify_domain_ownership_proof(principal: Principal, proof_id: str) -> dict:
+    if principal.role not in {"admin","superadmin"}:
+        raise PermissionError("admin required for domain ownership proof")
+    ensure_scope_schema()
+    conn=_db()
+    row=conn.execute(
+        """SELECT proof_id,tenant_id,domain,method,challenge,created_at,expires_at,verified_at
+           FROM domain_ownership_proofs WHERE proof_id=? AND tenant_id=?""",
+        (proof_id,principal.tenant_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("ownership proof not found")
+    now=int(time.time())
+    if int(row["expires_at"])<=now:
+        conn.close()
+        raise ValueError("ownership proof expired")
+    if row["verified_at"] is not None:
+        result=dict(row); conn.close()
+        return {**result,"verified":True}
+    conn.close()
+    verified=_verify_dns_txt(row["domain"],row["challenge"]) if row["method"]=="dns_txt" else _verify_well_known(row["domain"],row["challenge"])
+    if not verified:
+        return {
+            "proof_id":row["proof_id"],"tenant_id":row["tenant_id"],"domain":row["domain"],
+            "method":row["method"],"expires_at":row["expires_at"],"verified":False,
+        }
+    conn=_db()
+    conn.execute(
+        "UPDATE domain_ownership_proofs SET verified_at=?,verified_by=? WHERE proof_id=? AND tenant_id=?",
+        (now,principal.user_id,proof_id,principal.tenant_id),
+    )
+    conn.commit(); conn.close()
+    return {
+        "proof_id":row["proof_id"],"tenant_id":row["tenant_id"],"domain":row["domain"],
+        "method":row["method"],"expires_at":row["expires_at"],"verified_at":now,"verified":True,
+    }
+
+
+def domain_ownership_verified(tenant_id: str, domain: str) -> bool:
+    registrable=_registrable_domain(domain)
+    if not registrable:
+        return False
+    ensure_scope_schema()
+    conn=_db()
+    now=int(time.time())
+    row=conn.execute(
+        """SELECT 1 FROM domain_ownership_proofs
+           WHERE tenant_id=? AND domain=? AND verified_at IS NOT NULL AND expires_at>?
+           ORDER BY verified_at DESC LIMIT 1""",
+        (tenant_id,registrable,now),
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+
+def _domain_overlap_tenants(tenant_id: str, domain: str) -> list[str]:
+    registrable=_registrable_domain(domain)
+    if not registrable:
+        return []
+    ensure_scope_schema()
+    conn=_db()
+    rows=conn.execute(
+        "SELECT tenant_id,pattern FROM scan_scopes WHERE active=1 AND tenant_id<>?",
+        (tenant_id,),
+    ).fetchall()
+    conn.close()
+    overlaps=set()
+    for row in rows:
+        try:
+            other=_registrable_domain(row["pattern"])
+        except ValueError:
+            continue
+        if other==registrable:
+            overlaps.add(str(row["tenant_id"]))
+    return sorted(overlaps)
+
+
 def create_scan_scope(principal: Principal,name:str,pattern:str):
     if principal.role not in {"admin","superadmin"}:
         raise PermissionError("admin required for active scan scope")
     pattern=validate_active_scope_pattern(pattern)
+    registrable=_registrable_domain(pattern)
+    production=os.getenv("BSA_ENV","development").lower() in {"production","prod"}
+    overlap_tenants=[]
+    if production and registrable:
+        if not domain_ownership_verified(principal.tenant_id,registrable):
+            raise PermissionError("verified domain ownership proof required for active scan scope")
+        overlap_tenants=_domain_overlap_tenants(principal.tenant_id,registrable)
+        if overlap_tenants and principal.role!="superadmin":
+            raise PermissionError("domain already assigned to another tenant; superadmin approval required")
     ensure_scope_schema(); conn=_db(); sid=secrets.token_hex(10)
     conn.execute(
         "INSERT INTO scan_scopes(id,tenant_id,name,pattern,created_at) VALUES(?,?,?,?,?)",
         (sid,principal.tenant_id,name,pattern,int(time.time())),
     )
     conn.commit(); conn.close()
-    return {"id":sid,"tenant_id":principal.tenant_id,"name":name,"pattern":pattern,"active":True}
+    return {
+        "id":sid,"tenant_id":principal.tenant_id,"name":name,"pattern":pattern,"active":True,
+        "ownership_verified":bool(registrable and (not production or domain_ownership_verified(principal.tenant_id,registrable))),
+        "overlap_approved_by_superadmin":bool(overlap_tenants and principal.role=="superadmin"),
+    }
 
 def list_scan_scopes(principal: Principal):
     ensure_scope_schema(); conn=_db()
