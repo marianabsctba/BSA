@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
 from .assessment_registry import registry
+from .history import recent_capability_execution_health
 from .assessment_orchestrator import (
     PROFILES,
     PROFILE_CAPABILITIES,
@@ -88,6 +91,20 @@ def engine_health(target: str | None = None) -> dict:
         min_backend_coverage = int(policy.get("min_backend_coverage_percent", 0))
         allow_degraded_core = bool(policy.get("allow_degraded_core", True))
 
+        execution_rows = recent_capability_execution_health(
+            tuple(row["name"] for row in core_rows),
+            max_age_minutes=1440,
+        )
+        execution_by_name = {row["name"]: row for row in execution_rows}
+        unverified_execution = [
+            row["name"]
+            for row in core_rows
+            if execution_by_name.get(row["name"], {}).get("execution_status") != "verified"
+        ]
+        execution_verified_percent = round(
+            100 * (core_requested - len(unverified_execution)) / max(1, core_requested)
+        )
+
         readiness_blockers = []
         if not core_requested or coverage_percent < min_core_coverage:
             readiness_blockers.append("core_coverage")
@@ -95,6 +112,9 @@ def engine_health(target: str | None = None) -> dict:
             readiness_blockers.append("backend_coverage")
         if degraded_core and not allow_degraded_core:
             readiness_blockers.append("degraded_core")
+        production = os.getenv("BSA_ENV", "development").lower() in {"production", "prod"}
+        if production and unverified_execution:
+            readiness_blockers.append("execution_validation")
 
         policy_ready = not readiness_blockers
         state = (
@@ -119,6 +139,12 @@ def engine_health(target: str | None = None) -> dict:
             "degraded_capabilities": degraded_core,
             "optional_missing_capabilities": missing_optional,
             "optional_degraded_capabilities": degraded_optional,
+            "execution_validation": {
+                "status": "verified" if not unverified_execution else "partial",
+                "verified_percent": execution_verified_percent,
+                "unverified_capabilities": unverified_execution,
+                "max_age_minutes": 1440,
+            },
             "coverage_policy": {
                 "min_core_coverage_percent": min_core_coverage,
                 "min_backend_coverage_percent": min_backend_coverage,
