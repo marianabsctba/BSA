@@ -14,7 +14,7 @@ from .assessment_engine import AssessmentEngine
 from .assessment_registry import registry
 from .exposure_signals import cloud_signals, summarize_signals
 from .vulnerability_evidence import vulnerability_identity_key
-from .security import validate_external_target
+from .security import validate_external_target, validated_external_binding
 
 
 PROFILES = {
@@ -30,6 +30,37 @@ VULN_FOLLOWUP_PROVIDERS = ("nuclei", "zap")
 DEFERRED_BALANCED_PROVIDERS = set(VULN_FOLLOWUP_PROVIDERS)
 MAX_FOLLOWUP_TARGETS = 32
 MAX_VULN_FOLLOWUP_TARGETS = 8
+
+# Providers in this set do not establish a target-origin network session themselves,
+# or use Be Safe's pinned transport. Providers omitted here are blocked for hostname
+# targets in production until they support an explicit validated-IP transport.
+REBINDING_SAFE_PROVIDERS = {
+    "subfinder", "amass", "assetfinder", "alterx",
+    "puredns", "dnsx", "asnmap", "gau",
+    "safeweb", "cloud", "cti", "threatfox", "hibp", "hudsonrock", "leak", "trufflehog",
+}
+DIRECT_IP_PROVIDERS = {"naabu", "nmap"}
+
+
+def _execution_target(provider_name: str, target: str) -> str | None:
+    if os.getenv("BSA_ENV","development").lower() not in {"production","prod"}:
+        return target
+    binding=validated_external_binding(target)
+    host=binding["host"]
+    approved_ips=list(binding["approved_ips"])
+    try:
+        import ipaddress
+        ipaddress.ip_address(host)
+        is_ip=True
+    except ValueError:
+        is_ip=False
+    if provider_name in REBINDING_SAFE_PROVIDERS:
+        return target
+    if provider_name in DIRECT_IP_PROVIDERS:
+        return approved_ips[0] if approved_ips else None
+    if is_ip:
+        return target
+    return None
 
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -287,12 +318,16 @@ def run_assessment(
             internal["deferred"].append(provider_name)
             continue
         try:
-            if not registry.available(provider_name, target):
+            execution_target=_execution_target(provider_name,target)
+            if execution_target is None:
+                internal["errors"].append({"provider":provider_name,"error":"RebindingUnsafeProvider","phase":"primary"})
+                continue
+            if not registry.available(provider_name, execution_target):
                 continue
             internal["available"].append(provider_name)
             internal["provider_calls"] += 1
             call_started = time.monotonic()
-            results = registry.execute(provider_name, target=target)
+            results = registry.execute(provider_name, target=execution_target)
             _record_capability_call(
                 internal["capability_telemetry"],
                 provider_name,
@@ -348,11 +383,15 @@ def run_assessment(
                 if not budget_available():
                     break
                 try:
-                    if not registry.available(provider_name, child):
+                    execution_target=_execution_target(provider_name,child)
+                    if execution_target is None:
+                        internal["errors"].append({"provider":provider_name,"error":"RebindingUnsafeProvider","phase":"followup"})
+                        continue
+                    if not registry.available(provider_name, execution_target):
                         continue
                     internal["provider_calls"] += 1
                     call_started = time.monotonic()
-                    results = registry.execute(provider_name, target=child)
+                    results = registry.execute(provider_name, target=execution_target)
                     _record_capability_call(
                         internal["capability_telemetry"],
                         provider_name,
@@ -406,11 +445,15 @@ def run_assessment(
                     if authorize is not None and not authorize(child):
                         internal["scope_filtered"] += 1
                         continue
-                    if not registry.available(provider_name, child):
+                    execution_target=_execution_target(provider_name,child)
+                    if execution_target is None:
+                        internal["errors"].append({"provider":provider_name,"error":"RebindingUnsafeProvider","phase":"vulnerability_followup"})
+                        continue
+                    if not registry.available(provider_name, execution_target):
                         continue
                     internal["provider_calls"] += 1
                     call_started = time.monotonic()
-                    results = registry.execute(provider_name, target=child)
+                    results = registry.execute(provider_name, target=execution_target)
                     _record_capability_call(
                         internal["capability_telemetry"],
                         provider_name,
