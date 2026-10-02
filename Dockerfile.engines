@@ -22,10 +22,18 @@ RUN set -eux; \
     retry go install github.com/projectdiscovery/asnmap/cmd/asnmap@v1.1.1; \
     retry go install github.com/projectdiscovery/katana/cmd/katana@v1.7.0; \
     retry go install github.com/lc/gau/v2/cmd/gau@v2.2.4; \
-    retry go install github.com/trufflesecurity/trufflehog/v3@v3.97.9; \
     retry go install github.com/tomnomnom/assetfinder@v0.1.0; \
     retry go install github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0; \
     retry go install github.com/d3mondev/puredns/v2@v2.1.1
+
+FROM golang:1.26-bookworm AS trufflehog
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && git clone --depth 1 --branch v3.97.9 https://github.com/trufflesecurity/trufflehog.git /src/trufflehog \
+ && cd /src/trufflehog \
+ && CGO_ENABLED=0 go build -o /out/trufflehog . \
+ && /out/trufflehog --version >/dev/null 2>&1 \
+ && rm -rf /var/lib/apt/lists/*
 
 FROM debian:bookworm-slim AS nuclei_templates
 RUN apt-get update \
@@ -52,6 +60,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=engines /out/ /usr/local/bin/
+COPY --from=trufflehog /out/trufflehog /usr/local/bin/trufflehog
 COPY --from=massdns /out/massdns /usr/local/bin/massdns
 COPY --from=nuclei_templates /out/nuclei-templates /opt/nuclei-templates
 COPY --from=zap /zap/ /opt/zap/
