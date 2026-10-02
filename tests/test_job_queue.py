@@ -369,3 +369,54 @@ def test_multi_tenant_backlog_is_processed_without_duplicate_claims(tmp_path, mo
     assert len(set(ids))==len(jobs)
     assert all(token for _,_,token in claimed)
     assert {tenant_id for _,tenant_id,_ in claimed}=={tenant.tenant_id for tenant in tenants}
+
+
+def test_queue_health_detects_expired_lease_and_stale_materialization(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    principal=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    first=job_queue.enqueue_assessment(principal,"slow.example.org","rapid","AUTH-1")
+    claimed=job_queue.claim_next_job(lease_seconds=1)
+    assert claimed["job_id"]==first["job_id"]
+
+    second=job_queue.enqueue_assessment(principal,"done.example.org","rapid","AUTH-2")
+    claimed2=job_queue.claim_next_job()
+    if claimed2["job_id"] != second["job_id"]:
+        job_queue.complete_job(claimed2["job_id"],{"finding_count":0,"findings":[]},run_token=claimed2["run_token"])
+        claimed2=job_queue.claim_next_job()
+    assert claimed2["job_id"]==second["job_id"]
+    assert job_queue.complete_job(
+        second["job_id"],{"finding_count":0,"findings":[]},run_token=claimed2["run_token"]
+    ) is True
+    assert job_queue.claim_materialization(second["job_id"],"tenant-a") is True
+
+    conn=job_queue._db()
+    conn.execute("UPDATE assessment_jobs SET lease_expires_at=? WHERE job_id=?",(1,first["job_id"]))
+    conn.execute("UPDATE assessment_jobs SET materialization_started_at=? WHERE job_id=?",(1,second["job_id"]))
+    conn.commit(); conn.close()
+
+    health=job_queue.queue_health("tenant-a",now=2000,stale_materialization_seconds=300)
+
+    assert health["status"]=="degraded"
+    assert health["expired_running_leases"]==1
+    assert health["stale_materializations"]==1
+    assert health["tenant_id"]=="tenant-a"
+
+
+def test_queue_health_is_tenant_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("BSA_JOBS_DB", str(tmp_path / "jobs.db"))
+    tenant_a=SimpleNamespace(
+        tenant_id="tenant-a",user_id="user-a",email="a@example.org",role="admin",name="Admin A",
+    )
+    tenant_b=SimpleNamespace(
+        tenant_id="tenant-b",user_id="user-b",email="b@example.org",role="admin",name="Admin B",
+    )
+    job_queue.enqueue_assessment(tenant_a,"a.example.org","rapid","AUTH-A")
+    job_queue.enqueue_assessment(tenant_b,"b.example.org","rapid","AUTH-B")
+
+    a=job_queue.queue_health("tenant-a",now=100)
+    b=job_queue.queue_health("tenant-b",now=100)
+
+    assert a["total_jobs"]==1
+    assert b["total_jobs"]==1
