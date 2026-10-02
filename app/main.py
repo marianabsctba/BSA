@@ -1642,54 +1642,38 @@ def exposure_assessment_capabilities(request: Request, target: str | None = None
 
 @app.post("/api/v1/exposure/assessment")
 def exposure_assessment(payload: AssessmentRequest, request: Request):
-    principal = require(request, "discovery:run")
-    if not asset_in_scope(principal, payload.target):
-        raise HTTPException(status_code=403, detail="target outside assigned scope")
+    principal=require(request,"discovery:run")
+    if not asset_in_scope(principal,payload.target):
+        raise HTTPException(status_code=403,detail="target outside assigned scope")
     authorization_ref=govern_active_scan(request,principal,payload.target,payload.authorization_ref)
-    if not rate_limit_action("exposure-assessment", principal.user_id, limit=8, window_seconds=300):
-        raise HTTPException(status_code=429, detail="assessment rate limit exceeded")
-
-    if IS_PRODUCTION:
-        job=enqueue_assessment(principal,payload.target,payload.profile,authorization_ref)
-        audit(
-            principal,"queue","exposure_assessment",payload.target,
-            {"profile":payload.profile,"authorization_ref":payload.authorization_ref,"job_id":job["job_id"]},
-        )
-        return JSONResponse(
-            status_code=202,
-            content={
-                "job_id":job["job_id"],
-                "status":job["status"],
-                "target":job["target"],
-                "profile":job["profile"],
-            },
-        )
-
-    try:
-        result = run_public_assessment(
-            payload.target,
-            profile=payload.profile,
-            authorize=lambda target: asset_in_scope(principal, target) and active_scan_in_scope(principal,target),
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not rate_limit_action("exposure-assessment",principal.user_id,limit=8,window_seconds=300):
+        raise HTTPException(status_code=429,detail="assessment rate limit exceeded")
+    job=enqueue_assessment(
+        principal,
+        payload.target,
+        payload.profile,
+        authorization_ref or "development",
+    )
     audit(
         principal,
-        "run",
+        "queue",
         "exposure_assessment",
         payload.target,
         {
-            "profile": payload.profile,
-            "authorization_ref": authorization_ref,
-            "finding_count": result.get("finding_count", 0),
-            "partial_coverage": result.get("partial_coverage", False),
+            "profile":payload.profile,
+            "authorization_ref":authorization_ref or "development",
+            "job_id":job["job_id"],
         },
     )
-    result["materialization"] = _materialize_assessment_result(principal, result)
-    return result
-
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id":job["job_id"],
+            "status":job["status"],
+            "target":job["target"],
+            "profile":job["profile"],
+        },
+    )
 
 @app.post("/api/v1/exposure/assessment/jobs/{job_id}/cancel")
 def exposure_assessment_job_cancel(job_id: str, request: Request):
