@@ -27,6 +27,12 @@ RUN set -eux; \
     retry go install github.com/projectdiscovery/alterx/cmd/alterx@latest; \
     retry go install github.com/d3mondev/puredns/v2@latest
 
+FROM debian:bookworm-slim AS nuclei_templates
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && git clone --depth 1 --branch v10.4.8 https://github.com/projectdiscovery/nuclei-templates.git /out/nuclei-templates \
+ && rm -rf /out/nuclei-templates/.git /var/lib/apt/lists/*
+
 FROM debian:bookworm-slim AS massdns
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git build-essential \
@@ -47,11 +53,15 @@ RUN apt-get update \
 
 COPY --from=engines /out/ /usr/local/bin/
 COPY --from=massdns /out/massdns /usr/local/bin/massdns
+COPY --from=nuclei_templates /out/nuclei-templates /opt/nuclei-templates
 COPY --from=zap /zap/ /opt/zap/
 
 RUN ln -s /opt/zap/zap-baseline.py /usr/local/bin/zap-baseline.py \
  && git clone --depth 1 https://github.com/drwetter/testssl.sh.git /opt/testssl.sh \
- && ln -s /opt/testssl.sh/testssl.sh /usr/local/bin/testssl.sh
+ && ln -s /opt/testssl.sh/testssl.sh /usr/local/bin/testssl.sh \
+ && mkdir -p /etc/bsa \
+ && printf '%s\n' 1.1.1.1 8.8.8.8 9.9.9.9 > /etc/bsa/puredns-resolvers.txt \
+ && printf '%s\n' 8.8.8.8 8.8.4.4 > /etc/bsa/puredns-trusted.txt
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
@@ -61,6 +71,9 @@ COPY app ./app
 
 ENV BSA_ENGINE_BUNDLE=full
 ENV BSA_GVM_SOCKET=/run/gvmd/gvmd.sock
+ENV BSA_NUCLEI_TEMPLATES=/opt/nuclei-templates
+ENV BSA_PUREDNS_RESOLVERS=/etc/bsa/puredns-resolvers.txt
+ENV BSA_PUREDNS_TRUSTED_RESOLVERS=/etc/bsa/puredns-trusted.txt
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
