@@ -16,6 +16,7 @@ services:
       BSA_ENV: production
       BSA_AUTH_DB: /data/bsa_auth.db
       BSA_HISTORY_DB: /data/bsa_history.db
+      BSA_STORE_DB: /data/bsa_store.db
       BSA_AI_ENABLED: "1"
       BSA_OLLAMA_URL: http://ollama:11434
     volumes:
