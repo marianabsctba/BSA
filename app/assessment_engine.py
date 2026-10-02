@@ -76,20 +76,71 @@ class AssessmentEngine:
             )
         )
 
+    @classmethod
+    def _evidence_classification(
+        cls,
+        category: str,
+        confidence: int,
+        evidence: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Return product-safe evidence state and quality without changing severity."""
+        normalized = dict(evidence or {})
+        existing = str(normalized.get("validation_state") or "").strip().lower()
+        allowed = {"needs_validation", "observed", "confirmed_evidence", "confirmed"}
+        independently_corroborated = bool(normalized.get("independently_corroborated"))
+
+        if independently_corroborated:
+            state = "confirmed_evidence"
+        elif existing in allowed:
+            state = "confirmed_evidence" if existing == "confirmed" else existing
+        elif bool(normalized.get("validation_required")):
+            state = "needs_validation"
+        elif category in {
+            "vulnerability_validation",
+            "vulnerability_assessment",
+            "dast",
+            "web_assessment",
+        }:
+            state = "needs_validation"
+        else:
+            state = "observed"
+
+        evidence_present = bool(normalized)
+        if state == "confirmed_evidence" and confidence >= 80:
+            quality = "strong"
+        elif independently_corroborated or (evidence_present and confidence >= 80):
+            quality = "strong"
+        elif evidence_present and confidence >= 60:
+            quality = "moderate"
+        else:
+            quality = "limited"
+        return state, quality
+
+    def _public_row(self, item: AssessmentFinding, *, include_backend: bool = False) -> dict:
+        evidence = self._sanitize_evidence(item.evidence)
+        evidence_state, evidence_quality = self._evidence_classification(
+            item.category,
+            item.confidence,
+            evidence,
+        )
+        evidence["validation_state"] = evidence_state
+        row = {
+            "asset": item.asset,
+            "category": item.category,
+            "title": item.title,
+            "severity": item.severity,
+            "confidence": item.confidence,
+            "evidence_state": evidence_state,
+            "evidence_quality": evidence_quality,
+            "evidence": evidence,
+        }
+        if include_backend:
+            row["_source_backend"] = item.engine
+        return row
+
     def export_public(self) -> dict:
         """Product-safe output: provider/tool identities are intentionally removed."""
-        findings = []
-        for item in self.findings:
-            findings.append(
-                {
-                    "asset": item.asset,
-                    "category": item.category,
-                    "title": item.title,
-                    "severity": item.severity,
-                    "confidence": item.confidence,
-                    "evidence": self._sanitize_evidence(item.evidence),
-                }
-            )
+        findings = [self._public_row(item) for item in self.findings]
         return {
             "assessment_id": str(uuid.uuid4()),
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -104,20 +155,7 @@ class AssessmentEngine:
         orchestrator can measure independent corroboration. The field must be
         removed before crossing the public API boundary.
         """
-        rows = []
-        for item in self.findings:
-            rows.append(
-                {
-                    "asset": item.asset,
-                    "category": item.category,
-                    "title": item.title,
-                    "severity": item.severity,
-                    "confidence": item.confidence,
-                    "evidence": self._sanitize_evidence(item.evidence),
-                    "_source_backend": item.engine,
-                }
-            )
-        return rows
+        return [self._public_row(item, include_backend=True) for item in self.findings]
 
     def export_internal(self) -> dict:
         """Internal diagnostics only. Never expose this payload through tenant APIs."""
