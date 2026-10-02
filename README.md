@@ -237,6 +237,36 @@ Endpoints:
 A arquitetura é local-first: **internet não é necessária para inferência**, depois que o modelo estiver instalado no servidor.
 
 
+## Integração SIEM / Syslog
+
+O BSA possui dois caminhos complementares de integração com SOC/SIEM:
+
+- `GET /api/v1/integrations/siem/export` — feed JSON unificado para coleta via API;
+- Syslog estruturado — UDP, TCP ou TLS, com TLS/6514 como padrão recomendado.
+
+O feed unificado inclui findings de exposição e eventos CTI/DRP, incluindo vazamentos de credenciais/dados, sem exportar segredos brutos.
+
+Endpoints operacionais:
+
+- `GET /api/v1/integrations/siem/status` — mostra se Syslog está configurado;
+- `POST /api/v1/integrations/siem/syslog/test` — envia um evento de teste;
+- `POST /api/v1/integrations/siem/syslog/push` — envia o lote atual filtrável por `since` e `limit`.
+
+Configuração recomendada:
+
+```env
+BSA_SYSLOG_HOST=siem.exemplo.local
+BSA_SYSLOG_PORT=6514
+BSA_SYSLOG_TRANSPORT=tls
+BSA_SYSLOG_FACILITY=16
+BSA_SYSLOG_APP_NAME=be-safe-asm
+BSA_SYSLOG_TIMEOUT=5
+```
+
+Para coletores com CA privada, configure `BSA_SYSLOG_CA_FILE` e, quando necessário, `BSA_SYSLOG_SERVER_NAME`. O transporte TLS valida o certificado do coletor.
+
+O Syslog usa framing compatível com RFC5424 e payload JSON estruturado. Campos sensíveis como senha, token ou segredo bruto são removidos antes do envio.
+
 ## Digital Risk Protection (DRP)
 
 O BSA unifica sinais externos em uma camada de **DRP + CTI + EASM**, com eventos para phishing, abuso de marca, perfis falsos, apps falsos, malware, vazamento de dados, VIP/executivos, Deep/Dark Web e supply chain.
