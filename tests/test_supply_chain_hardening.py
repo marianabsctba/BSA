@@ -22,3 +22,18 @@ def test_ci_actions_are_pinned_and_supply_chain_scans_exist():
     assert "severity: HIGH,CRITICAL" in workflow
     assert "format: cyclonedx" in workflow
     assert "output: sbom.cdx.json" in workflow
+
+
+def test_container_images_are_digest_pinned():
+    backend=Path("Dockerfile").read_text(encoding="utf-8")
+    frontend=Path("frontend/Dockerfile").read_text(encoding="utf-8")
+    compose=Path("docker-compose.production.yml").read_text(encoding="utf-8")
+
+    for line in backend.splitlines():
+        if line.startswith("FROM "):
+            assert "@sha256:" in line
+    for line in frontend.splitlines():
+        if line.startswith("FROM "):
+            assert "@sha256:" in line
+    ollama_line=next(line.strip() for line in compose.splitlines() if "image: ollama/ollama:" in line)
+    assert "@sha256:" in ollama_line
