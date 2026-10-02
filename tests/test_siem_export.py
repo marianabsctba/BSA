@@ -1,4 +1,4 @@
-from app.integration_export import siem_events
+from app.integration_export import siem_events, audit_siem_events
 from app.models import Asset, AssetType, Finding, Severity
 
 
@@ -78,3 +78,24 @@ def test_siem_export_supports_incremental_cursor_and_limit():
     assert payload["count"] == 1
     assert payload["events"][0]["event_id"] == "finding:finding-2"
     assert payload["next_cursor"] == "2026-10-01T11:00:00+00:00"
+
+
+def test_audit_siem_export_preserves_hash_chain():
+    rows=[{
+        "id":7,
+        "tenant_id":"tenant-a",
+        "user_id":"u1",
+        "action":"update",
+        "resource":"asset",
+        "resource_id":"a1",
+        "metadata":"{}",
+        "created_at":1700000000,
+        "prev_hash":"abc",
+        "entry_hash":"def",
+    }]
+    events=audit_siem_events(rows)
+    assert len(events)==1
+    event=events[0]
+    assert event["event_type"]=="audit.update"
+    assert event["tenant_id"]=="tenant-a"
+    assert event["integrity"]=={"prev_hash":"abc","entry_hash":"def"}
