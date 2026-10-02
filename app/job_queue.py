@@ -139,10 +139,14 @@ def heartbeat_job(job_id:str,lease_seconds:int=600)->bool:
 
 def retry_or_fail_job(job_id:str,error:str)->str:
     conn=_db()
-    row=conn.execute("SELECT attempts,max_attempts FROM assessment_jobs WHERE job_id=?",(job_id,)).fetchone()
+    row=conn.execute("SELECT status,attempts,max_attempts FROM assessment_jobs WHERE job_id=?",(job_id,)).fetchone()
     if not row:
         conn.close()
         return "missing"
+    if row["status"]!="running":
+        state=row["status"]
+        conn.close()
+        return state
     now=int(time.time())
     if int(row["attempts"]) < int(row["max_attempts"]):
         conn.execute(
