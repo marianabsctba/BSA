@@ -7,6 +7,7 @@ from ...application.services.ctem_service import (
     build_ctem_queue_page,
     list_ctem_queue,
 )
+from ...auth import audit
 from ...history import (
     ctem_audit_diff,
     ctem_audit_integrity,
@@ -15,6 +16,14 @@ from ...history import (
     ctem_transition_history,
     ctem_verification_history,
     list_ctem_items,
+    ctem_action_idempotency_key,
+    ctem_action_transition,
+    ctem_claim_operation,
+    ctem_operation_result,
+    ctem_store_operation_result,
+    record_ctem_transition,
+    update_ctem_state,
+    verify_ctem_item,
 )
 from ..dependencies import require
 
@@ -102,3 +111,83 @@ def ctem_queue_page_api(
 def ctem_queue(request: Request, state: str | None = None):
     principal=require(request,"findings:read")
     return list_ctem_queue(principal.tenant_id,state)
+
+
+@router.post("/api/v1/ctem/{item_id}/verify")
+def ctem_verify(item_id: str, request: Request, payload: dict):
+    principal=require(request,"remediation:write")
+    try:
+        result=verify_ctem_item(
+            item_id,
+            principal.tenant_id,
+            str(payload.get("result","")),
+            list(payload.get("evidence_refs") or []),
+            str(payload.get("notes","")),
+        )
+        audit(
+            principal,
+            "ctem_verification",
+            "ctem",
+            item_id,
+            {
+                "result":str(payload.get("result","")),
+                "evidence_count":len(list(payload.get("evidence_refs") or [])),
+            },
+        )
+        return result
+    except KeyError:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
+
+
+@router.post("/api/v1/ctem/{item_id}/state")
+def ctem_state(item_id: str, request: Request, payload: dict):
+    principal=require(request,"remediation:write")
+    new_state=str(payload.get("state",""))
+    request_id=str(payload.get("request_id") or request.headers.get("Idempotency-Key") or "")
+    items=list_ctem_items(principal.tenant_id)
+    item=next((entry for entry in items if entry.get("item_id")==item_id),None)
+    if item is None:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+
+    transitions={
+        "acknowledged":"acknowledge",
+        "in_progress":"start_remediation",
+        "resolved":"submit_for_verification",
+        "verified":"verify",
+    }
+    action=transitions.get(new_state)
+    if not action:
+        raise HTTPException(status_code=400,detail="invalid CTEM target state")
+
+    try:
+        target=ctem_action_transition(item,action)
+        operation_key=ctem_action_idempotency_key(item_id,action,request_id)
+        if not ctem_claim_operation(principal.tenant_id,operation_key,action,item_id):
+            previous=ctem_operation_result(principal.tenant_id,operation_key)
+            return previous or {"status":"already_processed","operation_key":operation_key}
+
+        result=update_ctem_state(item_id,principal.tenant_id,target)
+        record_ctem_transition(
+            item_id,
+            principal.tenant_id,
+            action,
+            str(item.get("state") or ""),
+            target,
+            actor_id=str(getattr(principal,"user_id","") or ""),
+            request_id=request_id or operation_key,
+        )
+        audit(
+            principal,
+            "ctem_state_transition",
+            "ctem",
+            item_id,
+            {"action":action,"from":item.get("state"),"to":target},
+        )
+        ctem_store_operation_result(principal.tenant_id,operation_key,result)
+        return result
+    except KeyError:
+        raise HTTPException(status_code=404,detail="CTEM item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc))
