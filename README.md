@@ -155,13 +155,33 @@ O BSA será orientado à **descoberta e validação defensiva de ativos autoriza
 
 ## Executar
 
+### Produção / piloto
+
+O caminho padrão para qualquer ambiente compartilhado, piloto ou servidor é o compose endurecido de produção:
+
 ```bash
+cp .env.example .env
+# substitua segredo, senha administrativa, hosts/origins e demais valores antes de iniciar
+docker compose -f docker-compose.production.yml up -d --build
+```
+
+Console: `http://127.0.0.1:8080`
+
+A API permanece na rede interna do compose e deve ser publicada somente por reverse proxy/TLS aprovado.
+
+### Desenvolvimento local
+
+O compose de desenvolvimento é somente para workstation local. Ele não contém segredo ou senha padrão e falha se `BSA_JWT_SECRET` e `BSA_ADMIN_PASSWORD` não forem definidos. As portas também ficam limitadas a `127.0.0.1`.
+
+```bash
+export BSA_JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+export BSA_ADMIN_PASSWORD="defina-uma-senha-local-forte"
 docker compose up --build
 ```
 
-Console: `http://localhost:8080`  
-API: `http://localhost:8000`  
-Swagger: `http://localhost:8000/docs`
+Console: `http://127.0.0.1:8080`  
+API: `http://127.0.0.1:8000`  
+Swagger de desenvolvimento: `http://127.0.0.1:8000/docs`
 
 ---
 
