@@ -1,0 +1,34 @@
+from .assessment_executor import (
+    run_assessment_operation,
+    supports as supports_assessment_operation,
+)
+from .discovery_executor import (
+    run_discovery_operation,
+    supports as supports_discovery_operation,
+)
+from .discovery_intelligence_executor import (
+    run_discovery_intelligence_operation,
+    supports as supports_discovery_intelligence_operation,
+)
+from .easm_executor import (
+    run_easm_operation,
+    supports as supports_easm_operation,
+)
+from .technology_executor import (
+    run_technology_operation,
+    supports as supports_technology_operation,
+)
+
+
+def run_operation(operation: str, target: str, payload: dict, principal):
+    if supports_assessment_operation(operation):
+        return run_assessment_operation(operation,target,payload,principal)
+    if supports_discovery_operation(operation):
+        return run_discovery_operation(operation,target,payload,principal)
+    if supports_discovery_intelligence_operation(operation):
+        return run_discovery_intelligence_operation(operation,target,payload,principal)
+    if supports_technology_operation(operation):
+        return run_technology_operation(operation,target,payload,principal)
+    if supports_easm_operation(operation):
+        return run_easm_operation(operation,target,payload,principal)
+    raise ValueError(f"unsupported active operation: {operation}")
