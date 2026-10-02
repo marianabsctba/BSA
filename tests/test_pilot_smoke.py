@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app import job_queue, worker
-import app.main as main
+from app.api.routers import graph_assessment as graph_assessment_router
 from app.auth import Principal
 
 
@@ -62,13 +62,13 @@ def test_pilot_smoke_queue_worker_materialization_and_ctem(tmp_path, monkeypatch
 
     monkeypatch.setattr(main, "STORE_ASSETS", [])
     monkeypatch.setattr(main, "STORE_FINDINGS", [])
-    monkeypatch.setattr(main, "asset_in_scope", lambda principal, value: True)
-    monkeypatch.setattr(main, "persist_state", lambda assets, findings: None)
+    monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
+    monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
 
     ctem = []
-    monkeypatch.setattr(main, "upsert_ctem_item", lambda item, tenant_id: ctem.append((tenant_id, item)))
+    monkeypatch.setattr(graph_assessment_router, "upsert_ctem_item", lambda item, tenant_id: ctem.append((tenant_id, item)))
     monkeypatch.setattr(
-        main,
+        graph_assessment_router,
         "assess_ctem_priority",
         lambda finding, asset: {
             "priority": 80,
@@ -77,23 +77,23 @@ def test_pilot_smoke_queue_worker_materialization_and_ctem(tmp_path, monkeypatch
         },
     )
 
-    materialized = main._materialize_assessment_result(principal, completed["result"])
+    materialized = graph_assessment_router._materialize_assessment_result(principal, completed["result"])
 
     assert materialized["assets_created"] == 1
     assert materialized["findings_created"] == 1
     assert materialized["skipped_out_of_scope"] == 0
-    assert len(main.STORE_ASSETS) == 1
-    assert len(main.STORE_FINDINGS) == 1
-    assert main.STORE_ASSETS[0].tenant_id == "tenant-pilot"
-    assert main.STORE_FINDINGS[0].tenant_id == "tenant-pilot"
+    assert len(graph_assessment_router.STORE_ASSETS) == 1
+    assert len(graph_assessment_router.STORE_FINDINGS) == 1
+    assert graph_assessment_router.STORE_ASSETS[0].tenant_id == "tenant-pilot"
+    assert graph_assessment_router.STORE_FINDINGS[0].tenant_id == "tenant-pilot"
     assert ctem
     assert all(tenant_id == "tenant-pilot" for tenant_id, _ in ctem)
 
-    second = main._materialize_assessment_result(principal, completed["result"])
+    second = graph_assessment_router._materialize_assessment_result(principal, completed["result"])
     assert second["assets_created"] == 0
     assert second["findings_created"] == 0
-    assert len(main.STORE_ASSETS) == 1
-    assert len(main.STORE_FINDINGS) == 1
+    assert len(graph_assessment_router.STORE_ASSETS) == 1
+    assert len(graph_assessment_router.STORE_FINDINGS) == 1
 
     job_queue.mark_materialized(job["job_id"], "tenant-pilot")
     final = job_queue.get_job(job["job_id"], "tenant-pilot")
