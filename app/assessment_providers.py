@@ -18,6 +18,7 @@ from urllib.error import HTTPError
 from .dast import run_safe_web_assessment
 from .exposure_signals import cloud_signals
 from .intelligence_sources import SOURCES
+from .security import resolve_external_target, revalidate_external_resolution
 
 
 @dataclass
@@ -49,6 +50,7 @@ class CommandProvider:
     def execute(self, target: str) -> list[ProviderResult]:
         if not self.available():
             return []
+        snapshot = resolve_external_target(target)
         command = self._command(target)
         proc = subprocess.run(
             command,
@@ -57,6 +59,7 @@ class CommandProvider:
             timeout=self.timeout,
             check=False,
         )
+        revalidate_external_resolution(snapshot)
         return self.parse(proc.stdout or "", proc.stderr or "", proc.returncode)
 
     def _command(self, target: str) -> list[str]:
@@ -333,6 +336,21 @@ class NmapProvider(CommandProvider):
     binary = "nmap"
     timeout = 90
 
+    def execute(self, target: str) -> list[ProviderResult]:
+        if not self.available():
+            return []
+        snapshot = resolve_external_target(target)
+        command = self._command(snapshot.ips[0])
+        proc = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        revalidate_external_resolution(snapshot)
+        return self.parse(proc.stdout or "", proc.stderr or "", proc.returncode)
+
     def _command(self, target: str) -> list[str]:
         # Bounded service discovery only: common ports, no NSE scripts or intrusive probes.
         return [self.binary, "-Pn", "-T3", "--top-ports", "100", "-sV", "--version-light", target]
@@ -427,6 +445,21 @@ class PortExposureProvider(JsonLinesProvider):
     name = "naabu"
     binary = "naabu"
     timeout = 90
+
+    def execute(self, target: str) -> list[ProviderResult]:
+        if not self.available():
+            return []
+        snapshot = resolve_external_target(target)
+        command = self._command(snapshot.ips[0])
+        proc = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        revalidate_external_resolution(snapshot)
+        return self.parse(proc.stdout or "", proc.stderr or "", proc.returncode)
 
     def _command(self, target: str) -> list[str]:
         return [self.binary, "-host", target, "-top-ports", "100", "-json", "-silent", "-rate", "300"]
