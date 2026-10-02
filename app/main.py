@@ -540,7 +540,7 @@ def vulnerability_intelligence_api(request: Request):
         intel=vulnerability_intelligence(f,amap.get(f.asset_id))
         rows.append({"finding":f.model_dump(),"asset":amap.get(f.asset_id).value if amap.get(f.asset_id) else None,"intelligence":asdict(intel)})
     rows.sort(key=lambda x:x["intelligence"]["priority_score"],reverse=True)
-    return {"summary":{"findings":len(rows),"critical":sum(x["finding"].severity.value=="critical" for x in rows),"high":sum(x["finding"].severity.value=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
+    return {"summary":{"findings":len(rows),"critical":sum(x["finding"].get("severity")=="critical" for x in rows),"high":sum(x["finding"].get("severity")=="high" for x in rows),"data_quality_gaps":sum(bool(x["intelligence"]["data_quality"]) for x in rows)},"items":rows}
 
 @app.get("/api/v1/vulnerabilities/{finding_id}/intelligence")
 def vulnerability_finding_intelligence(finding_id: str, request: Request):
