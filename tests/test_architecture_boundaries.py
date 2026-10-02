@@ -52,3 +52,15 @@ def test_risk_routes_live_outside_main():
     assert '@app.get("/api/v1/risk/register")' not in main_source
     assert '@router.get("/api/v1/risk/policy")' in router_source
     assert '@router.get("/api/v1/risk/register")' in router_source
+
+
+def test_vulnerability_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/vulnerabilities.py").read_text(encoding="utf-8")
+    assert "app.include_router(vulnerabilities_router)" in main_source
+    assert '@app.get("/api/v1/vulnerabilities/intelligence")' not in main_source
+    assert '@app.get("/api/v1/findings")' not in main_source
+    assert '@router.get("/api/v1/vulnerabilities/intelligence")' in router_source
+    assert '@router.get("/api/v1/findings")' in router_source
