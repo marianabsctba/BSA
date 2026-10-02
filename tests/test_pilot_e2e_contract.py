@@ -10,6 +10,7 @@ from app.api.routers import operations as operations_router
 from app.api.routers import reporting as reporting_router
 from app.api.routers import discovery_execution as discovery_execution_router
 from app import history, worker, job_queue
+from app.store import ASSETS as STORE_ASSETS
 
 
 client=TestClient(main.app)
@@ -38,7 +39,6 @@ def test_pilot_customer_journey_contract(tmp_path, monkeypatch):
     monkeypatch.setattr(operations_router,"require",lambda request,permission:principal)
     monkeypatch.setattr(reporting_router,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(discovery_execution_router,"asset_in_scope",lambda p,target:True)
-    monkeypatch.setattr(api_dependencies,"asset_in_scope",lambda p,target:True)
     monkeypatch.setattr(discovery_execution_router,"queue_active_operation",lambda request,p,target,operation,payload=None,authorization_ref=None: __import__("fastapi").responses.JSONResponse(status_code=202,content={"job_id":job_queue.enqueue_operation(p,target,operation,authorization_ref or "development",payload or {})["job_id"],"status":"queued","target":target,"operation":operation}))
     monkeypatch.setattr(
         reporting_router,
@@ -127,7 +127,7 @@ def test_pilot_ctem_retest_closes_verified_with_full_evidence(tmp_path, monkeypa
     monkeypatch.setenv("BSA_JOBS_DB",str(tmp_path/"jobs.db"))
 
     tenant_assets=[
-        asset for asset in discovery_execution_router.STORE_ASSETS
+        asset for asset in STORE_ASSETS
         if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
     ]
     assert tenant_assets
