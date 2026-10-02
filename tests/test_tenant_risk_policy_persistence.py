@@ -29,3 +29,18 @@ def test_tenant_risk_policy_persists_per_tenant(tmp_path, monkeypatch):
     assert other.tenant_id=="tenant-b"
     assert other.version==1
     assert other.name!="Tenant A Policy"
+
+
+def test_risk_policy_read_does_not_run_schema_ddl(tmp_path, monkeypatch):
+    from app import tenant_risk_policy
+
+    monkeypatch.setattr(auth,"DB_PATH",str(tmp_path/"auth.db"))
+    auth._db().close()
+    save_policy(TenantRiskPolicy(tenant_id="tenant-read"),updated_by="admin")
+
+    monkeypatch.setattr(
+        tenant_risk_policy,
+        "_ensure_policy_schema",
+        lambda: (_ for _ in ()).throw(AssertionError("DDL helper called during read")),
+    )
+    assert policy_for("tenant-read").tenant_id=="tenant-read"
