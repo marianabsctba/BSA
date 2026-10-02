@@ -23,3 +23,19 @@ def test_no_get_route_performs_active_network_collection():
         if any(marker in body for marker in ACTIVE_MARKERS):
             offenders.append(header)
     assert offenders == [], f"active network collection exposed through GET: {offenders}"
+
+
+def test_active_post_routes_queue_in_production():
+    source = Path("app/main.py").read_text(encoding="utf-8")
+    chunks = source.split("@app.")
+    offenders = []
+    for chunk in chunks:
+        if not chunk.startswith('post("'):
+            continue
+        header = chunk.split("\n", 1)[0]
+        body = chunk.split("@app.", 1)[0]
+        if not any(marker in body for marker in ACTIVE_MARKERS):
+            continue
+        if "if IS_PRODUCTION:" not in body or "queue_active_operation(" not in body:
+            offenders.append(header)
+    assert offenders == [], f"active POST route executes synchronously in production: {offenders}"
