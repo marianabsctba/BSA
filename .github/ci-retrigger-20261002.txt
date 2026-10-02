@@ -1,0 +1,2 @@
+CI retrigger marker created after repository visibility/name change on 2026-10-02.
+Safe to remove after workflow verification.
