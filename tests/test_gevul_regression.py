@@ -1,5 +1,6 @@
 from app.auth import Principal
 from app.api.routers import graph_assessment as graph_assessment_router
+from app.repositories.assets_findings import AssetFindingRepository
 from app.history import (
     list_ctem_items,
     update_ctem_state,
@@ -9,10 +10,16 @@ from app.history import (
 
 def test_verified_finding_reappearance_reopens_gevul_and_ctem(tmp_path, monkeypatch):
     monkeypatch.setenv("BSA_HISTORY_DB", str(tmp_path / "history.db"))
-    monkeypatch.setattr(graph_assessment_router, "STORE_ASSETS", [])
-    monkeypatch.setattr(graph_assessment_router, "STORE_FINDINGS", [])
+    assets=[]
+    findings=[]
+    repository=AssetFindingRepository(assets,findings)
+    monkeypatch.setattr(
+        graph_assessment_router,
+        "asset_finding_repository",
+        lambda: repository,
+    )
     monkeypatch.setattr(graph_assessment_router, "asset_in_scope", lambda principal, value: True)
-    monkeypatch.setattr(graph_assessment_router, "persist_state", lambda assets, findings: None)
+    monkeypatch.setattr(repository, "persist", lambda: None)
     monkeypatch.setattr(graph_assessment_router, "audit", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         graph_assessment_router,
@@ -54,7 +61,7 @@ def test_verified_finding_reappearance_reopens_gevul_and_ctem(tmp_path, monkeypa
     assert first["findings_created"] == 1
     assert first["regressions_reopened"] == 0
 
-    finding = graph_assessment_router.STORE_FINDINGS[0]
+    finding = findings[0]
     finding.status = "verified"
 
     item_id = f"assessment:{principal.tenant_id}:{finding.id}"
