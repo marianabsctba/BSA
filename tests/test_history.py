@@ -355,9 +355,9 @@ def test_ctem_action_transition_requires_canonical_sequence():
     assert ctem_action_transition({"state":"resolved"},"verify")=="verified"
 
 def test_tenant_scope_never_leaks_cross_tenant_assets_or_findings(monkeypatch):
-    import app.main as main
-    monkeypatch.setattr(main, "asset_in_scope", lambda principal, value: value == "public.example")
-    from app.main import tenant_scope
+    from app.api import tenant_scope as tenant_scope_module
+    monkeypatch.setattr(tenant_scope_module, "asset_in_scope", lambda principal, value: value == "public.example")
+    tenant_scope=tenant_scope_module.tenant_scope
     from types import SimpleNamespace
     principal=SimpleNamespace(tenant_id="tenant-a",user_id="test-user",role="superadmin")
     assets=[
