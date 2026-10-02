@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Request
 from ...auth import audit
 from ...digital_risk import list_events
 from ...integration_export import unified_siem_events
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 from ...syslog_export import config_from_env, send_event, send_events
-from ..dependencies import require, tenant_scope
+from ..dependencies import require
+from ..tenant_scope import tenant_scope
 
 
 router=APIRouter()
@@ -20,7 +20,7 @@ def integrations_siem_export(
     limit: int = 500,
 ):
     principal=require(request,"assets:read")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     drp=list_events(principal.tenant_id)
     return unified_siem_events(
         principal.tenant_id,
@@ -93,7 +93,7 @@ def integrations_siem_syslog_push(
     cfg=config_from_env()
     if cfg is None:
         raise HTTPException(status_code=400,detail="syslog not configured")
-    assets,findings=tenant_scope(principal,STORE_ASSETS,STORE_FINDINGS)
+    assets,findings=tenant_scope(principal)
     stream=unified_siem_events(
         principal.tenant_id,
         assets,
