@@ -1,4 +1,3 @@
-from ...active_operations import run_active_operation as run_legacy_operation
 from ...infrastructure.workers.discovery_executor import (
     run_discovery_operation,
     supports as supports_discovery_operation,
@@ -32,4 +31,4 @@ def run_operation(operation: str, target: str, payload: dict, principal):
         return run_technology_operation(operation,target,payload,principal)
     if supports_easm_operation(operation):
         return run_easm_operation(operation,target,payload,principal)
-    return run_legacy_operation(operation,target,payload,principal)
+    raise ValueError(f"unsupported active operation: {operation}")
