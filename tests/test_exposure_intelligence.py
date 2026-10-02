@@ -207,7 +207,7 @@ def test_infrastructure_correlation_endpoint():
 
 def test_discovery_infrastructure_contract():
     h=auth()
-    r=client.get("/api/v1/discovery/example.com/infrastructure",headers=h)
+    r=client.post("/api/v1/discovery/example.com/infrastructure",headers=h)
     assert r.status_code in (200,403)
     if r.status_code==200:
         data=r.json()
@@ -216,7 +216,7 @@ def test_discovery_infrastructure_contract():
 
 def test_infrastructure_graph_contract():
     h=auth()
-    r=client.get("/api/v1/discovery/example.com/infrastructure/graph",headers=h)
+    r=client.post("/api/v1/discovery/example.com/infrastructure/graph",headers=h)
     assert r.status_code in (200,403)
     if r.status_code==200:
         data=r.json()
@@ -237,7 +237,7 @@ def test_easm_overview_contract():
 
 def test_bounded_easm_discovery_contract():
     h=auth()
-    r=client.get("/api/v1/easm/discover/example.com?max_depth=0&max_assets=5",headers=h)
+    r=client.post("/api/v1/easm/discover/example.com?max_depth=0&max_assets=5",headers=h)
     assert r.status_code in (200,403)
     if r.status_code==200:
         data=r.json()
@@ -247,13 +247,13 @@ def test_bounded_easm_discovery_contract():
 
 def test_easm_discovery_rejects_unbounded_parameters():
     h=auth()
-    assert client.get("/api/v1/easm/discover/example.com?max_depth=4",headers=h).status_code==400
-    assert client.get("/api/v1/easm/discover/example.com?max_assets=101",headers=h).status_code==400
+    assert client.post("/api/v1/easm/discover/example.com?max_depth=4",headers=h).status_code==400
+    assert client.post("/api/v1/easm/discover/example.com?max_assets=101",headers=h).status_code==400
 
 
 def test_easm_lifecycle_contract():
     h=auth()
-    r=client.get("/api/v1/easm/lifecycle/example.com",headers=h)
+    r=client.post("/api/v1/easm/lifecycle/example.com",headers=h)
     assert r.status_code in (200,403)
     if r.status_code==200:
         data=r.json()
