@@ -17,6 +17,12 @@ class AssetFindingRepository:
         self._assets = STORE_ASSETS if assets is None else assets
         self._findings = STORE_FINDINGS if findings is None else findings
 
+    def all_assets(self):
+        return self._assets
+
+    def all_findings(self):
+        return self._findings
+
     def list_assets(self, tenant_id: str):
         return [
             asset
