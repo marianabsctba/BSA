@@ -13,7 +13,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 | ID | Tema | Prioridade | Estado atual | Critério de fechamento |
 |---|---|---:|---|---|
 | BSA-01 | Escalonamento vertical via papel customizado com users:write | P0 | Implementado; CI verde; reteste independente pendente | CI verde + reteste impedindo promoção/criação de admin por papel delegado |
-| BSA-02 | SSRF / varredura de rede interna no assessment e motores | P0 | Implementado; CI verde; reteste independente pendente | CI verde + reteste de loopback/RFC1918/link-local/CGNAT/nome interno + validação de follow-ups |
+| BSA-02 | SSRF / varredura de rede interna no assessment e motores | P0 | Implementado; CI verde; hostname do Nuclei bloqueado em produção; reteste independente pendente | CI verde + reteste de loopback/RFC1918/link-local/CGNAT/nome interno + validação de follow-ups |
 | BSA-03 | Grant autodeclarado / wildcard / escopo amplo | P0 | Implementado; CI verde; reteste independente pendente | CI verde + segregação + limites de escopo + prova de posse + política para sobreposição entre tenants |
 | BSA-04 | Caminho padrão de execução inseguro | P0 | Implementado; CI verde; reteste independente pendente | CI verde + README seguro + compose sem segredo/senha default + bind localhost |
 | BSA-05 | DoS de login por IP do proxy / conta-alvo | P1 | Implementado; CI verde; reteste independente pendente | IP real confiável no proxy + throttle persistente sem lockout global abusável + regressões |
@@ -45,10 +45,10 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Migrações versionadas com Alembic.
 - [ ] Remover ALTER TABLE oportunista do caminho normal de conexão.
 - [ ] Reduzir custo linear de tenant_scope.
-- [ ] Quebrar app/main.py em routers por domínio.
+- [x] Quebrar app/main.py em routers por domínio.
 - [ ] Mover lógica de negócio dos handlers para services.
 - [x] Toda coleta ativa relevante passa por fila.
-- [ ] Workers dedicados por classe de motor quando necessário.
+- [x] Workers/executores separados por classe de operação com dispatcher próprio.
 - [x] API isolada da rede de egress; motores ativos executam no worker com egress dedicado e validação/pinning de alvos.
 - [ ] API stateless preparada para múltiplas réplicas.
 - [ ] Estratégia de failover/HA.
@@ -80,13 +80,13 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [x] Actions pinadas por SHA.
 - [x] Imagens base pinadas por digest.
 - [ ] Pipeline de deploy/homologação.
-- [ ] Versionamento único API/console/docs.
+- [x] Versionamento único API/console/docs.
 - [ ] CHANGELOG e tags de release.
 
 ### Documentação e governança
 - [ ] Separar README de marketing, roadmap e operação.
 - [ ] Guia de implantação.
-- [ ] Guia de operação.
+- [x] Guia de operação.
 - [ ] Modelo de dados.
 - [ ] Threat model.
 - [ ] Política de versionamento.
@@ -99,8 +99,8 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 
 ### Produto / capacidades anunciadas
 - [ ] Change Intelligence baseado em histórico real em todos os fluxos.
-- [ ] Política de risco realmente persistida por tenant.
-- [ ] SLA MSSP configurável e baseado em janela temporal real.
+- [x] Política de risco realmente persistida por tenant.
+- [x] SLA MSSP configurável e baseado em janela temporal real.
 - [x] DRP/leaks com score/correlação/evidência.
 - [ ] Avaliação de qualidade da IA local.
 - [x] SIEM API pull.
@@ -112,7 +112,7 @@ Regra de fechamento: nenhum item é considerado concluído apenas por mudança d
 - [ ] Freshservice.
 - [ ] SSO OIDC.
 - [ ] SSO SAML.
-- [ ] MFA obrigatório por política de tenant.
+- [x] MFA obrigatório por política de tenant.
 - [ ] HA / múltiplas réplicas.
 
 ## Ordem de execução
@@ -133,3 +133,16 @@ Este tracker só pode ser considerado concluído quando:
 - reteste gray box não reabrir P0/P1;
 - release-readiness do piloto estiver sem falhas obrigatórias;
 - não houver capacidade anunciada como pronta se ainda estiver em estado beta/esboço/planejado.
+
+
+### Pendências do Reteste nº 3
+
+- [x] R3-01 — referências de testes migradas após modularização; CI voltou a verde.
+- [x] R2-01 — headers de segurança preservados nas locations do nginx e validados no smoke test.
+- [x] BSA-02 residual — Nuclei com hostname bloqueado em produção até pinning/egress equivalente.
+- [x] R2-02 — limitação e cobertura dos motores em produção documentadas no runbook e arquitetura.
+- [x] R2-03 — superadmin pode registrar aprovação de IP para tenant-alvo explícito.
+- [ ] R2-04 — remover atraso bloqueante no login e validar em CI.
+- [ ] R3-02 — evitar bloqueio indevido de usuário válido atrás de NAT compartilhado.
+- [ ] BSA-05 residual — pressão global por conta contra ataques distribuídos, sem lockout abusável.
+- [ ] R3-03 — repository layer para assets/findings, unificação de tenant_scope e preparação PostgreSQL.
