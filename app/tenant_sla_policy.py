@@ -47,7 +47,6 @@ def validate_sla_policy(policy: TenantSLAPolicy) -> list[str]:
 
 
 def sla_policy_for(tenant_id: str) -> TenantSLAPolicy:
-    _ensure_schema()
     conn=_db()
     row=conn.execute(
         "SELECT version,policy_json FROM tenant_sla_policies WHERE tenant_id=?",
