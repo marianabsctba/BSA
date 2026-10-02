@@ -8,6 +8,8 @@ from pathlib import Path
 from .engine_health import engine_health
 from .store import _store_path
 from .job_queue import _db_path
+from .retention import get_retention_policy
+from .scan_authorization import ensure_authorization_schema
 
 
 def _persistent_path(value: str | None) -> bool:
@@ -24,10 +26,13 @@ def release_readiness() -> dict:
     env = os.getenv("BSA_ENV", "development").lower()
     production = env in {"production", "prod"}
     jwt_secret = os.getenv("BSA_JWT_SECRET", "")
-    auth_db = os.getenv("BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db"))
+    auth_db = os.getenv("BSA_AUTH_DB", "/data/bsa_auth.db" if production else str(Path("/tmp") / "bsa_auth.db"))
+    history_db = os.getenv("BSA_HISTORY_DB", "/data/bsa_history.db" if production else str(Path("/tmp") / "bsa_history.db"))
+    demo_enabled = os.getenv("BSA_DEMO_DATA","0").strip().lower() in {"1","true","yes","on"}
     origins = [x.strip() for x in os.getenv("BSA_ALLOWED_ORIGINS", "").split(",") if x.strip()]
     hosts = [x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS", "").split(",") if x.strip()]
 
+    ensure_authorization_schema()
     health = engine_health()
     rapid = health.get("profiles", {}).get("rapid", {})
     balanced = health.get("profiles", {}).get("balanced", {})
@@ -54,6 +59,16 @@ def release_readiness() -> dict:
             "required": True,
         },
         {
+            "name": "persistent_history_store",
+            "status": "pass" if _persistent_path(history_db) else "fail",
+            "required": True,
+        },
+        {
+            "name": "demo_data_disabled",
+            "status": "pass" if not demo_enabled else "fail",
+            "required": True,
+        },
+        {
             "name": "strong_auth_secret",
             "status": "pass" if len(jwt_secret) >= 32 else "fail",
             "required": True,
@@ -72,13 +87,23 @@ def release_readiness() -> dict:
         },
         {
             "name": "origin_policy",
-            "status": "pass" if origins else "warn",
-            "required": False,
+            "status": "pass" if origins else ("fail" if production else "warn"),
+            "required": production,
         },
         {
             "name": "host_policy",
-            "status": "pass" if hosts else "warn",
-            "required": False,
+            "status": "pass" if hosts else ("fail" if production else "warn"),
+            "required": production,
+        },
+        {
+            "name": "tenant_retention_policy",
+            "status": "pass" if int(get_retention_policy("tenant-demo").get("retention_days",0) or 0) >= 30 else "fail",
+            "required": True,
+        },
+        {
+            "name": "scan_authorization_store",
+            "status": "pass",
+            "required": True,
         },
     ]
 
