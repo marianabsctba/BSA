@@ -151,3 +151,23 @@ def test_auth_routes_live_outside_main():
         assert f'@app.post("{route}")' not in main_source
     assert '@router.post("/api/v1/auth/login")' in router_source
     assert '@router.get("/api/v1/auth/me")' in router_source
+
+
+def test_operations_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/operations.py").read_text(encoding="utf-8")
+    assert "app.include_router(operations_router)" in main_source
+    for route in (
+        "/health",
+        "/ready",
+        "/metrics",
+        "/api/v1/operations/jobs/{job_id}",
+        "/api/v1/operations/alerts",
+        "/api/v1/operations/assessment-queue",
+        "/api/v1/operations/release-readiness",
+    ):
+        assert f'@app.get("{route}")' not in main_source
+    assert '@router.get("/ready")' in router_source
+    assert '@router.get("/api/v1/operations/release-readiness")' in router_source
