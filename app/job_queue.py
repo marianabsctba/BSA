@@ -89,6 +89,44 @@ def get_job(job_id:str,tenant_id:str)->dict|None:
     return out
 
 
+def queue_metrics(tenant_id:str)->dict:
+    conn=_db()
+    rows=conn.execute(
+        """SELECT status,attempts,created_at,started_at,completed_at
+        FROM assessment_jobs WHERE tenant_id=?""",
+        (tenant_id,),
+    ).fetchall()
+    conn.close()
+    counts={"queued":0,"running":0,"succeeded":0,"failed":0,"cancelled":0}
+    retries=0
+    durations=[]
+    queue_waits=[]
+    for row in rows:
+        status=str(row["status"])
+        counts[status]=counts.get(status,0)+1
+        attempts=int(row["attempts"] or 0)
+        retries+=max(0,attempts-1)
+        if row["started_at"] is not None:
+            queue_waits.append(max(0,int(row["started_at"])-int(row["created_at"])))
+        if row["started_at"] is not None and row["completed_at"] is not None:
+            durations.append(max(0,int(row["completed_at"])-int(row["started_at"])))
+    total=len(rows)
+    terminal=counts.get("succeeded",0)+counts.get("failed",0)+counts.get("cancelled",0)
+    success_rate=round(100*counts.get("succeeded",0)/terminal) if terminal else 100
+    return {
+        "total_jobs":total,
+        "queued":counts.get("queued",0),
+        "running":counts.get("running",0),
+        "succeeded":counts.get("succeeded",0),
+        "failed":counts.get("failed",0),
+        "cancelled":counts.get("cancelled",0),
+        "retries":retries,
+        "success_rate_percent":success_rate,
+        "average_execution_seconds":round(sum(durations)/len(durations),2) if durations else 0,
+        "average_queue_wait_seconds":round(sum(queue_waits)/len(queue_waits),2) if queue_waits else 0,
+    }
+
+
 def recover_stale_jobs(now:int|None=None)->dict:
     now=int(now or time.time())
     conn=_db()
