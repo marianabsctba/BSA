@@ -71,6 +71,7 @@ from .api.routers.operations import router as operations_router
 from .api.routers.scopes import router as scopes_router
 from .api.routers.governance import router as governance_router
 from .api.routers.digital_risk import router as digital_risk_router
+from .api.routers.mssp import router as mssp_router
 from .api.active_scan import govern_active_scan
 
 bootstrap()
@@ -98,6 +99,7 @@ app.include_router(operations_router)
 app.include_router(scopes_router)
 app.include_router(governance_router)
 app.include_router(digital_risk_router)
+app.include_router(mssp_router)
 
 ALLOWED_HOSTS=[x.strip() for x in os.getenv("BSA_ALLOWED_HOSTS","").split(",") if x.strip()]
 if ALLOWED_HOSTS:
@@ -216,87 +218,6 @@ def exposure_engines_health(request: Request):
     require(request, "assets:read")
     return public_engine_health()
 
-
-@app.get("/api/v1/mssp/command-center/trend")
-def mssp_command_center_trend(request: Request):
-    principal=require(request,"assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403, detail="MSSP role required")
-    from .auth import _db
-    conn=_db()
-    if principal.role == "superadmin":
-        tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants ORDER BY name").fetchall()]
-    else:
-        tenants=[dict(x) for x in conn.execute("SELECT id,name FROM tenants WHERE id=?",(principal.tenant_id,)).fetchall()]
-    conn.close()
-    out=[]
-    for t in tenants:
-        events=history(t["id"],90)
-        out.append({"tenant_id":t["id"],"tenant":t["name"],"events":events})
-    return {"days":90,"tenants":out}
-
-@app.get("/api/v1/mssp/command-center")
-def mssp_command_center(request: Request):
-    principal = require(request, "assets:read")
-    if principal.role not in {"superadmin","admin","manager"}:
-        raise HTTPException(status_code=403, detail="MSSP role required")
-    from .auth import _db
-    conn=_db()
-    if principal.role == "superadmin":
-        tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants ORDER BY name").fetchall()]
-    else:
-        tenants=[dict(x) for x in conn.execute("SELECT id,name,active FROM tenants WHERE id=?",(principal.tenant_id,)).fetchall()]
-    conn.close()
-    rows=[]
-    for t in tenants:
-        scoped=type("P",(),{"tenant_id":t["id"]})()
-        assets=[a for a in STORE_ASSETS if getattr(a,"tenant_id","tenant-demo")==t["id"]]
-        findings=[f for f in STORE_FINDINGS if getattr(f,"tenant_id","tenant-demo")==t["id"] and f.status=="open"]
-        scores=[exposure_breakdown(a,findings).score for a in assets]
-        plans=list_plans(t["id"])
-        overdue=sum(1 for p in plans if p.get("status") in {"planned","approved","in_progress"} and p.get("effort")=="alto")
-        risk=round(sum(scores)/len(scores)) if scores else 0
-        critical=sum(1 for f in findings if getattr(f,"severity",None) and str(f.severity).lower().endswith("critical"))
-        approved=sum(1 for p in plans if p.get("status")=="approved")
-        in_progress=sum(1 for p in plans if p.get("status")=="in_progress")
-        remediated=sum(1 for p in plans if p.get("status") in {"remediated","retest","closed"})
-        now_ts=datetime.now(timezone.utc)
-        active_plans=[p for p in plans if p.get("status") not in {"closed","remediated"}]
-        aging_days=[]
-        for p in active_plans:
-            try:
-                created=datetime.fromisoformat(p.get("created_at","").replace("Z","+00:00"))
-                aging_days.append(max(0,(now_ts-created).days))
-            except Exception:
-                pass
-        sla_policy=sla_policy_for(t["id"])
-        sla_breaches=0
-        for p in active_plans:
-            try:
-                created=datetime.fromisoformat(p.get("created_at","").replace("Z","+00:00"))
-                age_hours=max(0,(now_ts-created).total_seconds()/3600)
-            except Exception:
-                age_hours=0
-            priority=int(p.get("priority",p.get("risk_score",p.get("residual_score",0))) or 0)
-            if age_hours>sla_threshold_hours(priority,sla_policy):
-                sla_breaches+=1
-        sla_compliance=round((len(active_plans)-sla_breaches)/len(active_plans)*100) if active_plans else 100
-        residual=round(sum(p.get("residual_score",0) for p in active_plans)/len(active_plans)) if active_plans else 0
-        risk_reduction=sum(max(0,p.get("risk_reduction",0)) for p in plans)
-        rows.append({"tenant_id":t["id"],"tenant":t["name"],"active":t["active"],"risk":risk,
-                     "assets":len(assets),"open_findings":len(findings),"critical_findings":critical,
-                     "ctem":len(plans),"approved":approved,"in_progress":in_progress,"remediated":remediated,
-                     "overdue":overdue,"ctem_aging":len(active_plans),"avg_ctem_age_days":round(sum(aging_days)/len(aging_days)) if aging_days else 0,
-                     "sla_compliance":sla_compliance,"sla_breaches":sla_breaches,
-                     "sla_policy":serialize_sla_policy(sla_policy),"risk_residual":residual,
-                     "risk_reduction_30d":risk_reduction})
-    rows.sort(key=lambda x:x["risk"],reverse=True)
-    return {"tenants":rows,"summary":{"tenants":len(rows),"critical_tenants":sum(x["risk"]>=80 for x in rows),
-        "open_findings":sum(x["open_findings"] for x in rows),"ctem_plans":sum(x["ctem"] for x in rows),
-        "overdue":sum(x["overdue"] for x in rows),"remediated":sum(x["remediated"] for x in rows),"in_progress":sum(x["in_progress"] for x in rows),
-        "sla_compliance":round(sum(x["sla_compliance"] for x in rows)/len(rows)) if rows else 100,
-        "sla_breaches":sum(x["sla_breaches"] for x in rows),"risk_residual":round(sum(x["risk_residual"] for x in rows)) if rows else 0,
-        "risk_reduction_30d":sum(x["risk_reduction_30d"] for x in rows)}}
 
 @app.get("/api/v1/assets")
 def list_assets(request: Request):
