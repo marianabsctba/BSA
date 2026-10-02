@@ -96,3 +96,16 @@ def test_ctem_retest_route_lives_outside_main():
     router_source=Path("app/api/routers/ctem.py").read_text(encoding="utf-8")
     assert '@app.post("/api/v1/ctem/{item_id}/retest")' not in main_source
     assert '@router.post("/api/v1/ctem/{item_id}/retest")' in router_source
+
+
+def test_siem_integration_routes_live_outside_main():
+    from pathlib import Path
+
+    main_source=Path("app/main.py").read_text(encoding="utf-8")
+    router_source=Path("app/api/routers/integrations.py").read_text(encoding="utf-8")
+    assert "app.include_router(integrations_router)" in main_source
+    assert '@app.get("/api/v1/integrations/siem/export")' not in main_source
+    assert '@app.get("/api/v1/integrations/siem/status")' not in main_source
+    assert '@app.post("/api/v1/integrations/siem/syslog/test")' not in main_source
+    assert '@app.post("/api/v1/integrations/siem/syslog/push")' not in main_source
+    assert '@router.get("/api/v1/integrations/siem/export")' in router_source
