@@ -96,13 +96,25 @@ class NucleiProvider(JsonLinesProvider):
     binary = "nuclei"
     timeout = 120
 
+    def available(self) -> bool:
+        if not super().available():
+            return False
+        templates = os.getenv("BSA_NUCLEI_TEMPLATES", "/opt/nuclei-templates").strip()
+        return bool(templates and os.path.isdir(templates))
+
     def _command(self, target: str) -> list[str]:
+        templates = os.getenv("BSA_NUCLEI_TEMPLATES", "/opt/nuclei-templates").strip()
         return [
             self.binary,
             "-u",
             target,
             "-jsonl",
             "-silent",
+            "-duc",
+            "-t",
+            templates,
+            "-exclude-tags",
+            "dos,fuzz,bruteforce,intrusive",
             "-no-interactsh",
             "-timeout",
             "8",
@@ -261,14 +273,37 @@ class PureDnsProvider(CommandProvider):
     binary = "puredns"
     timeout = 75
 
+    def _resolver_paths(self) -> tuple[str, str]:
+        resolvers = os.getenv("BSA_PUREDNS_RESOLVERS", "/etc/bsa/puredns-resolvers.txt").strip()
+        trusted = os.getenv("BSA_PUREDNS_TRUSTED_RESOLVERS", "/etc/bsa/puredns-trusted.txt").strip()
+        return resolvers, trusted
+
     def available(self) -> bool:
-        return bool(shutil.which("puredns") and shutil.which("massdns"))
+        resolvers, trusted = self._resolver_paths()
+        return bool(
+            shutil.which("puredns")
+            and shutil.which("massdns")
+            and resolvers
+            and trusted
+            and os.path.isfile(resolvers)
+            and os.path.isfile(trusted)
+        )
 
     def execute(self, target: str) -> list[ProviderResult]:
         if not self.available():
             return []
+        resolvers, trusted = self._resolver_paths()
         proc = subprocess.run(
-            [self.binary, "resolve", "-", "--quiet"],
+            [
+                self.binary,
+                "resolve",
+                "-",
+                "--quiet",
+                "--resolvers",
+                resolvers,
+                "--resolvers-trusted",
+                trusted,
+            ],
             input=target + "\n",
             capture_output=True,
             text=True,
