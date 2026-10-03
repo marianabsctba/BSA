@@ -13,6 +13,7 @@ from ...digital_risk import (
     summarize_events,
     upsert_event,
 )
+from ...leak_intelligence import enrich_leak_intelligence
 from ...local_ai import analyze_brand_context, analyze_infrastructure_cluster
 from ..dependencies import require
 from ..tenant_scope import tenant_scope
@@ -119,6 +120,12 @@ def digital_risk_leak_ingest(payload: LeakSignal, request: Request):
         if analyzed["category"]=="credential_leak"
         else f"External leak signal for {asset.value if asset else payload.domain or payload.indicator}"
     )
+    analyzed=enrich_leak_intelligence(
+        principal.tenant_id,
+        payload,
+        analyzed,
+        list_events(principal.tenant_id),
+    )
     item=upsert_event(principal.tenant_id,analyzed)
     audit(
         principal,
@@ -131,6 +138,9 @@ def digital_risk_leak_ingest(payload: LeakSignal, request: Request):
             "risk_score":item.get("risk_score"),
             "account_count":item.get("account_count",0),
             "secret_count":item.get("secret_count",0),
+            "leak_subtype":item.get("leak_subtype"),
+            "occurrence_count":item.get("occurrence_count",1),
+            "lifecycle_state":item.get("lifecycle_state"),
         },
     )
     return item
