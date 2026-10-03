@@ -87,7 +87,7 @@ def test_repository_factory_requires_postgres_dsn(monkeypatch):
 
 
 def test_repository_factory_selects_postgres(monkeypatch):
-    from app.repositories import postgres_assets_findings as postgres_module
+    from app.repositories import runtime_postgres_assets_findings as postgres_module
 
     captured={}
     sentinel=object()
@@ -98,7 +98,7 @@ def test_repository_factory_selects_postgres(monkeypatch):
     )
     monkeypatch.setattr(
         postgres_module,
-        "PostgresAssetFindingRepository",
+        "RuntimePostgresAssetFindingRepository",
         lambda dsn: captured.setdefault("dsn",dsn) or sentinel,
     )
 
