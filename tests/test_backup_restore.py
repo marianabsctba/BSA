@@ -68,3 +68,41 @@ def test_backup_rejects_invalid_checksum(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError,match="checksum mismatch"):
         backup.inspect_backup(broken)
+
+
+def test_postgres_backup_round_trip_uses_verified_v2_bundle(tmp_path, monkeypatch):
+    paths=_configure(tmp_path,monkeypatch)
+    archive=tmp_path/"postgres-backup.zip"
+    payload={"assets":[],"findings":[]}
+    restored={}
+
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND","postgres")
+    monkeypatch.setenv("BSA_DATABASE_URL","postgresql://bsa:secret@postgres:5432/bsa")
+    monkeypatch.setattr(backup,"export_asset_state",lambda _dsn: payload)
+    monkeypatch.setattr(
+        backup,
+        "restore_asset_state",
+        lambda dsn,snapshot,force=False: restored.update(
+            dsn=dsn,
+            snapshot=snapshot,
+            force=force,
+        ) or {"assets":0,"findings":0},
+    )
+
+    created=backup.create_backup(archive)
+    assert created["format"]=="bsa-backup-v2"
+    assert created["postgres_asset_store"]["assets"]==0
+    assert created["postgres_asset_store"]["findings"]==0
+    inspected=backup.inspect_backup(archive)
+    assert inspected["format"]=="bsa-backup-v2"
+
+    for path in paths.values():
+        path.unlink()
+
+    result=backup.restore_backup(archive)
+    assert result["postgres_asset_store"]=={"assets":0,"findings":0}
+    assert restored=={
+        "dsn":"postgresql://bsa:secret@postgres:5432/bsa",
+        "snapshot":payload,
+        "force":False,
+    }
