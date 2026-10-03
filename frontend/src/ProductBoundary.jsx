@@ -1,6 +1,7 @@
 import React from "react";
-import {AlertTriangle,RefreshCw,ShieldCheck} from "lucide-react";
+import {RefreshCw,ShieldCheck} from "lucide-react";
 import {PRODUCT_COPY,browserProductLocale} from "./productLocale.js";
+import {ProductStatus} from "./components/ProductState.jsx";
 
 export default class ProductBoundary extends React.Component{
  constructor(props){super(props);this.state={failed:false,nonce:0};}
@@ -12,16 +13,14 @@ export default class ProductBoundary extends React.Component{
  render(){
   if(!this.state.failed)return <React.Fragment key={this.state.nonce}>{this.props.children}</React.Fragment>;
   const t=PRODUCT_COPY[browserProductLocale()].boundary;
+  const actions=<div className="product-fallback-actions">
+   <button className="primary" onClick={this.retry}><RefreshCw size={16}/>{t.retry}</button>
+   <button className="secondary" onClick={()=>window.location.reload()}>{t.reload}</button>
+  </div>;
   return <main className="product-fallback" role="alert">
    <section className="product-fallback-card">
-    <div className="product-fallback-icon"><AlertTriangle size={24}/></div>
     <div className="eyebrow">{t.eyebrow}</div>
-    <h1>{t.title}</h1>
-    <p>{t.body}</p>
-    <div className="product-fallback-actions">
-     <button className="primary" onClick={this.retry}><RefreshCw size={16}/>{t.retry}</button>
-     <button className="secondary" onClick={()=>window.location.reload()}>{t.reload}</button>
-    </div>
+    <ProductStatus kind="error" title={t.title} text={t.body} action={actions}/>
     <small><ShieldCheck size={14}/>{t.safe}</small>
    </section>
   </main>;
