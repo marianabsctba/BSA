@@ -218,3 +218,25 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         self._pending_findings.clear()
         self._tracked_assets.clear()
         self._tracked_findings.clear()
+
+    def tenant_record_counts(self, tenant_id: str) -> dict[str,int]:
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM assets WHERE tenant_id=%s",(tenant_id,))
+                assets=int(cur.fetchone()[0])
+                cur.execute("SELECT COUNT(*) FROM findings WHERE tenant_id=%s",(tenant_id,))
+                findings=int(cur.fetchone()[0])
+        return {"assets":assets,"findings":findings}
+
+    def purge_tenant(self, tenant_id: str) -> dict[str,int]:
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM findings WHERE tenant_id=%s",(tenant_id,))
+                findings=max(0,int(cur.rowcount))
+                cur.execute("DELETE FROM assets WHERE tenant_id=%s",(tenant_id,))
+                assets=max(0,int(cur.rowcount))
+        self._pending_assets=[item for item in self._pending_assets if item.tenant_id!=tenant_id]
+        self._pending_findings=[item for item in self._pending_findings if item.tenant_id!=tenant_id]
+        self._tracked_assets={key:item for key,item in self._tracked_assets.items() if key[0]!=tenant_id}
+        self._tracked_findings={key:item for key,item in self._tracked_findings.items() if key[0]!=tenant_id}
+        return {"assets":assets,"findings":findings}
