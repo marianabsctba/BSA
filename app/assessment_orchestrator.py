@@ -42,6 +42,27 @@ REBINDING_SAFE_PROVIDERS = {
 }
 DIRECT_IP_PROVIDERS = {"naabu", "nmap"}
 
+_TARGET_FAILURE_NAMES = {
+    "TimeoutError",
+    "ConnectionError",
+    "ConnectionRefusedError",
+    "ConnectionResetError",
+    "ConnectTimeout",
+    "ReadTimeout",
+    "ProxyError",
+    "SSLError",
+    "NewConnectionError",
+    "MaxRetryError",
+    "NameResolutionError",
+    "gaierror",
+}
+
+
+def _provider_failure_scope(exc: Exception) -> str:
+    """Classify failures so target/network behavior cannot poison global backend reliability."""
+    names = {cls.__name__ for cls in type(exc).mro()}
+    return "target" if names.intersection(_TARGET_FAILURE_NAMES) else "engine"
+
 
 def _execution_target(provider_name: str, target: str) -> str | None:
     if os.getenv("BSA_ENV","development").lower() not in {"production","prod"}:
@@ -160,6 +181,7 @@ def _record_capability_call(
     elapsed_ms: int,
     result_count: int = 0,
     error: bool = False,
+    provider_error_scope: str | None = None,
     provider_telemetry: dict[str, dict] | None = None,
 ) -> None:
     for capability in _provider_capabilities(provider_name):
@@ -176,11 +198,16 @@ def _record_capability_call(
     if provider_telemetry is not None:
         provider_row = provider_telemetry.setdefault(
             provider_name,
-            {"calls": 0, "errors": 0},
+            {"calls": 0, "errors": 0, "engine_errors": 0, "target_errors": 0},
         )
         provider_row["calls"] += 1
         if error:
-            provider_row["errors"] += 1
+            scope = provider_error_scope if provider_error_scope in {"target", "engine"} else "engine"
+            provider_row[f"{scope}_errors"] += 1
+            if scope == "engine":
+                # Historical backend reliability deliberately counts only failures
+                # attributable to the engine/runtime, never target-specific behavior.
+                provider_row["errors"] += 1
 
 
 def _adaptive_execution_policy(
@@ -557,6 +584,7 @@ def run_assessment(
                 provider_name,
                 elapsed_ms=0,
                 error=True,
+                provider_error_scope=_provider_failure_scope(exc),
                 provider_telemetry=internal["provider_telemetry"],
             )
             internal["errors"].append(
@@ -623,6 +651,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=0,
                         error=True,
+                        provider_error_scope=_provider_failure_scope(exc),
                         provider_telemetry=internal["provider_telemetry"],
                     )
                     internal["errors"].append(
@@ -681,6 +710,7 @@ def run_assessment(
                         provider_name,
                         elapsed_ms=0,
                         error=True,
+                        provider_error_scope=_provider_failure_scope(exc),
                         provider_telemetry=internal["provider_telemetry"],
                     )
                     internal["errors"].append(
