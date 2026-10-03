@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState}from"react";
-import{CloudOff,Wifi,ArrowDown}from"lucide-react";
+import{ArrowDown}from"lucide-react";
 import{PRODUCT_COPY,browserProductLocale}from"./productLocale.js";
+import{ConnectivityState}from"./components/ProductState.jsx";
 
 export default function ProductExperience({children}){
  const[online,setOnline]=useState(()=>typeof navigator==="undefined"?true:navigator.onLine);
@@ -40,8 +41,7 @@ export default function ProductExperience({children}){
 
  return <>
   <button className="ux-skip" onClick={skip}><ArrowDown size={14}/>{t.skip}</button>
-  {!online&&<div className="ux-connectivity offline" role="status"><CloudOff size={15}/><span>{t.offline}</span></div>}
-  {online&&restored&&<div className="ux-connectivity online" role="status"><Wifi size={15}/><span>{t.online}</span></div>}
+  <div className="ux-connectivity-wrap"><ConnectivityState online={online} restored={restored} offlineText={t.offline} onlineText={t.online}/></div>
   <div className="sr-only" aria-live="polite">{route?t.page+": "+route:""}</div>
   {children}
  </>;
