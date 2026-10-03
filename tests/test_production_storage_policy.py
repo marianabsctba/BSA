@@ -1,6 +1,7 @@
 import pytest
 
 from app.repositories.assets_findings import AssetFindingRepository, asset_finding_repository
+from app.store import _store_path
 
 
 def _clear_storage_env(monkeypatch):
@@ -8,6 +9,7 @@ def _clear_storage_env(monkeypatch):
         "BSA_ASSET_REPOSITORY_BACKEND",
         "BSA_DATABASE_URL",
         "BSA_ALLOW_LEGACY_STORAGE",
+        "BSA_STORE_DB",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -39,6 +41,15 @@ def test_production_rejects_legacy_backends(monkeypatch, backend):
         asset_finding_repository()
 
 
+def test_production_postgres_never_opens_legacy_store(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("BSA_ENV", "production")
+    monkeypatch.setenv("BSA_ASSET_REPOSITORY_BACKEND", "postgres")
+    monkeypatch.setenv("BSA_STORE_DB", "/tmp/should-not-be-used.db")
+
+    assert _store_path() is None
+
+
 def test_emergency_override_is_explicit(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("BSA_ENV", "production")
@@ -48,3 +59,4 @@ def test_emergency_override_is_explicit(monkeypatch):
     repository = asset_finding_repository()
 
     assert isinstance(repository, AssetFindingRepository)
+    assert _store_path() == "/data/bsa_store.db"
