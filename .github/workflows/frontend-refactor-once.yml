@@ -1,0 +1,50 @@
+name: Frontend refactor one-shot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/refactor_frontend_once.py
+      - .github/workflows/frontend-refactor-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-login:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply login extraction
+        run: python scripts/refactor_frontend_once.py
+      - name: Frontend tests and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Remove one-shot migration files
+        run: |
+          rm .github/workflows/frontend-refactor-once.yml
+          rm scripts/refactor_frontend_once.py
+      - name: Commit extracted login
+        run: |
+          if git diff --quiet; then
+            echo "No migration changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/LegacyConsole.jsx .github/workflows/frontend-refactor-once.yml scripts/refactor_frontend_once.py
+          git commit -m "refactor(frontend): wire extracted login into legacy console"
+          git push origin HEAD:main
