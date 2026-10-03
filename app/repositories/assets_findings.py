@@ -10,9 +10,9 @@ from ..store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS, persist_
 class AssetFindingRepository:
     """Repository boundary for asset/finding reads.
 
-    The current adapter wraps the existing in-process store. Callers depend on
-    this interface so the backing implementation can move to PostgreSQL
-    without leaking storage details into API routers.
+    This adapter intentionally remains available for development and tests.
+    Production runtime must use PostgreSQL unless an explicit emergency
+    override is enabled.
     """
 
     def __init__(self, assets=None, findings=None):
@@ -95,12 +95,26 @@ class AssetFindingRepository:
         return counts
 
 
+def _is_production() -> bool:
+    return os.getenv("BSA_ENV","development").strip().lower() in {"production","prod"}
+
+
+def _legacy_storage_allowed() -> bool:
+    return os.getenv("BSA_ALLOW_LEGACY_STORAGE","0").strip().lower() in {"1","true","yes","on"}
+
+
 def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepositoryPort:
     if assets is not None or findings is not None:
         return AssetFindingRepository(assets=assets, findings=findings)
 
-    backend=os.getenv("BSA_ASSET_REPOSITORY_BACKEND","legacy").strip().lower()
+    default_backend="postgres" if _is_production() else "legacy"
+    backend=os.getenv("BSA_ASSET_REPOSITORY_BACKEND",default_backend).strip().lower()
     if backend in {"legacy","sqlite","memory"}:
+        if _is_production() and not _legacy_storage_allowed():
+            raise RuntimeError(
+                "legacy asset storage is disabled in production; configure "
+                "BSA_ASSET_REPOSITORY_BACKEND=postgres and BSA_DATABASE_URL"
+            )
         return AssetFindingRepository()
     if backend=="postgres":
         dsn=os.getenv("BSA_DATABASE_URL","").strip()
