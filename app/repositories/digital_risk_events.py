@@ -182,7 +182,7 @@ class PostgresDigitalRiskRepository:
                 )
 
 
-def digital_risk_repository():
+def digital_risk_repository(*, sqlite_path: str | None = None):
     backend = os.getenv(
         "BSA_DRP_REPOSITORY_BACKEND",
         "postgres" if _is_production() else "sqlite",
@@ -193,7 +193,7 @@ def digital_risk_repository():
             raise RuntimeError(
                 "legacy DRP storage is disabled in production; configure PostgreSQL or explicitly set BSA_ALLOW_LEGACY_STORAGE=1 for emergency rollback"
             )
-        return SQLiteDigitalRiskRepository()
+        return SQLiteDigitalRiskRepository(path=sqlite_path)
 
     if backend == "postgres":
         dsn = os.getenv("BSA_DATABASE_URL", "").strip()
