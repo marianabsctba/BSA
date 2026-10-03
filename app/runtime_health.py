@@ -4,6 +4,7 @@ from pathlib import Path
 
 from . import auth
 from .job_queue import queue_health, worker_health, _db_path
+from .mfa_readiness import privileged_mfa_readiness
 from .store import _store_path
 
 
@@ -51,10 +52,16 @@ def runtime_health() -> dict:
     workers=worker_health()
 
     production=os.getenv("BSA_ENV","development").lower() in {"production","prod"}
+    privileged_mfa=(
+        privileged_mfa_readiness()
+        if production
+        else {"status":"not_required","required_roles":["admin","superadmin"]}
+    )
     required={
         "auth_db":auth_state["status"]=="healthy",
         "asset_store":store_state["status"]=="healthy" if production else store_state["status"] in {"healthy","disabled"},
         "queue":queue_state.get("status") not in {"unavailable","degraded"},
+        "privileged_mfa":privileged_mfa.get("status")=="healthy" if production else True,
     }
     status="healthy" if all(required.values()) else "degraded"
     return {
@@ -71,5 +78,6 @@ def runtime_health() -> dict:
                 "status":workers.get("status","unknown"),
                 "active_workers":int(workers.get("active_workers",0)),
             },
+            "privileged_mfa":privileged_mfa,
         },
     }
