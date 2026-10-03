@@ -94,12 +94,28 @@ def event_risk(event: dict) -> dict:
 def enrich_event(event: dict) -> dict:
     e=_normalized_event(event)
     risk=event_risk(e)
+    specialized_score=None
+    if e.get("risk_score") is not None:
+        try:
+            specialized_score=max(0,min(100,int(e["risk_score"])))
+        except (TypeError,ValueError):
+            specialized_score=None
+    score=max(risk["score"],specialized_score or 0)
+    if score>=85: band="critical"
+    elif score>=70: band="high"
+    elif score>=45: band="medium"
+    else: band="low"
+    specialized_reasons=e.get("risk_reasons") if isinstance(e.get("risk_reasons"),list) else []
+    reasons=list(dict.fromkeys([
+        *[str(reason) for reason in specialized_reasons if reason],
+        *risk["reasons"],
+    ]))
     return {
         **e,
         "correlation_key":event_correlation_key(e),
-        "risk_score":risk["score"],
-        "risk_band":risk["band"],
-        "risk_reasons":risk["reasons"],
+        "risk_score":score,
+        "risk_band":band,
+        "risk_reasons":reasons,
         "evidence_count":risk["evidence_count"],
     }
 
