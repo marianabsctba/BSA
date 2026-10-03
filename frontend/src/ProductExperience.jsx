@@ -1,25 +1,13 @@
 import React,{useEffect,useRef,useState}from"react";
 import{CloudOff,Wifi,ArrowDown}from"lucide-react";
-
-const copy={
- "pt-BR":{offline:"Você está offline. Os dados exibidos podem estar desatualizados.",online:"Conexão restabelecida.",skip:"Ir para o conteúdo",page:"Página atual"},
- en:{offline:"You are offline. Displayed data may be stale.",online:"Connection restored.",skip:"Skip to content",page:"Current page"},
- es:{offline:"Está sin conexión. Los datos mostrados pueden estar desactualizados.",online:"Conexión restablecida.",skip:"Ir al contenido",page:"Página actual"}
-};
-
-function locale(){
- const lang=(typeof navigator!=="undefined"?navigator.language:"")||"pt-BR";
- if(lang.toLowerCase().startsWith("en"))return"en";
- if(lang.toLowerCase().startsWith("es"))return"es";
- return"pt-BR";
-}
+import{PRODUCT_COPY,browserProductLocale}from"./productLocale.js";
 
 export default function ProductExperience({children}){
  const[online,setOnline]=useState(()=>typeof navigator==="undefined"?true:navigator.onLine);
  const[restored,setRestored]=useState(false);
  const[route,setRoute]=useState("");
  const previousOnline=useRef(online);
- const t=copy[locale()];
+ const t=PRODUCT_COPY[browserProductLocale()].experience;
 
  useEffect(()=>{
   const sync=()=>setOnline(navigator.onLine);
