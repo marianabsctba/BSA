@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ...auth import audit
+from ...brand_threat_intelligence import build_brand_threat
 from ...digital_risk import (
     BrandAnalysis,
     DigitalRiskEvent,
@@ -26,6 +27,16 @@ router=APIRouter()
 
 class LifecycleUpdate(BaseModel):
     state: str=Field(pattern="^(new|active|recurring|contained|resolved|resurfaced)$")
+
+
+class BrandThreatRequest(BaseModel):
+    indicator: str=Field(min_length=1,max_length=2048)
+    brand: str=Field(min_length=1,max_length=200)
+    vip: str|None=Field(default=None,max_length=200)
+    confidence: int=Field(default=70,ge=0,le=100)
+    visual_similarity: int|None=Field(default=None,ge=0,le=100)
+    text_similarity: int|None=Field(default=None,ge=0,le=100)
+    evidence: dict={}
 
 
 @router.post("/api/v1/digital-risk/infrastructure/analyze")
@@ -75,6 +86,61 @@ def digital_risk_brand_analyze(payload: BrandAnalysis, request: Request):
             },
         )
         result["event_id"]=event["event_id"]
+    return result
+
+
+@router.post("/api/v1/digital-risk/brand/correlate")
+def digital_risk_brand_correlate(payload: BrandThreatRequest, request: Request):
+    principal=require(request,"assets:write")
+    result=build_brand_threat(
+        tenant_id=principal.tenant_id,
+        indicator=payload.indicator,
+        brand=payload.brand,
+        vip=payload.vip,
+        confidence=payload.confidence,
+        visual_similarity=payload.visual_similarity,
+        text_similarity=payload.text_similarity,
+        evidence=payload.evidence,
+        prior_events=list_events(principal.tenant_id),
+    )
+    if result["risk_score"]>=45:
+        event=upsert_event(
+            principal.tenant_id,
+            {
+                "category":"brand_abuse",
+                "title":f"{result['threat_type']} targeting {payload.brand}",
+                "indicator":payload.indicator,
+                "source":"brand_intelligence",
+                "severity":"critical" if result["risk_score"]>=85 else "high" if result["risk_score"]>=70 else "medium",
+                "confidence":payload.confidence,
+                "brand":payload.brand,
+                "vip_target":payload.vip,
+                "campaign_key":result["campaign_key"],
+                "campaign_event_count":result["campaign_event_count"],
+                "threat_type":result["threat_type"],
+                "takedown_candidate":result["takedown_candidate"],
+                "risk_score":result["risk_score"],
+                "risk_reasons":result["signals"],
+                "evidence":{**payload.evidence,"correlation":result},
+                "status":"open",
+                "lifecycle_state":"new",
+                "human_review_required":True,
+            },
+        )
+        result["event_id"]=event["event_id"]
+        audit(
+            principal,
+            "create",
+            "digital_risk.brand_threat",
+            event["event_id"],
+            {
+                "brand":payload.brand,
+                "vip_target":payload.vip,
+                "threat_type":result["threat_type"],
+                "campaign_key":result["campaign_key"],
+                "takedown_candidate":result["takedown_candidate"],
+            },
+        )
     return result
 
 
