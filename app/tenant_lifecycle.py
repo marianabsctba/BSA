@@ -1,7 +1,8 @@
 import sqlite3
 
-from . import auth, history, job_queue, store
+from . import auth, history, job_queue
 from . import digital_risk, ctem_store
+from .repositories.assets_findings import asset_finding_repository
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -69,14 +70,9 @@ def tenant_purge_preview(tenant_id: str, preserve_audit: bool=True) -> dict:
     counts["assessment_jobs"]=_count(conn,"assessment_jobs","tenant_id=?",(tenant_id,))
     conn.close()
 
-    conn=store._connect()
-    if conn is not None:
-        counts["assets"]=_count(conn,"assets","tenant_id=?",(tenant_id,))
-        counts["findings"]=_count(conn,"findings","tenant_id=?",(tenant_id,))
-        conn.close()
-    else:
-        counts["assets"]=sum(1 for x in store.ASSETS if getattr(x,"tenant_id",None)==tenant_id)
-        counts["findings"]=sum(1 for x in store.FINDINGS if getattr(x,"tenant_id",None)==tenant_id)
+    storage_counts=asset_finding_repository().tenant_record_counts(tenant_id)
+    counts["assets"]=int(storage_counts.get("assets",0))
+    counts["findings"]=int(storage_counts.get("findings",0))
 
     return {
         "tenant_id":tenant_id,
@@ -94,11 +90,18 @@ def purge_tenant(principal, tenant_id: str, preserve_audit: bool=True) -> dict:
 
     preview=tenant_purge_preview(tenant_id,preserve_audit=preserve_audit)
 
+    # Validate the tenant before touching any backend, then remove the active
+    # asset/finding store first. If PostgreSQL is selected and unavailable,
+    # purge fails closed while tenant identity and access metadata still exist.
     conn=auth._db()
     tenant=conn.execute("SELECT id FROM tenants WHERE id=?",(tenant_id,)).fetchone()
+    conn.close()
     if not tenant:
-        conn.close()
         raise ValueError("tenant not found")
+
+    storage_deleted=asset_finding_repository().purge_tenant(tenant_id)
+
+    conn=auth._db()
     users=[r["id"] for r in conn.execute("SELECT id FROM users WHERE tenant_id=?",(tenant_id,)).fetchall()]
     scope_ids=[r["id"] for r in conn.execute("SELECT id FROM scopes WHERE tenant_id=?",(tenant_id,)).fetchall()] if _table_exists(conn,"scopes") else []
     scan_scope_ids=[r["id"] for r in conn.execute("SELECT id FROM scan_scopes WHERE tenant_id=?",(tenant_id,)).fetchall()] if _table_exists(conn,"scan_scopes") else []
@@ -129,13 +132,9 @@ def purge_tenant(principal, tenant_id: str, preserve_audit: bool=True) -> dict:
     _delete(conn,"assessment_jobs","tenant_id=?",(tenant_id,))
     conn.commit(); conn.close()
 
-    conn=store._connect()
-    if conn is not None:
-        _delete(conn,"findings","tenant_id=?",(tenant_id,))
-        _delete(conn,"assets","tenant_id=?",(tenant_id,))
-        conn.commit(); conn.close()
-
-    store.ASSETS[:]=[x for x in store.ASSETS if getattr(x,"tenant_id",None)!=tenant_id]
-    store.FINDINGS[:]=[x for x in store.FINDINGS if getattr(x,"tenant_id",None)!=tenant_id]
-
-    return {**preview,"purged":True}
+    result={**preview,"purged":True}
+    result["deleted_asset_records"]={
+        "assets":int(storage_deleted.get("assets",0)),
+        "findings":int(storage_deleted.get("findings",0)),
+    }
+    return result
