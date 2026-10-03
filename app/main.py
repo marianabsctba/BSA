@@ -16,6 +16,7 @@ from .api.routers.ctem import router as ctem_router
 from .api.routers.integrations import router as integrations_router
 from .api.routers.admin import router as admin_router
 from .api.routers.auth import router as auth_router
+from .api.routers.sso import router as sso_router
 from .api.routers.operations import router as operations_router
 from .api.routers.scopes import router as scopes_router
 from .api.routers.governance import router as governance_router
@@ -50,6 +51,7 @@ app.include_router(ctem_router)
 app.include_router(integrations_router)
 app.include_router(admin_router)
 app.include_router(auth_router)
+app.include_router(sso_router)
 app.include_router(operations_router)
 app.include_router(scopes_router)
 app.include_router(governance_router)
