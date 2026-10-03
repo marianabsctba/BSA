@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from ...auth import audit
 from ...digital_risk import (
@@ -13,6 +14,7 @@ from ...digital_risk import (
     summarize_events,
     upsert_event,
 )
+from ...drp_lifecycle import lifecycle_summary, update_event_lifecycle
 from ...leak_intelligence import enrich_leak_intelligence
 from ...local_ai import analyze_brand_context, analyze_infrastructure_cluster
 from ..dependencies import require
@@ -21,6 +23,9 @@ from ..tenant_scope import tenant_scope
 
 router=APIRouter()
 
+
+class LifecycleUpdate(BaseModel):
+    state: str=Field(pattern="^(new|active|recurring|contained|resolved|resurfaced)$")
 
 
 @router.post("/api/v1/digital-risk/infrastructure/analyze")
@@ -85,9 +90,11 @@ def digital_risk(request: Request, category: str|None=None):
         ),
         reverse=True,
     )
+    summary=summarize_events(events)
+    summary.update(lifecycle_summary(events))
     return {
         "events":ordered,
-        "summary":summarize_events(events),
+        "summary":summary,
         "top_risk":ordered[:10],
     }
 
@@ -141,6 +148,28 @@ def digital_risk_leak_ingest(payload: LeakSignal, request: Request):
             "leak_subtype":item.get("leak_subtype"),
             "occurrence_count":item.get("occurrence_count",1),
             "lifecycle_state":item.get("lifecycle_state"),
+        },
+    )
+    return item
+
+
+@router.patch("/api/v1/digital-risk/events/{event_id}/lifecycle")
+def digital_risk_lifecycle_update(event_id: str, payload: LifecycleUpdate, request: Request):
+    principal=require(request,"assets:write")
+    try:
+        item=update_event_lifecycle(principal.tenant_id,event_id,payload.state)
+    except ValueError as exc:
+        raise HTTPException(status_code=409,detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404,detail="digital risk event not found")
+    audit(
+        principal,
+        "update",
+        "digital_risk.lifecycle",
+        event_id,
+        {
+            "lifecycle_state":item.get("lifecycle_state"),
+            "status":item.get("status"),
         },
     )
     return item
