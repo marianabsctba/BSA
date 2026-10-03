@@ -23,14 +23,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Apply login extraction
         run: python scripts/refactor_frontend_once.py
       - name: Frontend tests and build
         working-directory: frontend
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm test
           npm run build
       - name: Remove one-shot migration files
