@@ -3,9 +3,18 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from .postgres_pool import pooled_connection
+
+
+_DEFAULT_SQLITE_PATH = os.getenv("BSA_DRP_DB", "").strip() or os.getenv(
+    "BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db")
+)
+_legacy_module = sys.modules.get("app.digital_risk")
+if _legacy_module is not None and not hasattr(_legacy_module, "DB_PATH"):
+    setattr(_legacy_module, "DB_PATH", _DEFAULT_SQLITE_PATH)
 
 
 def _is_production() -> bool:
@@ -16,11 +25,17 @@ def _allow_legacy() -> bool:
     return os.getenv("BSA_ALLOW_LEGACY_STORAGE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _compat_sqlite_path(explicit: str | None = None) -> str:
+    if explicit:
+        return explicit
+    module = sys.modules.get("app.digital_risk")
+    patched = getattr(module, "DB_PATH", "") if module is not None else ""
+    return str(patched or _DEFAULT_SQLITE_PATH)
+
+
 class SQLiteDigitalRiskRepository:
     def __init__(self, path: str | None = None):
-        self.path = path or os.getenv("BSA_DRP_DB", "").strip() or os.getenv(
-            "BSA_AUTH_DB", str(Path("/tmp") / "bsa_auth.db")
-        )
+        self.path = _compat_sqlite_path(path)
 
     def _connection(self):
         conn = sqlite3.connect(self.path, timeout=15)
