@@ -22,7 +22,6 @@ from .assessment_providers import (
     HttpProbeProvider,
     HudsonRockProvider,
     NmapProvider,
-    NucleiProvider,
     PortExposureProvider,
     SafeWebProvider,
     SubdomainProvider,
@@ -35,6 +34,7 @@ from .assessment_providers import (
     SecretExposureProvider,
     ZAPProvider,
 )
+from .safe_nuclei_provider import SafeNucleiProvider
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ class AssessmentRegistry:
             WhatWebProvider,
             TestSslProvider,
             CloudExposureProvider,
-            NucleiProvider,
+            SafeNucleiProvider,
             NmapProvider,
             PortExposureProvider,
             SafeWebProvider,
