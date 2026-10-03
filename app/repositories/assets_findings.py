@@ -77,6 +77,23 @@ class AssetFindingRepository:
     def persist(self) -> None:
         persist_state(self._assets,self._findings)
 
+    def tenant_record_counts(self, tenant_id: str) -> dict[str,int]:
+        return {
+            "assets":sum(1 for item in self._assets if getattr(item,"tenant_id",None)==tenant_id),
+            "findings":sum(1 for item in self._findings if getattr(item,"tenant_id",None)==tenant_id),
+        }
+
+    def purge_tenant(self, tenant_id: str) -> dict[str,int]:
+        counts=self.tenant_record_counts(tenant_id)
+        self._assets[:]=[
+            item for item in self._assets if getattr(item,"tenant_id",None)!=tenant_id
+        ]
+        self._findings[:]=[
+            item for item in self._findings if getattr(item,"tenant_id",None)!=tenant_id
+        ]
+        persist_state(self._assets,self._findings)
+        return counts
+
 
 def asset_finding_repository(assets=None, findings=None) -> AssetFindingRepositoryPort:
     if assets is not None or findings is not None:
