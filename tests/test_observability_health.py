@@ -46,6 +46,7 @@ def test_runtime_health_degrades_when_required_component_fails(monkeypatch):
     monkeypatch.setattr(runtime_health,"worker_health",lambda:{
         "status":"unknown","active_workers":0,
     })
+    monkeypatch.setattr(runtime_health,"privileged_mfa_readiness",lambda:{"status":"healthy"})
     data=runtime_health.runtime_health()
     assert data["status"]=="degraded"
     assert data["components"]["auth_db"]["status"]=="unavailable"
@@ -121,6 +122,7 @@ def test_runtime_health_checks_postgres_when_repository_backend_is_postgres(monk
     monkeypatch.setattr(runtime_health,"_sqlite_readable",lambda path: {"status":"healthy"})
     monkeypatch.setattr(runtime_health,"queue_health",lambda: {"status":"healthy","queued":0,"running":0})
     monkeypatch.setattr(runtime_health,"worker_health",lambda: {"status":"healthy","active_workers":1})
+    monkeypatch.setattr(runtime_health,"privileged_mfa_readiness",lambda:{"status":"healthy"})
 
     data=runtime_health.runtime_health()
 
