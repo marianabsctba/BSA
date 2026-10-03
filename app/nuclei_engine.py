@@ -54,6 +54,27 @@ def _result(item: dict) -> dict:
     }
 
 
+def _command(binary: str, normalized: str, profile: str) -> list[str]:
+    command = [
+        binary,
+        "-u",
+        normalized,
+        "-jsonl",
+        "-silent",
+        "-no-interactsh",
+        "-dr",
+        "-timeout",
+        "5",
+        "-retries",
+        "1",
+        "-rate-limit",
+        "25",
+    ]
+    if profile == "safe":
+        command.extend(["-tags", "safe"])
+    return command
+
+
 def run_nuclei(target: str, profile: str = "safe", timeout_seconds: int = 120) -> dict:
     """Run Nuclei as an external detection engine under a bounded, validated scope."""
     normalized = _normalized_target(target)
@@ -64,12 +85,7 @@ def run_nuclei(target: str, profile: str = "safe", timeout_seconds: int = 120) -
     if not binary:
         raise NucleiEngineError("nuclei engine is not installed")
 
-    command = [
-        binary, "-u", normalized, "-jsonl", "-silent", "-no-interactsh",
-        "-timeout", "5", "-retries", "1", "-rate-limit", "25",
-    ]
-    if profile == "safe":
-        command.extend(["-tags", "safe"])
+    command = _command(binary, normalized, profile)
     try:
         completed = subprocess.run(
             command,
