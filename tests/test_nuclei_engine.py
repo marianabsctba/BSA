@@ -35,6 +35,28 @@ def test_nuclei_adapter_never_uses_shell(monkeypatch):
     assert captured["check"] is False
 
 
+def test_direct_nuclei_command_disables_redirects(monkeypatch):
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, *args, **kwargs):
+        captured["command"] = list(command)
+        return Completed()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("app.nuclei_engine.shutil.which", lambda name: "/usr/bin/nuclei")
+
+    run_nuclei("https://1.1.1.1/", profile="standard")
+
+    assert "-dr" in captured["command"] or "-disable-redirects" in captured["command"]
+    assert "-fr" not in captured["command"]
+    assert "-follow-redirects" not in captured["command"]
+
+
 def test_nuclei_adapter_rejects_unsupported_profile(monkeypatch):
     monkeypatch.setattr("app.nuclei_engine.shutil.which", lambda name: "/usr/bin/nuclei")
     with pytest.raises(ValueError):
