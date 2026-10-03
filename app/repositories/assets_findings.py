@@ -92,6 +92,6 @@ def asset_finding_repository(assets=None, findings=None) -> AssetFindingReposito
                 "BSA_DATABASE_URL is required when "
                 "BSA_ASSET_REPOSITORY_BACKEND=postgres"
             )
-        from .postgres_assets_findings import PostgresAssetFindingRepository
-        return PostgresAssetFindingRepository(dsn)
+        from .runtime_postgres_assets_findings import RuntimePostgresAssetFindingRepository
+        return RuntimePostgresAssetFindingRepository(dsn)
     raise RuntimeError(f"unsupported asset repository backend: {backend}")
