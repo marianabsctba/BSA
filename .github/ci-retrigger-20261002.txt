@@ -1,2 +1,4 @@
 CI retrigger marker created after repository visibility/name change on 2026-10-02.
 Safe to remove after workflow verification.
+
+Retriggered on 2026-10-03 after runner initialization failure (no steps / BlobNotFound logs).
