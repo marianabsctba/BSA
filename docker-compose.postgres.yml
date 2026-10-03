@@ -28,6 +28,29 @@ services:
     cap_drop: [ALL]
     networks: [bsa_database]
 
+  postgres-bootstrap:
+    build: .
+    container_name: bsa-postgres-bootstrap
+    restart: "no"
+    command:
+      [
+        "python",
+        "-c",
+        "import os; from app.repositories.postgres_assets_findings import PostgresAssetFindingRepository; PostgresAssetFindingRepository(os.environ['BSA_DATABASE_URL']); print('postgres asset schema ready')",
+      ]
+    environment:
+      BSA_DATABASE_URL: postgresql://${BSA_POSTGRES_USER:-bsa}:${BSA_POSTGRES_PASSWORD}@postgres:5432/${BSA_POSTGRES_DB:-bsa}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [bsa_database]
+
   api:
     environment:
       BSA_ASSET_REPOSITORY_BACKEND: postgres
@@ -35,6 +58,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-bootstrap:
+        condition: service_completed_successfully
     networks: [bsa_ai_client, bsa_app, bsa_database]
 
   worker:
@@ -44,6 +69,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-bootstrap:
+        condition: service_completed_successfully
     networks: [bsa_egress, bsa_database]
 
 volumes:
