@@ -30,7 +30,7 @@ def _seed_user(auth, monkeypatch, db_path):
     conn.close()
 
 
-def test_login_allows_correct_password_after_account_threshold(tmp_path, monkeypatch):
+def test_login_blocks_correct_password_after_account_threshold(tmp_path, monkeypatch):
     from app import auth
 
     _seed_user(auth, monkeypatch, tmp_path / "auth.db")
@@ -54,8 +54,8 @@ def test_login_allows_correct_password_after_account_threshold(tmp_path, monkeyp
         "/api/v1/auth/login",
         json={"email": EMAIL, "password": CORRECT_PASSWORD},
     )
-    assert correct_while_blocked.status_code == 200
-    assert correct_while_blocked.json()["user"]["email"] == EMAIL
+    assert correct_while_blocked.status_code == 429
+    assert int(correct_while_blocked.headers["Retry-After"]) > 0
 
 
 def test_distributed_ips_cannot_bypass_account_throttle(tmp_path, monkeypatch):
@@ -91,5 +91,5 @@ def test_distributed_ips_cannot_bypass_account_throttle(tmp_path, monkeypatch):
         headers={"X-Test-IP": "203.0.113.201"},
         json={"email": EMAIL, "password": CORRECT_PASSWORD},
     )
-    assert correct_from_new_ip.status_code == 200
-    assert correct_from_new_ip.json()["user"]["email"] == EMAIL
+    assert correct_from_new_ip.status_code == 429
+    assert int(correct_from_new_ip.headers["Retry-After"]) > 0
