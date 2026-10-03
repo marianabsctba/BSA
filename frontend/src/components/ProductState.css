@@ -1,0 +1,13 @@
+.product-state{display:flex;align-items:flex-start;gap:11px;border:1px solid #2b3340;background:#ffffff03;border-radius:12px;padding:13px 14px;min-width:0;color:#c7cfda}
+.product-state.compact{align-items:center;padding:8px 12px;border-radius:999px;box-shadow:0 14px 40px #0009;backdrop-filter:blur(12px)}
+.product-state-icon{width:34px;height:34px;display:grid;place-items:center;flex:none;border-radius:10px;background:#ffffff05;color:#8f9aaa}
+.product-state.compact .product-state-icon{width:auto;height:auto;background:transparent;border-radius:0}
+.product-state-copy{min-width:0;flex:1}.product-state-copy strong,.product-state-copy span{display:block}.product-state-copy strong{font-size:12px;color:#f4f6f9}.product-state-copy span{margin-top:3px;color:#8f9aaa;font-size:10px;line-height:1.5}.product-state.compact .product-state-copy span{margin-top:0;color:inherit}
+.product-state-action{margin-left:auto;align-self:center}.product-state-action .product-fallback-actions{margin:0}
+.product-state-error{border-color:rgba(255,97,126,.28);background:rgba(255,97,126,.06)}.product-state-error .product-state-icon{color:#ff7896;background:rgba(255,97,126,.08)}
+.product-state-offline{border-color:rgba(246,200,107,.4);background:rgba(41,31,12,.94);color:#ffd98a}.product-state-offline .product-state-icon{color:#ffd98a}
+.product-state-online{border-color:rgba(104,227,162,.35);background:rgba(9,40,27,.94);color:#90f0b9}.product-state-online .product-state-icon{color:#90f0b9}
+.product-state-loading .product-state-icon{color:#ff6ba8}.product-state-empty .product-state-icon{color:#778293}
+.ux-connectivity-wrap{position:fixed;z-index:130;left:50%;top:12px;transform:translateX(-50%);max-width:min(620px,calc(100vw - 24px));width:max-content}
+.product-fallback-card>.product-state{margin-top:12px;padding:18px;background:#0c1118}.product-fallback-card>.product-state .product-state-copy strong{font-size:22px;line-height:1.18}.product-fallback-card>.product-state .product-state-copy span{font-size:12px;line-height:1.65;margin-top:7px}.product-fallback-card>.product-state .product-state-action{align-self:flex-end}
+@media(max-width:760px){.product-state{padding:12px}.product-state-action{width:100%;margin-left:0}.product-state:not(.compact){flex-wrap:wrap}.product-state-action .product-fallback-actions{width:100%}.product-state-action .product-fallback-actions button{flex:1;justify-content:center}.ux-connectivity-wrap{top:8px}.product-fallback-card>.product-state .product-state-copy strong{font-size:19px}}
