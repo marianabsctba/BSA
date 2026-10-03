@@ -3,12 +3,15 @@
 Vendor-neutral primitives inspired by current DRP/EASM market patterns:
 brand abuse, phishing, leaks, VIP exposure, dark web and supply chain.
 """
-import os, sqlite3, json, time, uuid, hashlib
-from pathlib import Path
-from pydantic import BaseModel, Field
-from .assessment_engine import mask_public_data
+import hashlib
+import time
+import uuid
 
-DB_PATH=os.getenv("BSA_AUTH_DB",str(Path("/tmp")/"bsa_auth.db"))
+from pydantic import BaseModel, Field
+
+from .assessment_engine import mask_public_data
+from .repositories.digital_risk_events import digital_risk_repository
+
 
 class DigitalRiskEvent(BaseModel):
     category: str
@@ -28,6 +31,7 @@ class DigitalRiskEvent(BaseModel):
 
 SEVERITY_WEIGHT={"info":5,"low":20,"medium":45,"high":70,"critical":90}
 CREDENTIAL_CATEGORIES={"credential_leak","credentials","leak","data_leak"}
+
 
 def _normalized_event(event: dict) -> dict:
     category=str(event.get("category") or "unknown").strip().lower()
@@ -54,6 +58,7 @@ def _normalized_event(event: dict) -> dict:
         "evidence":evidence,
     }
 
+
 def event_correlation_key(event: dict) -> str:
     normalized=_normalized_event(event)
     raw="|".join([
@@ -63,6 +68,7 @@ def event_correlation_key(event: dict) -> str:
         str(normalized.get("asset_id") or "").lower(),
     ])
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
 
 def event_risk(event: dict) -> dict:
     e=_normalized_event(event)
@@ -90,6 +96,7 @@ def event_risk(event: dict) -> dict:
         "reasons":reasons,
         "evidence_count":evidence_count,
     }
+
 
 def enrich_event(event: dict) -> dict:
     e=_normalized_event(event)
@@ -119,6 +126,7 @@ def enrich_event(event: dict) -> dict:
         "evidence_count":risk["evidence_count"],
     }
 
+
 def summarize_events(events: list[dict]) -> dict:
     enriched=[enrich_event(x) for x in events]
     by_category={}
@@ -146,65 +154,34 @@ def summarize_events(events: list[dict]) -> dict:
         "by_source":by_source,
     }
 
-def _db():
-    c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row
-    c.execute("""CREATE TABLE IF NOT EXISTS digital_risk(
-      event_id TEXT NOT NULL, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
-      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-      PRIMARY KEY(tenant_id,event_id))""")
-    info=c.execute("PRAGMA table_info(digital_risk)").fetchall()
-    pk=[r["name"] for r in sorted((r for r in info if r["pk"]),key=lambda r:r["pk"])]
-    if pk==["event_id"]:
-        c.execute("""CREATE TABLE digital_risk_v2(
-          event_id TEXT NOT NULL, tenant_id TEXT NOT NULL, payload TEXT NOT NULL,
-          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          PRIMARY KEY(tenant_id,event_id))""")
-        c.execute("""INSERT INTO digital_risk_v2(event_id,tenant_id,payload,created_at,updated_at)
-          SELECT event_id,tenant_id,payload,created_at,updated_at FROM digital_risk""")
-        c.execute("DROP TABLE digital_risk")
-        c.execute("ALTER TABLE digital_risk_v2 RENAME TO digital_risk")
-    c.commit(); return c
 
 def upsert_event(tenant_id,event):
     now=int(time.time())
     event=enrich_event(event)
-    c=_db()
+    repository=digital_risk_repository()
     eid=event.get("event_id")
     if not eid:
-        rows=c.execute("SELECT event_id,payload FROM digital_risk WHERE tenant_id=?",(tenant_id,)).fetchall()
         match=None
-        for row in rows:
-            try:
-                existing=json.loads(row["payload"])
-            except Exception:
-                continue
+        for existing in repository.list(tenant_id):
             if event_correlation_key(existing)==event["correlation_key"]:
-                match=row["event_id"]
+                match=existing.get("event_id")
                 break
         eid=match or str(uuid.uuid4())
-    previous=c.execute(
-        "SELECT payload,created_at FROM digital_risk WHERE event_id=? AND tenant_id=?",
-        (eid,tenant_id),
-    ).fetchone()
-    created_at=int(previous["created_at"]) if previous else now
+    previous=repository.get(tenant_id,eid)
+    created_at=int(previous[1]) if previous else now
     if previous:
-        try:
-            old=json.loads(previous["payload"])
-            first_seen=old.get("first_seen") or event.get("first_seen") or ""
-        except Exception:
-            first_seen=event.get("first_seen") or ""
+        old=previous[0]
+        first_seen=old.get("first_seen") or event.get("first_seen") or ""
     else:
         first_seen=event.get("first_seen") or ""
     event=enrich_event({**event,"event_id":eid,"first_seen":first_seen,"updated_at":now})
-    c.execute("""INSERT INTO digital_risk(event_id,tenant_id,payload,created_at,updated_at)
-      VALUES(?,?,?,?,?) ON CONFLICT(tenant_id,event_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at""",
-      (eid,tenant_id,json.dumps(event,ensure_ascii=False),created_at,now)); c.commit(); c.close(); return event
+    repository.put(tenant_id,eid,event,created_at,now)
+    return event
+
 
 def list_events(tenant_id,category=None):
-    c=_db(); q="SELECT payload FROM digital_risk WHERE tenant_id=?"; args=[tenant_id]
-    if category: q+=" AND json_extract(payload,'$.category')=?"; args.append(category)
-    rows=c.execute(q+" ORDER BY updated_at DESC",args).fetchall(); c.close()
-    return [mask_public_data(enrich_event(json.loads(r["payload"]))) for r in rows]
+    rows=digital_risk_repository().list(tenant_id,category)
+    return [mask_public_data(enrich_event(item)) for item in rows]
 
 
 class BrandAnalysis(BaseModel):
@@ -216,9 +193,11 @@ class BrandAnalysis(BaseModel):
     visual_similarity: int|None=None
     text_similarity: int|None=None
 
+
 def _similarity(a,b):
     a=set(str(a).lower().split()); b=set(str(b).lower().split())
     return round(len(a&b)/max(1,len(a|b))*100)
+
 
 def analyze_brand_impersonation(tenant_id, analysis: BrandAnalysis):
     visual=analysis.visual_similarity
@@ -247,6 +226,7 @@ class LeakSignal(BaseModel):
     last_seen: str=""
     confidence: int=Field(default=70,ge=0,le=100)
     evidence: dict={}
+
 
 def analyze_leak_signal(item: LeakSignal) -> dict:
     category={
@@ -309,10 +289,12 @@ class InfrastructureIndicator(BaseModel):
     source: str="manual"
     confidence: int=70
 
+
 def infrastructure_fingerprint(item: InfrastructureIndicator) -> str:
     parts=[item.ip,item.asn,item.registrar,item.certificate_sha256,item.favicon_sha256,item.screenshot_hash,*item.nameservers,*item.related_domains,*item.redirect_chain]
     normalized="|".join(sorted(str(x).strip().lower() for x in parts if x))
     return hashlib.sha256(normalized.encode()).hexdigest()[:20] if normalized else ""
+
 
 def build_infrastructure_links(item: InfrastructureIndicator):
     links=[]
