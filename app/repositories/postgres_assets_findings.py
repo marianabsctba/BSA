@@ -7,11 +7,16 @@ from ..application.ports.asset_finding_repository import AssetFindingRepositoryP
 from ..models import Asset, Finding
 
 
+class ConcurrentUpdateError(RuntimeError):
+    """Raised when a tracked PostgreSQL row changed after it was read."""
+
+
 class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
     """PostgreSQL-backed asset/finding repository.
 
-    Connections are short-lived and transaction-scoped so API and worker
-    replicas can share the same durable state safely.
+    Existing rows use optimistic concurrency via ``updated_at``. Objects that
+    were merely read are not written back, and a modified stale object fails
+    closed instead of overwriting a newer update from another process.
     """
 
     def __init__(self, dsn: str, connect=None):
@@ -23,6 +28,8 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         self._pending_findings=[]
         self._tracked_assets={}
         self._tracked_findings={}
+        self._asset_snapshots={}
+        self._finding_snapshots={}
         self._ensure_schema()
 
     @staticmethod
@@ -68,13 +75,38 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         value=row[0] if not isinstance(row,dict) else row["payload_json"]
         return value if isinstance(value,dict) else json.loads(value)
 
+    @staticmethod
+    def _version(row):
+        return row[1] if not isinstance(row,dict) else row["updated_at"]
+
+    @staticmethod
+    def _serialized(item) -> str:
+        return json.dumps(
+            item.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",",":"),
+        )
+
+    def _track_asset(self, row) -> Asset:
+        item=Asset.model_validate(self._payload(row))
+        key=(item.tenant_id,item.id)
+        self._tracked_assets[key]=item
+        self._asset_snapshots[key]=(self._version(row),self._serialized(item))
+        return item
+
+    def _track_finding(self, row) -> Finding:
+        item=Finding.model_validate(self._payload(row))
+        key=(item.tenant_id,item.id)
+        self._tracked_findings[key]=item
+        self._finding_snapshots[key]=(self._version(row),self._serialized(item))
+        return item
+
     def all_assets(self):
         with self._connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT payload_json FROM assets ORDER BY tenant_id,id")
-                items=[Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
-        for item in items:
-            self._tracked_assets[(item.tenant_id,item.id)]=item
+                cur.execute("SELECT payload_json,updated_at FROM assets ORDER BY tenant_id,id")
+                items=[self._track_asset(row) for row in cur.fetchall()]
         return items+[
             item for item in self._pending_assets
             if (item.tenant_id,item.id) not in self._tracked_assets
@@ -83,10 +115,8 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
     def all_findings(self):
         with self._connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT payload_json FROM findings ORDER BY tenant_id,id")
-                items=[Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
-        for item in items:
-            self._tracked_findings[(item.tenant_id,item.id)]=item
+                cur.execute("SELECT payload_json,updated_at FROM findings ORDER BY tenant_id,id")
+                items=[self._track_finding(row) for row in cur.fetchall()]
         return items+[
             item for item in self._pending_findings
             if (item.tenant_id,item.id) not in self._tracked_findings
@@ -96,12 +126,10 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT payload_json FROM assets WHERE tenant_id=%s ORDER BY id",
+                    "SELECT payload_json,updated_at FROM assets WHERE tenant_id=%s ORDER BY id",
                     (tenant_id,),
                 )
-                items=[Asset.model_validate(self._payload(row)) for row in cur.fetchall()]
-        for item in items:
-            self._tracked_assets[(item.tenant_id,item.id)]=item
+                items=[self._track_asset(row) for row in cur.fetchall()]
         return items+[
             item for item in self._pending_assets
             if item.tenant_id==tenant_id
@@ -114,20 +142,18 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
             with conn.cursor() as cur:
                 if allowed is None:
                     cur.execute(
-                        "SELECT payload_json FROM findings WHERE tenant_id=%s ORDER BY id",
+                        "SELECT payload_json,updated_at FROM findings WHERE tenant_id=%s ORDER BY id",
                         (tenant_id,),
                     )
                 else:
                     if not allowed:
                         return []
                     cur.execute(
-                        "SELECT payload_json FROM findings "
+                        "SELECT payload_json,updated_at FROM findings "
                         "WHERE tenant_id=%s AND asset_id = ANY(%s) ORDER BY id",
                         (tenant_id,list(allowed)),
                     )
-                items=[Finding.model_validate(self._payload(row)) for row in cur.fetchall()]
-        for item in items:
-            self._tracked_findings[(item.tenant_id,item.id)]=item
+                items=[self._track_finding(row) for row in cur.fetchall()]
         return items+[
             item for item in self._pending_findings
             if item.tenant_id==tenant_id
@@ -149,7 +175,7 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT payload_json FROM findings WHERE tenant_id=%s AND id=%s",
+                    "SELECT payload_json,updated_at FROM findings WHERE tenant_id=%s AND id=%s",
                     (tenant_id,finding_id),
                 )
                 row=cur.fetchone()
@@ -161,9 +187,7 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                 ),
                 None,
             )
-        item=Finding.model_validate(self._payload(row))
-        self._tracked_findings[(item.tenant_id,item.id)]=item
-        return item
+        return self._track_finding(row)
 
     def add_asset(self, asset: Asset) -> Asset:
         self._pending_assets.append(asset)
@@ -173,20 +197,76 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         self._pending_findings.append(finding)
         return finding
 
+    def _persist_tracked_assets(self, cur, pending_keys: set[tuple[str,str]]) -> None:
+        for key,asset in self._tracked_assets.items():
+            if key in pending_keys:
+                continue
+            snapshot=self._asset_snapshots.get(key)
+            if snapshot is None:
+                continue
+            version,original_payload=snapshot
+            current_payload=self._serialized(asset)
+            if current_payload==original_payload:
+                continue
+            cur.execute(
+                """UPDATE assets SET payload_json=%s::jsonb,updated_at=NOW()
+                   WHERE tenant_id=%s AND id=%s AND updated_at=%s""",
+                (current_payload,asset.tenant_id,asset.id,version),
+            )
+            if int(cur.rowcount)!=1:
+                raise ConcurrentUpdateError(
+                    f"asset changed concurrently: {asset.tenant_id}/{asset.id}"
+                )
+
+    def _persist_tracked_findings(self, cur, pending_keys: set[tuple[str,str]]) -> None:
+        for key,finding in self._tracked_findings.items():
+            if key in pending_keys:
+                continue
+            snapshot=self._finding_snapshots.get(key)
+            if snapshot is None:
+                continue
+            version,original_payload=snapshot
+            current_payload=self._serialized(finding)
+            if current_payload==original_payload:
+                continue
+            cur.execute(
+                """UPDATE findings SET asset_id=%s,payload_json=%s::jsonb,updated_at=NOW()
+                   WHERE tenant_id=%s AND id=%s AND updated_at=%s""",
+                (
+                    finding.asset_id,
+                    current_payload,
+                    finding.tenant_id,
+                    finding.id,
+                    version,
+                ),
+            )
+            if int(cur.rowcount)!=1:
+                raise ConcurrentUpdateError(
+                    f"finding changed concurrently: {finding.tenant_id}/{finding.id}"
+                )
+
     def persist(self) -> None:
-        assets={
-            **self._tracked_assets,
-            **{(item.tenant_id,item.id):item for item in self._pending_assets},
-        }
-        findings={
-            **self._tracked_findings,
-            **{(item.tenant_id,item.id):item for item in self._pending_findings},
-        }
-        if not assets and not findings:
+        pending_assets={(item.tenant_id,item.id):item for item in self._pending_assets}
+        pending_findings={(item.tenant_id,item.id):item for item in self._pending_findings}
+        has_tracked_changes=any(
+            self._serialized(item)!=self._asset_snapshots.get(key,(None,self._serialized(item)))[1]
+            for key,item in self._tracked_assets.items()
+        ) or any(
+            self._serialized(item)!=self._finding_snapshots.get(key,(None,self._serialized(item)))[1]
+            for key,item in self._tracked_findings.items()
+        )
+        if not pending_assets and not pending_findings and not has_tracked_changes:
+            self._tracked_assets.clear()
+            self._tracked_findings.clear()
+            self._asset_snapshots.clear()
+            self._finding_snapshots.clear()
             return
+
         with self._connection() as conn:
             with conn.cursor() as cur:
-                for asset in assets.values():
+                self._persist_tracked_assets(cur,set(pending_assets))
+                self._persist_tracked_findings(cur,set(pending_findings))
+                for asset in pending_assets.values():
                     cur.execute(
                         """INSERT INTO assets(tenant_id,id,payload_json,updated_at)
                            VALUES(%s,%s,%s::jsonb,NOW())
@@ -196,10 +276,10 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                         (
                             asset.tenant_id,
                             asset.id,
-                            json.dumps(asset.model_dump(mode="json"),ensure_ascii=False),
+                            self._serialized(asset),
                         ),
                     )
-                for finding in findings.values():
+                for finding in pending_findings.values():
                     cur.execute(
                         """INSERT INTO findings(tenant_id,id,asset_id,payload_json,updated_at)
                            VALUES(%s,%s,%s,%s::jsonb,NOW())
@@ -211,13 +291,15 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
                             finding.tenant_id,
                             finding.id,
                             finding.asset_id,
-                            json.dumps(finding.model_dump(mode="json"),ensure_ascii=False),
+                            self._serialized(finding),
                         ),
                     )
         self._pending_assets.clear()
         self._pending_findings.clear()
         self._tracked_assets.clear()
         self._tracked_findings.clear()
+        self._asset_snapshots.clear()
+        self._finding_snapshots.clear()
 
     def tenant_record_counts(self, tenant_id: str) -> dict[str,int]:
         with self._connection() as conn:
@@ -239,4 +321,6 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
         self._pending_findings=[item for item in self._pending_findings if item.tenant_id!=tenant_id]
         self._tracked_assets={key:item for key,item in self._tracked_assets.items() if key[0]!=tenant_id}
         self._tracked_findings={key:item for key,item in self._tracked_findings.items() if key[0]!=tenant_id}
+        self._asset_snapshots={key:item for key,item in self._asset_snapshots.items() if key[0]!=tenant_id}
+        self._finding_snapshots={key:item for key,item in self._finding_snapshots.items() if key[0]!=tenant_id}
         return {"assets":assets,"findings":findings}
