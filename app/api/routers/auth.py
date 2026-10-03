@@ -31,6 +31,7 @@ from ..dependencies import current_principal
 
 router=APIRouter()
 LOGIN_RATE_LIMIT_WINDOW_SECONDS=900
+PRIVILEGED_MFA_ROLES={"admin","superadmin"}
 
 
 class LoginRequest(BaseModel):
@@ -198,7 +199,10 @@ def tenant_mfa_policy_get(request: Request):
 def tenant_mfa_policy_update(request: Request, payload: MFAPolicyRequest):
     principal=current_principal(request)
     try:
-        result=set_tenant_mfa_policy(principal,payload.required_roles)
+        required_roles=list(payload.required_roles)
+        if os.getenv("BSA_ENV","development").lower() in {"production","prod"}:
+            required_roles=sorted(set(required_roles)|PRIVILEGED_MFA_ROLES)
+        result=set_tenant_mfa_policy(principal,required_roles)
         audit(
             principal,
             "update",
