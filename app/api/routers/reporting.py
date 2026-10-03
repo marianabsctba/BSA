@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
 
+from ...assessment_quality import latest_assessment_quality
 from ...engine_health import public_engine_health
 from ...graph import RELATIONSHIPS
 from ...history import (
@@ -88,6 +89,7 @@ def report_summary(request: Request):
     )
     ctem_queue=ctem_queue_view(ctem_items)
     queue_summary=queue_metrics(principal.tenant_id)
+    assessment_quality=latest_assessment_quality(principal.tenant_id)
 
     return {
         "executive":{
@@ -147,6 +149,7 @@ def report_summary(request: Request):
         },
         "operations":{
             "queue":queue_summary,
+            "assessment_quality":assessment_quality,
             "coverage":{
                 "rapid":{
                     "state":engine_profiles.get("rapid",{}).get(
