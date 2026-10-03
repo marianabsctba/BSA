@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 from ..application.ports.asset_finding_repository import AssetFindingRepositoryPort
 from ..models import Asset, Finding
+from .postgres_pool import pooled_connection
 
 
 class ConcurrentUpdateError(RuntimeError):
@@ -34,8 +35,7 @@ class PostgresAssetFindingRepository(AssetFindingRepositoryPort):
 
     @staticmethod
     def _default_connect(dsn: str):
-        import psycopg
-        return psycopg.connect(dsn)
+        return pooled_connection(dsn)
 
     def _connection(self):
         return self._connect(self._dsn)
