@@ -216,9 +216,6 @@ def tenant_mfa_policy_update(request: Request, payload: MFAPolicyRequest):
 @router.post("/api/v1/auth/login")
 def login(payload: LoginRequest, request: Request):
     client_ip=_client_ip(request)
-    if _login_rate_limited(payload.email,client_ip):
-        raise _login_rate_limit_error()
-
     token=authenticate(
         payload.email,
         payload.password,
@@ -226,9 +223,9 @@ def login(payload: LoginRequest, request: Request):
         payload.mfa_code,
     )
     if not token:
-        # authenticate() persists both per-account and per-source pressure. If
-        # this request crossed either threshold, surface the throttle now so a
-        # subsequent correct password cannot bypass the active block.
+        # Password verification happens before throttle enforcement so a valid
+        # credential can recover from a challenge while invalid attempts remain
+        # rate-limited at both account and source-IP scope.
         if _login_rate_limited(payload.email,client_ip):
             raise _login_rate_limit_error()
         raise HTTPException(status_code=401,detail="invalid credentials")
