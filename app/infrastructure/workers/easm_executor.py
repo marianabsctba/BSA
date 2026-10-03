@@ -9,8 +9,8 @@ from ...digital_risk import (
 from ...discovery import collect_target, discover_surface
 from ...graph import build_risk_graph
 from ...history import record_lifecycle
+from ...repositories.assets_findings import asset_finding_repository
 from ...scope import asset_in_scope
-from ...store import ASSETS as STORE_ASSETS, FINDINGS as STORE_FINDINGS
 
 
 SUPPORTED_EASM_OPERATIONS={
@@ -28,17 +28,13 @@ def supports(operation: str) -> bool:
 
 
 def _tenant_state(principal):
+    repository=asset_finding_repository()
     assets=[
-        asset for asset in STORE_ASSETS
-        if getattr(asset,"tenant_id","tenant-demo")==principal.tenant_id
-        and asset_in_scope(principal,asset.value)
+        asset for asset in repository.list_assets(principal.tenant_id)
+        if asset_in_scope(principal,asset.value)
     ]
     asset_ids={asset.id for asset in assets}
-    findings=[
-        finding for finding in STORE_FINDINGS
-        if getattr(finding,"tenant_id","tenant-demo")==principal.tenant_id
-        and finding.asset_id in asset_ids
-    ]
+    findings=repository.list_findings(principal.tenant_id,asset_ids)
     return assets,findings
 
 
