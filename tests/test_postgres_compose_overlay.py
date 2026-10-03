@@ -13,6 +13,8 @@ def test_postgres_overlay_is_opt_in_and_internal():
     assert "BSA_DATABASE_URL:" in overlay
     assert "condition: service_healthy" in overlay
     assert "condition: service_completed_successfully" in overlay
+    assert "backup:" in overlay
+    assert "networks: [bsa_app, bsa_database]" in overlay
     assert "bsa_database:" in overlay
     assert "internal: true" in overlay
     assert "bsa_postgres:" in overlay
