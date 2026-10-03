@@ -251,6 +251,25 @@ def _adaptive_execution_policy(
     return suppressed, protected_capabilities, recovery_probes
 
 
+def _adaptive_coverage_preserved(
+    profile: str,
+    deferred_providers: list[str] | set[str],
+    protected_capabilities: set[str],
+) -> bool:
+    """Report whether adaptive deferral preserved every affected profile capability."""
+    if not deferred_providers:
+        return True
+    deferred_capabilities = {
+        capability
+        for provider in deferred_providers
+        for capability in PROFILE_CAPABILITIES[profile]
+        if provider in registry.CAPABILITY_PROVIDERS.get(capability, ())
+    }
+    if not deferred_capabilities:
+        return False
+    return deferred_capabilities.issubset(protected_capabilities)
+
+
 def _adaptive_suppressed_providers(profile: str, target: str) -> tuple[set[str], set[str]]:
     suppressed, protected, _ = _adaptive_execution_policy(profile, target)
     return suppressed, protected
@@ -729,7 +748,11 @@ def run_assessment(
                     "deferred_backend_count": len(internal["adaptive_deferred"]),
                     "recovery_probe_count": len(recovery_probes),
                     "protected_capabilities": sorted(protected_capabilities),
-                    "coverage_preserved": bool(internal["adaptive_deferred"] or recovery_probes),
+                    "coverage_preserved": _adaptive_coverage_preserved(
+                        profile,
+                        internal["adaptive_deferred"],
+                        protected_capabilities,
+                    ),
                 },
                 "effectiveness": effectiveness,
                 "capability_metrics": capability_metrics,
