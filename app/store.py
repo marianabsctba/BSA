@@ -8,10 +8,22 @@ from .models import Asset, AssetType, Finding, Severity
 
 
 def _store_path() -> str | None:
+    production = os.getenv("BSA_ENV", "development").strip().lower() in {"production", "prod"}
+    backend = os.getenv(
+        "BSA_ASSET_REPOSITORY_BACKEND",
+        "postgres" if production else "legacy",
+    ).strip().lower()
+    legacy_allowed = os.getenv("BSA_ALLOW_LEGACY_STORAGE", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+    if production and (backend == "postgres" or not legacy_allowed):
+        return None
+
     configured = os.getenv("BSA_STORE_DB", "").strip()
     if configured:
         return configured
-    if os.getenv("BSA_ENV", "development").lower() in {"production", "prod"}:
+    if production and backend in {"legacy", "sqlite"} and legacy_allowed:
         return "/data/bsa_store.db"
     return None
 
