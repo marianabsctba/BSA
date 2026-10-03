@@ -17,6 +17,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from .models import Asset, Finding
 from .postgres_backup import export_asset_state, restore_asset_state
@@ -118,7 +119,7 @@ def create_backup(output: str | Path) -> dict:
                 "findings":len(payload["findings"]),
             }
 
-        manifest={
+        manifest: dict[str, Any]={
             "format":"bsa-backup-v2" if postgres_meta else "bsa-backup-v1",
             "created_at":int(time.time()),
             "files":files,
